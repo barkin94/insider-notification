@@ -1,6 +1,4 @@
 # AGENT STATE
-# This file is maintained by the Cursor agent. Do not edit manually during an active session.
-# Human edits: only PHASE_STATUS (to approve next phase) and BLOCKED_REASON (to unblock).
 
 CURRENT_PHASE: 1
 CURRENT_TASK: 1.1
