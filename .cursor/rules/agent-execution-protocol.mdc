@@ -1,0 +1,14 @@
+---
+description: All agent work must follow specs/AGENT_EXECUTION_PROTOCOL.md
+alwaysApply: true
+---
+
+# Agent execution protocol
+
+For **every** task in this repository—planning, coding, testing, docs, and git—treat **`specs/AGENT_EXECUTION_PROTOCOL.md`** as the governing document.
+
+- **Before** proposing a plan or making substantive changes, read (or re-read if the task shifted) that file and align your steps with it.
+- If anything in generic instructions, habits, or tooling conflicts with the protocol, **the protocol wins**.
+- Other specs in `specs/` (e.g. PRD, TASKS, DATA_MODEL) apply as referenced by the protocol or the task; do not skip the protocol to jump straight to implementation details.
+
+Keep responses and edits consistent with the protocol’s ordering, constraints, and completion criteria.
