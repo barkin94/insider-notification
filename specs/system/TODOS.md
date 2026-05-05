@@ -5,6 +5,35 @@ context to write a spec and implement when prioritized.
 
 ---
 
+## Processor Database
+
+**What:** Give the Notification Processor its own PostgreSQL database so it can write
+`delivery_attempts` rows directly instead of publishing to `notify:stream:status` and
+relying on the API service's status consumer.
+
+**Motivation:**
+- Removes coupling between Processor and API for delivery persistence
+- Simplifies status updates (direct DB write vs. stream publish + consume)
+- Required if the two services scale independently into separate infrastructure
+
+**Design notes:**
+- Processor would own `delivery_attempts` table; API service would read it via a shared
+  read replica or a dedicated query API (not direct cross-DB joins)
+- Alternatively: Processor owns its own PostgreSQL instance entirely, and the API service
+  calls a Processor query endpoint for `delivery_attempts` on `GET /notifications/:id`
+- The `notify:stream:status` stream and `notify:cg:api` consumer group would be removed
+- Requires deciding on a cross-service data access pattern (read replica vs. gRPC query)
+
+**Spec files to update when prioritized:**
+- Add Processor PostgreSQL instance to diagram in `ARCHITECTURE.md`
+- Add ADR for cross-service data access to `ARCHITECTURE.md`
+- Add `delivery_attempts` table to a new `specs/processor-service/DATA_MODEL.md`
+- Remove `notify:stream:status` and `notify:cg:api` from `QUEUE_DESIGN.md`
+- Remove status event consumer section from `QUEUE_DESIGN.md`
+- Update `VERIFICATION.md` to add Processor DB checks
+
+---
+
 ## WebSocket: Real-Time Status Updates
 
 **What:** A WebSocket endpoint that allows clients to subscribe to live status
@@ -77,7 +106,7 @@ worker polls for due notifications and enqueues them at the right time.
 at notification creation time.
 
 **Behavior:**
-- Templates are stored in a separate MongoDB collection with name, channel, content, and description
+- Templates are stored in a separate PostgreSQL table with name, channel, content, and description
 - `POST /notifications` accepts optional `template_id` + `template_vars` instead of `content`
 - Template variables use `{{variable_name}}` syntax; all variables must be provided or request fails with 422
 - Template CRUD: `POST /templates`, `GET /templates/:id`, `GET /templates`
@@ -88,9 +117,9 @@ at notification creation time.
 - Missing variable returns `TEMPLATE_VAR_MISSING` (422), not a silent empty string
 
 **Spec files to update when prioritized:**
-- Add `Collection: templates` to `DATA_MODEL.md`
+- Add `Table: templates` to `DATA_MODEL.md`
 - Add `TemplateID`, `TemplateVars` fields to Notification struct in `DATA_MODEL.md`
-- Add migration version for templates indexes to `DATA_MODEL.md`
+- Add migration file for templates table to `DATA_MODEL.md`
 - Add `template_id`, `template_vars` to `POST /notifications` in `API_CONTRACT.md`
 - Add `TEMPLATE_VAR_MISSING` error code to `API_CONTRACT.md`
 - Add `POST /templates`, `GET /templates/:id`, `GET /templates` to `API_CONTRACT.md`
@@ -105,7 +134,7 @@ at notification creation time.
 
 **Jobs:**
 - `lint`: `golangci-lint run`
-- `test`: spin up mongo + redis services, run `go test ./...`
+- `test`: spin up postgres + redis services, run `go test ./...`
 - `build`: `go build ./cmd/server`
 
 **Spec files to update when prioritized:**

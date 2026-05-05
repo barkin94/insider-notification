@@ -13,7 +13,7 @@
   "level":          "info | warn | error",
   "msg":            "human readable description",
   "correlation_id": "uuid",        ← injected by middleware on every request
-  "service":        "notification-system",
+  "service":        "notification-api | notification-processor",
   "version":        "1.0.0"
 }
 ```
@@ -98,7 +98,7 @@ attempts_total_{channel}    ← incremented on each delivery attempt
 - Latency = time from worker pickup to provider response
 
 **Queue depth:**
-- Read from Redis via `LLEN notify:queue:{priority}` on each `/metrics` request
+- Read from Redis via `XLEN notify:stream:{priority}` on each `/metrics` request
 - Also maintained as Redis counters for fast access (reconciled on startup)
 
 **Rate limiter state:**
@@ -108,14 +108,16 @@ attempts_total_{channel}    ← incremented on each delivery attempt
 
 ## Health Check
 
-`GET /health` performs active checks:
+`GET /health` (Notification Management API) performs active checks:
 
 | Check | Implementation | Failure condition |
 |-------|---------------|------------------|
-| MongoDB | `db.runCommand({ ping: 1 })` with 2s timeout | Error or timeout |
+| PostgreSQL | `SELECT 1` with 2s timeout | Error or timeout |
 | Redis | `PING` with 1s timeout | Error or timeout |
 
 Returns `200 OK` if all checks pass, `503 Service Unavailable` if any fail.
+
+The Notification Processor does not expose an HTTP health endpoint; its liveness is observed via metrics counters and structured logs.
 
 ---
 

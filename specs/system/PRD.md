@@ -50,5 +50,5 @@ visibility for both internal teams and API consumers.
 
 - Language: Go 1.2x
 - External provider: webhook.site (simulated, returns 202 Accepted)
-- DB: MongoDB 7 (replica set)
-- Cache / Rate limiter / Queue broker: Redis
+- DB: PostgreSQL 16 (Notification Management API only)
+- Message broker / Rate limiter / Cache: Redis 7 (Streams for queuing, token bucket for rate limiting)

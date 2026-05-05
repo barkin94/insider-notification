@@ -7,27 +7,29 @@ Run the relevant checklist when a component is substantially complete.
 ## Scaffold
 
 - [ ] `docker-compose config` passes
-- [ ] `go build ./...` passes
+- [ ] `go build ./...` passes (both `cmd/api` and `cmd/processor`)
 - [ ] All directories from [Project Layout](./ARCHITECTURE.md#project-layout) exist
 - [ ] `.env.example` present with all required env vars
-- [ ] Migration runner compiles and reports status cleanly
+- [ ] `golang-migrate` runs cleanly; all 3 migration files apply without error
 
-## Data Layer
+## Data Layer (API Service — PostgreSQL)
 
 - [ ] `go build ./...` and `go vet ./...` pass
-- [ ] All struct fields match DATA_MODEL.md (field names, bson tags, types)
-- [ ] All MongoDB indexes from DATA_MODEL.md created in migrations
+- [ ] All struct fields match DATA_MODEL.md (field names, `db:` tags, types)
+- [ ] All PostgreSQL indexes from DATA_MODEL.md created in migrations
 - [ ] All repository methods implemented per DATA_MODEL.md
-- [ ] Idempotency: client key → Redis fast path; content hash → DB fallback
+- [ ] Idempotency: client key → Redis fast path; content hash → PostgreSQL fallback
+- [ ] Expired idempotency keys cleaned up by background goroutine
 - [ ] Unit tests for repositories pass
 
 ## Queue & Rate Limiter
 
 - [ ] `go build ./...` passes
-- [ ] Queue producer pushes to correct priority list
+- [ ] Queue producer publishes to correct priority stream (`XADD notify:stream:{priority}`)
+- [ ] Consumer group `notify:cg:processor` created on all three priority streams
 - [ ] Worker poll order: high → normal → low confirmed in test
 - [ ] Rate limiter Lua script executes atomically (concurrent goroutine test)
-- [ ] `go test ./internal/queue/... ./internal/ratelimit/...` passes
+- [ ] `go test ./internal/stream/... ./internal/ratelimit/...` passes
 
 ## Delivery & Retry
 
@@ -36,10 +38,18 @@ Run the relevant checklist when a component is substantially complete.
 - [ ] Non-retryable codes (400, 401, 403) do NOT retry
 - [ ] Retryable codes (5xx, timeout) DO retry
 - [ ] Backoff formula and jitter match RETRY_POLICY.md exactly
-- [ ] Worker acquires Redis lock before processing; updates status after each transition
+- [ ] Worker acquires Redis lock before processing; ACKs stream message after each terminal outcome
+- [ ] Status events published to `notify:stream:status` after each attempt
 - [ ] `go test ./internal/delivery/... ./internal/retry/... ./internal/service/...` passes
 
-## API
+## Status Event Consumer (API Service)
+
+- [ ] Consumer group `notify:cg:api` created on `notify:stream:status`
+- [ ] Status consumer writes `delivery_attempts` rows on each event
+- [ ] Status consumer updates `notifications.status` correctly
+- [ ] `go test ./internal/stream/...` passes (consumer side)
+
+## API (Notification Management API)
 
 - [ ] `go build ./...` passes
 - [ ] All endpoints from API_CONTRACT.md registered in router
@@ -48,22 +58,16 @@ Run the relevant checklist when a component is substantially complete.
 - [ ] GET /notifications/:id includes `delivery_attempts` array
 - [ ] GET /notifications pagination matches API_CONTRACT.md
 - [ ] POST /notifications/:id/cancel → 409 for delivered/failed
-- [ ] GET /metrics returns all fields from API_CONTRACT.md
-- [ ] GET /health returns 200 with mongodb + redis checks
+- [ ] GET /metrics returns all fields from API_CONTRACT.md; queue depth from `XLEN`
+- [ ] GET /health returns 200 with postgresql + redis checks
 - [ ] `go test ./internal/api/...` passes
-
-## Scheduler & Templates
-
-- [ ] Scheduled notifications enqueued within 5s of `scheduled_at`
-- [ ] Template renderer resolves all `{{variables}}`; missing variable returns error
-- [ ] `go test ./internal/scheduler/... ./internal/template/...` passes
 
 ## Tests
 
 - [ ] `go test ./...` passes with zero failures
 - [ ] Retry exhaustion: 4 attempts → status = failed
 - [ ] Non-retryable: 400 → failed immediately
-- [ ] End-to-end: created → delivered → status = delivered
+- [ ] End-to-end: created → stream consumed → delivered → status = delivered
 - [ ] `go test -race ./...` clean
 
 ## Docs
@@ -75,12 +79,11 @@ Run the relevant checklist when a component is substantially complete.
 
 ## Done Criteria
 
-- [ ] `docker-compose up` starts with no errors
+- [ ] `docker-compose up` starts both services with no errors
 - [ ] `make test` passes all tests
 - [ ] `GET /health` returns `{"status": "ok"}`
-- [ ] `POST /notifications` → DB record with `pending` status → worker delivers → `delivered`
+- [ ] `POST /notifications` → PostgreSQL record with `pending` status → Processor delivers → `delivered`
 - [ ] `GET /metrics` shows correct queue depths and delivery counts
-- [ ] WebSocket client receives real-time status update
 - [ ] Duplicate `Idempotency-Key` → 409
 - [ ] Swagger UI accessible at `http://localhost:8080/swagger`
 - [ ] Commit history is clean and atomic

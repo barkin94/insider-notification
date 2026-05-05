@@ -258,7 +258,7 @@ Health check endpoint.
 {
   "status": "ok",
   "checks": {
-    "mongodb": "ok",
+    "postgresql": "ok",
     "redis": "ok"
   },
   "version": "1.0.0"
@@ -270,7 +270,7 @@ Health check endpoint.
 {
   "status": "degraded",
   "checks": {
-    "mongodb": "ok",
+    "postgresql": "ok",
     "redis": "error: connection refused"
   }
 }
