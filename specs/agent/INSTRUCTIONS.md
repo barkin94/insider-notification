@@ -7,7 +7,10 @@ The `specs/` directory is the source of truth for all implementation decisions.
 ## Session Start
 
 1. Read `specs/agent/STATE.md` and `specs/agent/DECISIONS.md`
-2. Read the spec diff:
+2. Check if `specs/agent/TASKS.md` exists:
+   - If yes: a previous session was interrupted — read it, report the remaining tasks, and ask the human whether to resume or restart
+   - If no: proceed normally
+3. Read the spec diff:
    - **First session:** treat the full content of all spec files as the diff
    - **Subsequent sessions:** read the diff of `specs/` since the last build commit
 3. From the diff, derive a task list and present it for approval:
@@ -15,11 +18,14 @@ The `specs/` directory is the source of truth for all implementation decisions.
    - Dependency order (derived from the architecture spec)
    - Which spec sections each task references
 4. **Gate 1 — Task approval:** wait for explicit human approval before continuing
-5. Present the build plan for the approved tasks:
+5. Write the approved task list to `specs/agent/TASKS.md` (create if absent, overwrite if present):
+   - One task per line as an unchecked markdown checkbox
+   - Include the date and spec diff source in the header
+6. Present the build plan for the approved tasks:
    - Files and packages to be created
    - Key interfaces, types, and implementation decisions
    - Any ambiguities or open decisions that need resolving before building
-6. **Gate 2 — Build plan approval:** wait for explicit human approval before writing any code
+7. **Gate 2 — Build plan approval:** wait for explicit human approval before writing any code
 
 ---
 
@@ -39,10 +45,13 @@ If any check fails: set `BLOCKED_REASON` in `specs/agent/STATE.md`, fix before c
 ## After Each Task
 
 1. Run the relevant verification checklist from `specs/VERIFICATION.md`
-2. If all checks pass: commit with a descriptive message
-3. Update `specs/agent/DECISIONS.md` if a pattern emerged or an open decision was made
-4. Update `specs/agent/STATE.md`
-5. Report completion and move to the next approved task
+2. If all checks pass:
+   - Mark the task complete in `specs/agent/TASKS.md`
+   - Commit with a descriptive message (include TASKS.md in the commit)
+   - Update `specs/agent/DECISIONS.md` if a pattern emerged or an open decision was made
+   - Update `specs/agent/STATE.md`
+3. Report completion and move to the next approved task
+4. When all tasks in the session are done: delete `specs/agent/TASKS.md` and commit the deletion
 
 ---
 
