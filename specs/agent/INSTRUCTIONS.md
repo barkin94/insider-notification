@@ -6,7 +6,7 @@ The `specs/` directory is the source of truth for all implementation decisions.
 
 ## Session Start
 
-1. Read `specs/AGENT_STATE.md` and `specs/DECISIONS.md`
+1. Read `specs/agent/STATE.md` and `specs/agent/DECISIONS.md`
 2. Read the domain specs relevant to what comes next (derive from current status)
 3. Propose the next logical unit of work:
    - What you will build
@@ -25,15 +25,15 @@ The `specs/` directory is the source of truth for all implementation decisions.
 
 After writing code: run the build and lint commands defined in the project's architecture spec.
 After writing code in a component: run its tests.
-If any check fails: set `BLOCKED_REASON` in `specs/AGENT_STATE.md`, fix before continuing.
+If any check fails: set `BLOCKED_REASON` in `specs/agent/STATE.md`, fix before continuing.
 
 ---
 
 ## After Each Unit of Work
 
 1. Commit with a descriptive message
-2. Update `specs/DECISIONS.md` if a pattern emerged or an open spec decision was made
-3. Update `specs/AGENT_STATE.md`
+2. Update `specs/agent/DECISIONS.md` if a pattern emerged or an open spec decision was made
+3. Update `specs/agent/STATE.md`
 4. Report what was built and propose the next unit
 5. Wait for approval before proceeding
 
@@ -52,5 +52,5 @@ the checklist for that component. Report results before proposing the next compo
 - Never skip a verification checklist item
 - Never add code not specified in the specs
 - Never silently resolve a spec conflict — always surface it
-- Never assume a previous session's work is correct — verify it compiles and tests pass
+- Never assume a previous session's work is correct — verify it builds and tests pass
 - Always search before implementing — grep for existing code before writing new
