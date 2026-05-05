@@ -18,6 +18,11 @@ Before writing any code:
    - Which spec sections you will reference
 4. Wait for explicit approval before proceeding
 
+Files and when to read them:
+- `specs/TASKS.md` — session start and before each task
+- `specs/CHECKS.md` — after completing each task
+- `specs/VERIFICATION.md` — at phase end, before requesting human approval
+
 ---
 
 ## Task Execution
@@ -34,8 +39,7 @@ Before writing any code:
 - If you find a conflict between spec files, stop and report it
 
 **After completing a task:**
-- Run `go build ./...` and `go vet ./...` if any Go file changed
-- Run the task-specific check from `TASKS.md` if one is listed
+- Read `specs/CHECKS.md` and run every applicable check
 - If any check fails: set `BLOCKED_REASON` in `AGENT_STATE.md`, fix the issue, do not mark the task complete
 - If all checks pass: update `AGENT_STATE.md`, report completion, wait for confirmation before starting the next task
 
@@ -45,7 +49,7 @@ Before writing any code:
 
 When the last task in a phase is done and all checks pass:
 
-1. Run the phase verification checklist from `TASKS.md`
+1. Read `specs/VERIFICATION.md` and run the checklist for the current phase
 2. Report results to the human
 3. Set `PHASE_STATUS: awaiting_next_phase` in `AGENT_STATE.md`
 4. Do not begin the next phase until the human explicitly approves
