@@ -23,8 +23,8 @@ The `specs/` directory is the source of truth for all implementation decisions.
 - If the spec does not cover something you need to decide, stop and ask
 - If you find a conflict between spec files, stop and report it
 
-After writing any Go file: `go build ./...` and `go vet ./...` must pass.
-After writing code in a package: run that package's tests.
+After writing code: run the build and lint commands defined in the project's architecture spec.
+After writing code in a component: run its tests.
 If any check fails: set `BLOCKED_REASON` in `specs/AGENT_STATE.md`, fix before continuing.
 
 ---

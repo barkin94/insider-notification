@@ -151,3 +151,15 @@
 - **Decision:** A dedicated goroutine polls notifications collection where scheduled_at <= NOW() and status = 'scheduled' every 5 seconds, enqueues them, and updates status to `pending`.
 - **Rationale:** Simple, no cron dependency. 5s granularity is sufficient for notification scheduling.
 - **Tradeoff accepted:** Up to 5 second delivery delay for scheduled notifications.
+
+## Development Commands
+
+| Purpose | Command |
+|---------|---------|
+| Build | `go build ./...` |
+| Vet | `go vet ./...` |
+| Test all | `go test ./...` |
+| Test with race detector | `go test -race ./...` |
+| Lint | `golangci-lint run` |
+| Generate API docs | `swag init` |
+| Run migrations | `go run ./cmd/migrate up` |
