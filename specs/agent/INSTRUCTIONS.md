@@ -7,12 +7,19 @@ The `specs/` directory is the source of truth for all implementation decisions.
 ## Session Start
 
 1. Read `specs/agent/STATE.md` and `specs/agent/DECISIONS.md`
-2. Read the domain specs relevant to what comes next (derive from current status)
-3. Propose the next logical unit of work:
-   - What you will build
-   - Which spec sections you are referencing
-   - What the completion check will be
-4. Wait for explicit approval before writing any code
+2. Read the spec diff:
+   - **First session:** treat the full content of all spec files as the diff
+   - **Subsequent sessions:** read the diff of `specs/` since the last build commit
+3. From the diff, derive a task list and present it for approval:
+   - What will be built
+   - Dependency order (derived from the architecture spec)
+   - Which spec sections each task references
+4. **Gate 1 — Task approval:** wait for explicit human approval before continuing
+5. Present the build plan for the approved tasks:
+   - Files and packages to be created
+   - Key interfaces, types, and implementation decisions
+   - Any ambiguities or open decisions that need resolving before building
+6. **Gate 2 — Build plan approval:** wait for explicit human approval before writing any code
 
 ---
 
@@ -29,26 +36,19 @@ If any check fails: set `BLOCKED_REASON` in `specs/agent/STATE.md`, fix before c
 
 ---
 
-## After Each Unit of Work
+## After Each Task
 
-1. Commit with a descriptive message
-2. Update `specs/agent/DECISIONS.md` if a pattern emerged or an open spec decision was made
-3. Update `specs/agent/STATE.md`
-4. Report what was built and propose the next unit
-5. Wait for approval before proceeding
-
----
-
-## Component Completion
-
-When a component is substantially complete, read `specs/VERIFICATION.md` and run
-the checklist for that component. Report results before proposing the next component.
+1. Run the relevant verification checklist from `specs/VERIFICATION.md`
+2. If all checks pass: commit with a descriptive message
+3. Update `specs/agent/DECISIONS.md` if a pattern emerged or an open decision was made
+4. Update `specs/agent/STATE.md`
+5. Report completion and move to the next approved task
 
 ---
 
 ## Hard Rules
 
-- Never start implementing without explicit human approval
+- Never pass Gate 1 or Gate 2 without explicit human approval
 - Never skip a verification checklist item
 - Never add code not specified in the specs
 - Never silently resolve a spec conflict — always surface it
