@@ -342,25 +342,3 @@ Health check endpoint.
 }
 ```
 
----
-
-### WS /ws/status/:notification_id
-WebSocket endpoint for real-time status updates on a single notification.
-
-**Connection:** `ws://localhost:8080/ws/status/{notification_id}`
-
-**Server → Client messages:**
-```json
-{
-  "notification_id": "uuid",
-  "status": "delivered",
-  "updated_at": "ISO8601",
-  "attempt_number": 1
-}
-```
-
-**Behavior:**
-- On connect: immediately sends current status
-- On each status change: broadcasts new status to all subscribers of that notification ID
-- Connection closes automatically when status reaches terminal state (`delivered`, `failed`, `cancelled`)
-- Ping/pong keepalive every 30 seconds

@@ -62,7 +62,6 @@ if the client supplies one). The ID propagates through:
 - HTTP response headers (`X-Correlation-ID`)
 - All log lines for that request lifecycle
 - All downstream calls (e.g. webhook.site request includes `X-Correlation-ID` header)
-- WebSocket messages for notifications created in that request
 
 **Implementation:**
 ```go

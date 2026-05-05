@@ -5,9 +5,9 @@
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                          API Layer                              │
-│   POST /notifications   GET /notifications/:id   WS /ws/status  │
-│   POST /notifications/batch              GET /metrics            │
-│   POST /notifications/:id/cancel        GET /health              │
+│   POST /notifications   GET /notifications/:id   GET /metrics    │
+│   POST /notifications/batch              GET /health              │
+│   POST /notifications/:id/cancel                                │
 │   POST /templates   GET /templates/:id                          │
 └───────────────────────────┬─────────────────────────────────────┘
                             │
@@ -60,12 +60,6 @@
    │  templates               │
    │  idempotency_keys        │
    └─────────────────────────┘
-                │
-   ┌────────────▼────────────┐
-   │   WebSocket Hub          │
-   │  broadcasts status       │
-   │  changes to subscribers  │
-   └─────────────────────────┘
 ```
 
 ## Tech Stack
@@ -78,7 +72,6 @@
 | Queue broker | Redis 7 (Lists + BRPOPLPUSH) | Low-latency, atomic list ops, native TTL for idempotency keys |
 | Rate limiter | Redis token bucket | Distributed-safe, survives app restarts |
 | Migrations | Custom Go runner | Versioned Go functions tracked in `schema_migrations` collection; no SQL files |
-| WebSocket | `gorilla/websocket` | Production-grade, well-maintained |
 | Logging | `zap` | Structured, high-performance, supports correlation IDs |
 | Config | `viper` | Env + file config, 12-factor compatible |
 | Testing | `testify` + `go test` | Standard Go testing with assertions |
@@ -95,8 +88,7 @@
 ├── internal/
 │   ├── api/
 │   │   ├── handler/          # HTTP handlers
-│   │   ├── middleware/        # logging, correlation ID
-│   │   └── ws/               # WebSocket hub + handler
+│   │   └── middleware/        # logging, correlation ID
 │   ├── config/
 │   ├── db/
 │   │   └── migrations/       # versioned Go migration functions
@@ -142,12 +134,7 @@
 - **Rationale:** Gives API consumers explicit control while protecting against accidental duplicates.
 - **Tradeoff accepted:** Content hash collisions theoretically possible but negligible risk.
 
-### ADR-5: WebSocket Hub for Real-Time Updates
-- **Decision:** Central in-process hub with per-notification-ID subscription rooms. Status changes (written to DB) also publish to the hub which broadcasts to subscribers.
-- **Rationale:** Simple, no external pub/sub dependency for this scope.
-- **Tradeoff accepted:** Hub is in-process — not horizontally scalable without Redis pub/sub adapter. Acceptable for Docker Compose scope.
-
-### ADR-6: Scheduler as a Polling Worker
+### ADR-5: Scheduler as a Polling Worker
 - **Decision:** A dedicated goroutine polls notifications collection where scheduled_at <= NOW() and status = 'scheduled' every 5 seconds, enqueues them, and updates status to `pending`.
 - **Rationale:** Simple, no cron dependency. 5s granularity is sufficient for notification scheduling.
 - **Tradeoff accepted:** Up to 5 second delivery delay for scheduled notifications.

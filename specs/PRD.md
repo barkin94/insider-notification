@@ -20,7 +20,6 @@ visibility for both internal teams and API consumers.
 - Idempotency support
 - Observability: metrics, structured logging, health checks
 - Scheduled notifications (future delivery)
-- WebSocket real-time status updates
 - Message template system with variable substitution
 - GitHub Actions CI/CD pipeline
 - External provider integration via webhook.site
@@ -47,7 +46,6 @@ visibility for both internal teams and API consumers.
 - Notification status is queryable by ID and batch ID
 - Pending notifications can be cancelled
 - Metrics endpoint exposes queue depth, success/failure rates, latency
-- WebSocket clients receive real-time status updates
 - Scheduled notifications are delivered at the correct time
 - Templates resolve variables correctly before delivery
 - `docker-compose up` starts the full system

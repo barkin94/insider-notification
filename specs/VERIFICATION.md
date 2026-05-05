@@ -52,14 +52,6 @@ Run the relevant checklist when a component is substantially complete.
 - [ ] GET /health returns 200 with mongodb + redis checks
 - [ ] `go test ./internal/api/...` passes
 
-## WebSocket
-
-- [ ] Connection upgrades successfully; current status sent on connect
-- [ ] Status updates broadcast within 1s of DB write
-- [ ] Connection closes on terminal status (delivered/failed/cancelled)
-- [ ] Ping/pong keepalive every 30s present in code
-- [ ] `go test ./internal/api/ws/...` passes
-
 ## Scheduler & Templates
 
 - [ ] Scheduled notifications enqueued within 5s of `scheduled_at`
