@@ -9,7 +9,7 @@ Project-specific execution authority:
 - `TASKS.md` is the deciding factor for project-specific implementation actions
 - `TASKS.md` is the deciding factor for required per-task checks
 - `TASKS.md` is the deciding factor for phase verification checklists
-- If any project-specific instruction conflicts with `AGENT_EXECUTION_PROTOCOL.md`, follow `TASKS.md`
+- If any project-specific instruction conflicts with `AGENT_INSTRUCTIONS.md`, follow `TASKS.md`
 
 ---
 
@@ -372,76 +372,24 @@ Project-specific execution authority:
 
 ---
 
-## Per-Task Check Commands
+## Per-Task Checks
 
-Use this deterministic format while executing each task.
+After every task where a Go file changed: `go build ./...` and `go vet ./...` must pass.
 
-Execution rules:
-
-1. Run all checks under `always` whose `when` condition matches.
-2. Run all checks under `task_specific` that match the current task ID.
-3. A task is complete only if every required check exits with status code `0`.
-4. Show full output for each executed check.
-
-    always:
-      - id: build-all
-        when: any_go_file_changed
-        run: go build ./...
-      - id: vet-all
-        when: any_go_file_changed
-        run: go vet ./...
-
-    task_specific:
-      "1.3":
-        - id: compose-config
-          run: docker-compose config
-
-      "1.5":
-        - id: migrate-up
-          run: go run ./cmd/migrate up
-        - id: migrate-status
-          run: go run ./cmd/migrate status
-
-      "1.6":
-        - id: config-build
-          run: go build ./internal/config/...
-
-      "2.x":
-        - id: db-unit-tests
-          run: go test ./internal/db/... -v -run TestUnit
-
-      "3.1-3.2":
-        - id: queue-tests
-          run: go test ./internal/queue/... -v
-
-      "3.3":
-        - id: ratelimit-tests
-          run: go test ./internal/ratelimit/... -v
-
-      "4.x":
-        - id: delivery-retry-service-tests
-          run: go test ./internal/delivery/... ./internal/retry/... ./internal/service/... -v
-
-      "5.x":
-        - id: api-tests
-          run: go test ./internal/api/... -v
-
-      "6.x":
-        - id: websocket-tests
-          run: go test ./internal/api/ws/... -v
-
-      "8.x":
-        - id: all-tests
-          run: go test ./... -v
-
-      "9.1":
-        - id: swagger-generate-and-list
-          run: swag init && ls docs/
-
-      "9.3":
-        - id: ci-workflow-presence
-          run: cat .github/workflows/ci.yml
-          note: syntax check only
+| Task | Additional check |
+|------|-----------------|
+| 1.3 | `docker-compose config` |
+| 1.5 | `go run ./cmd/migrate up` and `go run ./cmd/migrate status` |
+| 1.6 | `go build ./internal/config/...` |
+| 2.x | `go test ./internal/db/... -v -run TestUnit` |
+| 3.1–3.2 | `go test ./internal/queue/... -v` |
+| 3.3 | `go test ./internal/ratelimit/... -v` |
+| 4.x | `go test ./internal/delivery/... ./internal/retry/... ./internal/service/... -v` |
+| 5.x | `go test ./internal/api/... -v` |
+| 6.x | `go test ./internal/api/ws/... -v` |
+| 8.x | `go test ./... -v` |
+| 9.1 | `swag init && ls docs/` |
+| 9.3 | `cat .github/workflows/ci.yml` |
 
 ---
 
