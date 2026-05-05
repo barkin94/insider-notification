@@ -77,9 +77,8 @@ FUNCTION enqueue(notification_id UUID, priority priority_type):
 ```
 
 **Called by:**
-- API handler after successful notification creation (if `scheduled_at` is null)
+- API handler after successful notification creation
 - Retry logic after computing `deliver_after` delay
-- Scheduler worker when `scheduled_at <= NOW()`
 
 ---
 

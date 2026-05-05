@@ -88,7 +88,6 @@ LOOP forever:
       SET status = 'delivered'
       SET provider_message_id from response
       INSERT delivery_attempt (status: success)
-      publish WebSocket update
 
     IF failure:
       INCREMENT attempts
@@ -102,7 +101,6 @@ LOOP forever:
 
       ELSE:
         SET status = 'failed'         ← exhausted or non-retryable
-        publish WebSocket update
 
     release Redis lock
 

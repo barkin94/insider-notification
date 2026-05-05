@@ -19,9 +19,6 @@ visibility for both internal teams and API consumers.
 - Delivery & retry logic with exponential backoff
 - Idempotency support
 - Observability: metrics, structured logging, health checks
-- Scheduled notifications (future delivery)
-- Message template system with variable substitution
-- GitHub Actions CI/CD pipeline
 - External provider integration via webhook.site
 - Docker Compose one-command setup
 - OpenAPI/Swagger documentation
@@ -46,8 +43,6 @@ visibility for both internal teams and API consumers.
 - Notification status is queryable by ID and batch ID
 - Pending notifications can be cancelled
 - Metrics endpoint exposes queue depth, success/failure rates, latency
-- Scheduled notifications are delivered at the correct time
-- Templates resolve variables correctly before delivery
 - `docker-compose up` starts the full system
 - All tests pass with a single command
 

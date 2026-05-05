@@ -20,9 +20,6 @@ type Notification struct {
   Priority          string              `bson:"priority"`            // high | normal | low
   Status            string              `bson:"status"`              // see status values below
   IdempotencyKey    *string             `bson:"idempotency_key,omitempty"`
-  TemplateID        *primitive.ObjectID `bson:"template_id,omitempty"`
-  TemplateVars      map[string]string   `bson:"template_vars,omitempty"`
-  ScheduledAt       *time.Time          `bson:"scheduled_at,omitempty"`
   DeliverAfter      *time.Time          `bson:"deliver_after,omitempty"`
   ProviderMessageID *string             `bson:"provider_message_id,omitempty"`
   Attempts          int                 `bson:"attempts"`
@@ -33,7 +30,7 @@ type Notification struct {
 }
 ```
 
-**Status values:** `scheduled` | `pending` | `processing` | `delivered` | `failed` | `cancelled`
+**Status values:** `pending` | `processing` | `delivered` | `failed` | `cancelled`
 
 **Field constraints:**
 - `recipient`: max 255 chars, required
@@ -47,7 +44,6 @@ db.notifications.createIndex({ batch_id: 1 }, { sparse: true })
 db.notifications.createIndex({ status: 1 })
 db.notifications.createIndex({ channel: 1 })
 db.notifications.createIndex({ created_at: -1 })
-db.notifications.createIndex({ scheduled_at: 1 }, { sparse: true })
 db.notifications.createIndex({ deliver_after: 1, status: 1 })
 db.notifications.createIndex({ idempotency_key: 1 }, { unique: true, sparse: true })
 db.notifications.createIndex({ status: 1, updated_at: 1 })
@@ -75,30 +71,6 @@ type DeliveryAttempt struct {
 ```js
 db.delivery_attempts.createIndex({ notification_id: 1 })
 db.delivery_attempts.createIndex({ attempted_at: -1 })
-```
-
----
-
-## Collection: templates
-
-```go
-type Template struct {
-  ID          primitive.ObjectID `bson:"_id,omitempty"`
-  Name        string             `bson:"name"`
-  Channel     string             `bson:"channel"`
-  Content     string             `bson:"content"`        // uses {{variable_name}} syntax
-  Description *string            `bson:"description,omitempty"`
-  CreatedAt   time.Time          `bson:"created_at"`
-  UpdatedAt   time.Time          `bson:"updated_at"`
-}
-```
-
-**Variable syntax:** `{{variable_name}}` — e.g. `"Hello {{name}}, your order {{order_id}} is ready."`
-
-**Indexes:**
-```js
-db.templates.createIndex({ name: 1 }, { unique: true })
-db.templates.createIndex({ channel: 1 })
 ```
 
 ---
@@ -195,13 +167,6 @@ var All = []Migration{
   },
   {
     Version: 3,
-    Name:    "create_templates_indexes",
-    Up: func(ctx context.Context, db *mongo.Database) error {
-      // create indexes for templates
-    },
-  },
-  {
-    Version: 4,
     Name:    "create_idempotency_keys_ttl_index",
     Up: func(ctx context.Context, db *mongo.Database) error {
       // create unique + TTL indexes for idempotency_keys
@@ -240,29 +205,20 @@ where `batch_id` assignment and multiple inserts must be atomic.
 ## Status Transition Map
 
 ```
-         ┌──────────────────────────────────┐
-         │           scheduled_at set        │
-         ▼                                  │
-    [scheduled] ──── scheduler worker ────► [pending]
-                                               │
-                                    enqueued to Redis queue
-                                               │
-                                               ▼
-                                         [processing]
-                                          /         \
-                              provider 202          provider error
-                                  │                      │
-                                  ▼                      ▼
-                            [delivered]          attempts < max?
-                                                  /           \
-                                                yes            no
-                                                 │             │
-                                        re-enqueue with    [failed]
-                                        deliver_after
-                                        (backoff delay)
+    [pending] ──── enqueued to Redis queue ────► [processing]
+                                                  /         \
+                                      provider 202          provider error
+                                          │                      │
+                                          ▼                      ▼
+                                    [delivered]          attempts < max?
+                                                          /           \
+                                                        yes            no
+                                                         │             │
+                                                re-enqueue with    [failed]
+                                                deliver_after
+                                                (backoff delay)
 
     [pending] ──── cancel API ────► [cancelled]
-    [scheduled] ── cancel API ────► [cancelled]
 ```
 
 ---

@@ -5,21 +5,14 @@
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                          API Layer                              │
-│   POST /notifications   GET /notifications/:id   GET /metrics    │
-│   POST /notifications/batch              GET /health              │
-│   POST /notifications/:id/cancel                                │
-│   POST /templates   GET /templates/:id                          │
+│   POST /notifications   GET /notifications/:id   GET /metrics   │
+│   POST /notifications/batch              GET /health            │
+│   POST /notifications/:id/cancel                               │
 └───────────────────────────┬─────────────────────────────────────┘
                             │
               ┌─────────────▼─────────────┐
               │     Idempotency Check      │
-              │  (Redis + Postgres lookup) │
-              └─────────────┬─────────────┘
-                            │
-              ┌─────────────▼─────────────┐
-              │      Scheduler Service     │
-              │  (persists to DB, enqueues │
-              │   at scheduled_at time)    │
+              │  (Redis + MongoDB lookup)  │
               └─────────────┬─────────────┘
                             │
          ┌──────────────────▼──────────────────┐
@@ -27,39 +20,36 @@
          │  notify:queue:high                   │
          │  notify:queue:normal                 │
          │  notify:queue:low                    │
-         └──────────┬────────────┬─────────────┘
-                    │            │
-       ┌────────────▼──┐  ┌──────▼────────────┐
-       │  Queue Workers │  │  Scheduler Worker  │
-       │  (poll high    │  │  (polls DB for     │
-       │   first)       │  │   scheduled_at <=  │
-       └────────┬───────┘  │   NOW(), enqueues) │
-                │           └───────────────────┘
-                │
-   ┌────────────▼────────────┐
-   │    Rate Limiter          │
-   │  Redis token bucket      │
-   │  100 msg/s per channel   │
-   └────────────┬────────────┘
-                │
-   ┌────────────▼────────────┐
-   │   Delivery Service       │
-   │  POST webhook.site/uuid  │
-   └────────────┬────────────┘
-                │
-   ┌────────────▼────────────┐
-   │   Retry Scheduler        │
-   │  exponential backoff     │
-   │  + jitter, max 4 tries   │
-   └────────────┬────────────┘
-                │
-   ┌────────────▼────────────┐
-   │   MongoDB                │
-   │  notifications           │
-   │  delivery_attempts       │
-   │  templates               │
-   │  idempotency_keys        │
-   └─────────────────────────┘
+         └──────────────────┬──────────────────┘
+                            │
+                ┌───────────▼───────────┐
+                │     Queue Workers     │
+                │   (poll high first)   │
+                └───────────┬───────────┘
+                            │
+           ┌────────────────▼────────────────┐
+           │         Rate Limiter             │
+           │   Redis token bucket             │
+           │   100 msg/s per channel          │
+           └────────────────┬────────────────┘
+                            │
+           ┌────────────────▼────────────────┐
+           │       Delivery Service           │
+           │   POST webhook.site/uuid         │
+           └────────────────┬────────────────┘
+                            │
+           ┌────────────────▼────────────────┐
+           │       Retry Scheduler            │
+           │   exponential backoff            │
+           │   + jitter, max 4 tries          │
+           └────────────────┬────────────────┘
+                            │
+           ┌────────────────▼────────────────┐
+           │         MongoDB                  │
+           │   notifications                  │
+           │   delivery_attempts              │
+           │   idempotency_keys               │
+           └─────────────────────────────────┘
 ```
 
 ## Tech Stack
@@ -95,10 +85,8 @@
 │   ├── model/                # domain structs
 │   ├── queue/                # Redis queue producer + consumer
 │   ├── ratelimit/            # token bucket implementation
-│   ├── scheduler/            # scheduled notification worker
 │   ├── delivery/             # webhook.site HTTP client
 │   ├── retry/                # retry logic + backoff
-│   ├── template/             # template storage + rendering
 │   ├── idempotency/          # key resolution + dedup
 │   ├── metrics/              # in-memory metrics store
 │   └── service/              # orchestration layer
@@ -106,9 +94,6 @@
 ├── docker-compose.yml
 ├── Dockerfile
 ├── Makefile
-├── .github/
-│   └── workflows/
-│       └── ci.yml
 └── docs/                     # swag-generated OpenAPI output
 ```
 
@@ -133,11 +118,6 @@
 - **Decision:** Check client-supplied `Idempotency-Key` header first (stored in Redis, 24h TTL). If absent, compute `sha256(channel + recipient + content)` and check against `idempotency_keys` collection with 1h window.
 - **Rationale:** Gives API consumers explicit control while protecting against accidental duplicates.
 - **Tradeoff accepted:** Content hash collisions theoretically possible but negligible risk.
-
-### ADR-5: Scheduler as a Polling Worker
-- **Decision:** A dedicated goroutine polls notifications collection where scheduled_at <= NOW() and status = 'scheduled' every 5 seconds, enqueues them, and updates status to `pending`.
-- **Rationale:** Simple, no cron dependency. 5s granularity is sufficient for notification scheduling.
-- **Tradeoff accepted:** Up to 5 second delivery delay for scheduled notifications.
 
 ## Development Commands
 

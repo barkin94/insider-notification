@@ -27,7 +27,6 @@ Idempotency-Key: <client-supplied string, optional>   ← for POST /notification
 | 404 | `NOT_FOUND` | Resource does not exist |
 | 409 | `DUPLICATE_NOTIFICATION` | Idempotency key already used |
 | 409 | `INVALID_STATUS_TRANSITION` | Cannot cancel a delivered/failed notification |
-| 422 | `TEMPLATE_VAR_MISSING` | Template variable not provided |
 | 429 | `RATE_LIMITED` | API-level rate limit exceeded (not channel rate limit) |
 | 500 | `INTERNAL_ERROR` | Unhandled server error |
 
@@ -47,20 +46,12 @@ Create a single notification.
   "channel": "sms",                   // required, enum: sms | email | push
   "content": "Your OTP is 123456",    // required unless template_id provided, string
   "priority": "high",                 // optional, enum: high | normal | low, default: normal
-  "scheduled_at": "2024-06-01T10:00:00Z",  // optional, ISO8601, must be future
-  "template_id": "uuid-here",         // optional, UUID
-  "template_vars": {                  // required if template_id provided
-    "name": "Barkin",
-    "otp": "123456"
-  },
   "metadata": {}                      // optional, arbitrary JSON object
 }
 ```
 
 **Rules:**
-- `content` OR `template_id` must be provided, not both
-- If `template_id` provided, all `{{variables}}` in template must be present in `template_vars`
-- If `scheduled_at` provided, must be at least 1 minute in the future
+- `content` is required
 - Content length validated per channel (see DATA_MODEL.md)
 
 **Response: 201 Created**
@@ -148,9 +139,6 @@ Get a single notification by ID.
   "provider_message_id": "uuid-from-provider",
   "attempts": 1,
   "max_attempts": 4,
-  "scheduled_at": null,
-  "template_id": null,
-  "template_vars": null,
   "metadata": null,
   "created_at": "ISO8601",
   "updated_at": "ISO8601",
@@ -174,7 +162,7 @@ List notifications with filtering and pagination.
 
 **Query Parameters:**
 ```
-status       string    Filter by status (pending|processing|delivered|failed|cancelled|scheduled)
+status       string    Filter by status (pending|processing|delivered|failed|cancelled)
 channel      string    Filter by channel (sms|email|push)
 batch_id     uuid      Filter by batch ID
 date_from    ISO8601   Filter created_at >= date_from
@@ -204,7 +192,7 @@ order        string    asc | desc, default: desc
 Cancel a pending or scheduled notification.
 
 **Rules:**
-- Only `pending`, `scheduled` notifications can be cancelled
+- Only `pending` notifications can be cancelled
 - Returns 409 if status is `processing`, `delivered`, `failed`, or `cancelled`
 
 **Request:** empty body
@@ -215,60 +203,6 @@ Cancel a pending or scheduled notification.
   "id": "uuid",
   "status": "cancelled",
   "updated_at": "ISO8601"
-}
-```
-
----
-
-### POST /templates
-Create a message template.
-
-**Request:**
-```json
-{
-  "name": "flash_sale_sms",           // required, unique, snake_case
-  "channel": "sms",                   // required
-  "content": "Hi {{name}}, flash sale starts in {{minutes}} minutes!",  // required
-  "description": "Used for flash sale SMS campaigns"  // optional
-}
-```
-
-**Response: 201 Created**
-```json
-{
-  "id": "uuid",
-  "name": "flash_sale_sms",
-  "channel": "sms",
-  "content": "Hi {{name}}, flash sale starts in {{minutes}} minutes!",
-  "variables": ["name", "minutes"],   // parsed from content
-  "created_at": "ISO8601"
-}
-```
-
----
-
-### GET /templates/:id
-Get a template by ID.
-
-**Response: 200 OK** — same shape as POST /templates response
-
----
-
-### GET /templates
-List all templates.
-
-**Query Parameters:**
-```
-channel    string    Filter by channel
-page       int       default: 1
-page_size  int       default: 20, max: 100
-```
-
-**Response: 200 OK**
-```json
-{
-  "data": [ /* array of template objects */ ],
-  "pagination": { ... }
 }
 ```
 
