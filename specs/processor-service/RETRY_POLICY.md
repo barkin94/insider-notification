@@ -70,49 +70,26 @@ These failures immediately move the notification to `failed` status with no furt
 
 ## Retry Worker Implementation
 
-```
-LOOP forever:
-  query notifications WHERE:
-    status = 'pending'
-    AND deliver_after <= NOW()
-    AND attempts < max_attempts
+Workers are driven by `XREADGROUP` polling (see QUEUE_DESIGN.md), not by polling PostgreSQL.
 
-  FOR each notification:
-    acquire Redis lock notify:lock:{id} (TTL: 60s)
-    IF lock not acquired: skip (another worker has it)
+Each stream message carries a `deliver_after` timestamp. If the message is not yet due, the worker re-enqueues it immediately and moves on — no retry budget is consumed.
 
-    SET status = 'processing'
-    attempt delivery
+Once a message is due, the worker acquires a Redis lock on the notification ID, then atomically transitions the notification from `pending` to `processing` in PostgreSQL while incrementing `attempts`. If the row was already grabbed by another worker, the message is ACKed and skipped.
 
-    IF success (provider returns 202):
-      SET status = 'delivered'
-      SET provider_message_id from response
-      INSERT delivery_attempt (status: success)
+Before dispatching, the worker checks the channel rate limiter. If exhausted, the notification is put back to `pending` with no backoff and no attempt counted.
 
-    IF failure:
-      INCREMENT attempts
-      INSERT delivery_attempt (status: failed, error details)
+On **success** (provider 202): status → `delivered`. A status event is published to `notify:stream:status` for the delivery audit record.
 
-      IF retryable AND attempts < max_attempts:
-        compute delay = backoff(attempts) + jitter()
-        SET deliver_after = NOW() + delay
-        SET status = 'pending'        ← re-queues for retry
-        re-enqueue into same priority queue
+On **retryable failure** with attempts remaining: backoff delay is computed, `deliver_after` is set, status returns to `pending`, and the notification is re-enqueued into the same priority stream.
 
-      ELSE:
-        SET status = 'failed'         ← exhausted or non-retryable
-
-    release Redis lock
-
-  SLEEP 1 second   ← poll interval
-```
+On **terminal failure** (non-retryable error, or attempts exhausted): status → `failed`. A final status event is published.
 
 ---
 
 ## Dead Letter Behavior
 
 There is no separate dead-letter queue. Notifications that exhaust all attempts are marked
-`status = 'failed'` in MongoDB with full `delivery_attempts` history. This provides:
+`status = 'failed'` in PostgreSQL with full `delivery_attempts` history. This provides:
 
 - Full audit trail of all attempts, HTTP status codes, error messages, and latency
 - Queryable via `GET /notifications?status=failed`

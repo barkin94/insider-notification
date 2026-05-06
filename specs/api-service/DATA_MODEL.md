@@ -17,6 +17,9 @@ Migrations are versioned SQL files (`*.up.sql` / `*.down.sql`) managed by `golan
 | `priority` | VARCHAR(20) | NOT NULL, default `normal`, enum: `high \| normal \| low` |
 | `status` | VARCHAR(20) | NOT NULL, default `pending`, enum: see Status Values below |
 | `idempotency_key` | VARCHAR(255) | nullable, UNIQUE |
+| `deliver_after` | TIMESTAMPTZ | nullable |
+| `attempts` | INT | NOT NULL, default 0 |
+| `max_attempts` | INT | NOT NULL, default 4 |
 | `metadata` | JSONB | nullable |
 | `created_at` | TIMESTAMPTZ | NOT NULL, default now |
 | `updated_at` | TIMESTAMPTZ | NOT NULL, default now |
@@ -27,6 +30,7 @@ Migrations are versioned SQL files (`*.up.sql` / `*.down.sql`) managed by `golan
 - `recipient`: max 255 chars, required
 - `content`: max 1600 chars for SMS, 100,000 for Email, 4096 for Push (enforced at API layer)
 - `priority`: defaults to `normal`
+- `max_attempts`: always 4
 
 **Indexes:**
 ```sql
@@ -34,6 +38,7 @@ CREATE INDEX idx_notifications_batch_id    ON notifications(batch_id) WHERE batc
 CREATE INDEX idx_notifications_status      ON notifications(status);
 CREATE INDEX idx_notifications_channel     ON notifications(channel);
 CREATE INDEX idx_notifications_created_at  ON notifications(created_at DESC);
+CREATE INDEX idx_notifications_deliver_after_status ON notifications(deliver_after, status);
 CREATE INDEX idx_notifications_status_updated_at    ON notifications(status, updated_at);
 ```
 
