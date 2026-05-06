@@ -70,19 +70,32 @@ These failures immediately move the notification to `failed` status with no furt
 
 ## Retry Worker Implementation
 
-Workers are driven by `XREADGROUP` polling (see QUEUE_DESIGN.md), not by polling PostgreSQL.
+Driven by `XREADGROUP` polling (see QUEUE_DESIGN.md). "publish event" = `XADD notify:stream:status`.
 
-Each stream message carries a `deliver_after` timestamp. If the message is not yet due, the worker re-enqueues it immediately and moves on — no retry budget is consumed.
-
-Once a message is due, the worker acquires a Redis lock on the notification ID, then atomically transitions the notification from `pending` to `processing` in PostgreSQL while incrementing `attempts`. If the row was already grabbed by another worker, the message is ACKed and skipped.
-
-Before dispatching, the worker checks the channel rate limiter. If exhausted, the notification is put back to `pending` with no backoff and no attempt counted.
-
-On **success** (provider 202): status → `delivered`. A status event is published to `notify:stream:status` for the delivery audit record.
-
-On **retryable failure** with attempts remaining: backoff delay is computed, `deliver_after` is set, status returns to `pending`, and the notification is re-enqueued into the same priority stream.
-
-On **terminal failure** (non-retryable error, or attempts exhausted): status → `failed`. A final status event is published.
+```
+            poll stream (XREADGROUP)
+                       │
+           deliver_after > NOW? ──yes──► re-enqueue · XACK · next
+                       │ no
+           Redis lock acquired? ──no───► XACK · next
+                       │ yes
+     UPDATE status=processing,
+     attempts++ WHERE status=pending ──no rows──► XACK · next
+                       │ updated
+           rate limiter ok? ──no──► status=pending · re-enqueue · XACK · next
+                       │ yes
+               deliver to provider
+                ┌──────┴──────┐
+               202          failure
+                │                │
+                │      retryable AND attempts < max_attempts?
+                │                ├── yes ──► deliver_after = NOW + backoff(attempts) + jitter
+                │                │           status=pending · re-enqueue · publish event · XACK
+                │                │
+                │                └── no ───► status=failed · publish event · XACK
+                │
+          status=delivered · publish event · XACK
+```
 
 ---
 
