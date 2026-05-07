@@ -2,7 +2,7 @@
 
 **Specs:** `api-service/DATA_MODEL.md`
 **Verification:** `api-service/VERIFICATION.md` § Data Layer
-**Status:** pending
+**Status:** complete
 
 ## What to build
 

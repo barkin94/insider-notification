@@ -1,3 +1,3 @@
 STATUS: in progress
-LAST_COMPLETED: scaffold
+LAST_COMPLETED: shared-models
 BLOCKED_REASON:

@@ -7,7 +7,7 @@ Empty until implementation begins.
 
 ## Established Patterns
 
-_None yet._
+- **UUID v7 for all IDs** — app-generated via `uuid.NewV7()` before every INSERT. No `gen_random_uuid()` default in migrations. Rationale: time-ordered UUIDs give better B-tree index locality on insert-heavy tables; v7 supported by `github.com/google/uuid` v1.6.0 without any PostgreSQL extension.
 
 ## Open Spec Decisions
 

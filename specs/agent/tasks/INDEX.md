@@ -28,7 +28,7 @@ scaffold
 ## Status
 
 - [x] scaffold
-- [ ] shared-models
+- [x] shared-models
 - [ ] shared-config
 - [ ] sql-migrations
 - [ ] postgres-repos
