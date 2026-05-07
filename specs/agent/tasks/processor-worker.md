@@ -6,7 +6,7 @@
 
 ## What to build
 
-### `internal/processor/worker/worker.go`
+### `processor/internal/worker/worker.go`
 ```
 Worker struct:
   consumer    stream.Consumer
@@ -47,7 +47,7 @@ processNext(ctx):
 
 ## Tests
 
-`internal/processor/worker/worker_test.go` — inject mock consumer, producer, repo, deliverer, limiter:
+`processor/internal/worker/worker_test.go` — inject mock consumer, producer, repo, deliverer, limiter:
 
 - `TestWorker_delivered` — provider 202 → status=delivered, status event published
 - `TestWorker_retryable_requeued` — provider 503, attempts=1 → re-enqueued with deliver_after, status event processing

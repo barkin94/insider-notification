@@ -6,7 +6,7 @@
 
 ## What to build
 
-### `internal/api/idempotency/service.go`
+### `api/internal/idempotency/service.go`
 ```
 KeyStore interface:
   Get(ctx, key string) (uuid.UUID, error)
@@ -33,7 +33,7 @@ Store(ctx, idempotencyKey string, n *model.Notification) error
   — called after notification is created; writes Redis key + DB row
 ```
 
-### `internal/api/idempotency/redis_store.go`
+### `api/internal/idempotency/redis_store.go`
 ```
 redisKeyStore struct{ client *redis.Client }  — implements KeyStore
   — Get: GET idempotency:{key}; returns db.ErrNotFound on cache miss

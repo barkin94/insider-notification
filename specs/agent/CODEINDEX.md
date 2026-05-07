@@ -12,8 +12,8 @@ type: reference
 |------|----------|
 | `system/ARCHITECTURE.md` | `api/main.go`, `processor/main.go` |
 | `system/MESSAGE_CONTRACT.md` | `internal/shared/stream/` ★ |
-| `system/OBSERVABILITY.md` | `api/main.go`, `processor/main.go`, `internal/api/middleware/` ★ |
+| `system/OBSERVABILITY.md` | `api/main.go`, `processor/main.go`, `api/internal/middleware/` ★ |
 | `api-service/DATA_MODEL.md` | `internal/shared/model/`, `internal/shared/db/`, `api/migrations/` |
-| `api-service/API_CONTRACT.md` | `internal/api/handler/`, `internal/api/middleware/` |
-| `processor-service/QUEUE_DESIGN.md` | `internal/shared/stream/`, `internal/processor/worker/` ★ |
-| `processor-service/RETRY_POLICY.md` | `internal/processor/worker/`, `internal/processor/retry/` |
+| `api-service/API_CONTRACT.md` | `api/internal/handler/`, `api/internal/middleware/` |
+| `processor-service/QUEUE_DESIGN.md` | `internal/shared/stream/`, `processor/internal/worker/` ★ |
+| `processor-service/RETRY_POLICY.md` | `processor/internal/worker/`, `processor/internal/retry/` |

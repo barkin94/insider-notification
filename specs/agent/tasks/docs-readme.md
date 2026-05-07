@@ -8,7 +8,7 @@
 
 ### swag annotations
 
-Add `// @...` swag annotations to all handlers in `internal/api/handler/`:
+Add `// @...` swag annotations to all handlers in `api/internal/handler/`:
 - `@Summary`, `@Description`, `@Tags`, `@Accept`, `@Produce`
 - `@Param`, `@Success`, `@Failure` for every response code in `API_CONTRACT.md`
 - `@Router` for each endpoint

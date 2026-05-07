@@ -82,17 +82,17 @@ isolated from infrastructure — all external dependencies are accessed through 
 
 | Role | Package |
 |------|---------|
-| Inbound adapter | `internal/api/handler/` (HTTP) |
-| Application core | `internal/api/handler/` (use case orchestration) |
-| Outbound adapters | `internal/shared/db/` (PostgreSQL), `internal/shared/stream/` (publish), `internal/api/idempotency/` (Redis + PostgreSQL) |
+| Inbound adapter | `api/internal/handler/` (HTTP) |
+| Application core | `api/internal/handler/` (use case orchestration) |
+| Outbound adapters | `internal/shared/db/` (PostgreSQL), `internal/shared/stream/` (publish), `api/internal/idempotency/` (Redis + PostgreSQL) |
 
 **Notification Processor:**
 
 | Role | Package |
 |------|---------|
-| Inbound adapter | `internal/processor/worker/` (stream consumer) |
-| Application core | `internal/processor/worker/` (delivery orchestration) |
-| Outbound adapters | `internal/shared/db/` (PostgreSQL), `internal/shared/stream/` (publish), `internal/processor/delivery/` (webhook), `internal/processor/ratelimit/` (Redis) |
+| Inbound adapter | `processor/internal/worker/` (stream consumer) |
+| Application core | `processor/internal/worker/` (delivery orchestration) |
+| Outbound adapters | `internal/shared/db/` (PostgreSQL), `internal/shared/stream/` (publish), `processor/internal/delivery/` (webhook), `processor/internal/ratelimit/` (Redis) |
 
 **Port pattern in Go** — a port is an interface defined close to the domain; an adapter is a
 struct in an infrastructure package that implements it:

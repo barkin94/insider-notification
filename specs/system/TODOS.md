@@ -66,7 +66,7 @@ changes for a specific notification.
 **Spec files to update when prioritized:**
 - Add `WS /ws/status/:notification_id` to `API_CONTRACT.md`
 - Add WebSocket Hub ADR to `ARCHITECTURE.md`
-- Add `internal/api/ws/` to project layout in `ARCHITECTURE.md`
+- Add `api/internal/ws/` to project layout in `ARCHITECTURE.md`
 - Add WebSocket section to `VERIFICATION.md`
 
 ---

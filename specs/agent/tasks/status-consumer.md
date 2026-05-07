@@ -6,7 +6,7 @@
 
 ## What to build
 
-### `internal/api/consumer/status.go`
+### `api/internal/consumer/status.go`
 ```
 StatusConsumer struct:
   consumer  stream.Consumer

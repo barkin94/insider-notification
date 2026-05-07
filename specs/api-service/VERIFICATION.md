@@ -26,7 +26,7 @@
 
 - [ ] `X-Correlation-ID` generated if absent; echoed in response header
 - [ ] All log lines include `service`, `version`, `ts`, `level`, `msg` fields
-- [ ] `go test ./internal/api/middleware/...` passes
+- [ ] `go test ./api/internal/middleware/...` passes
 
 ---
 
@@ -44,7 +44,7 @@
 - [ ] `POST /notifications/:id/cancel` on `processing`/`delivered`/`failed` → 409 `INVALID_STATUS_TRANSITION`
 - [ ] `GET /health` → 200 with `postgresql` and `redis` checks; 503 if either fails
 - [ ] Content length enforced per channel (SMS 1600, Email 100000, Push 4096)
-- [ ] `go test ./internal/api/handler/...` passes
+- [ ] `go test ./api/internal/handler/...` passes
 
 ---
 

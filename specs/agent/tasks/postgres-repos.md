@@ -6,12 +6,12 @@
 
 ## What to build
 
-### `internal/api/db/pool.go`
+### `api/internal/db/pool.go`
 ```
 NewPool(ctx, databaseURL string) (*pgxpool.Pool, error)
 ```
 
-### `internal/api/db/notification_repo.go`
+### `api/internal/db/notification_repo.go`
 ```
 NotificationRepository interface:
   Create(ctx, *model.Notification) error
@@ -28,7 +28,7 @@ ListFilter struct:
 pgxNotificationRepository struct{ pool *pgxpool.Pool }  — implements the interface
 ```
 
-### `internal/api/db/delivery_attempt_repo.go`
+### `api/internal/db/delivery_attempt_repo.go`
 ```
 DeliveryAttemptRepository interface:
   Create(ctx, *model.DeliveryAttempt) error  ← ON CONFLICT DO NOTHING
@@ -36,7 +36,7 @@ DeliveryAttemptRepository interface:
 pgxDeliveryAttemptRepository — implements the interface
 ```
 
-### `internal/api/db/idempotency_repo.go`
+### `api/internal/db/idempotency_repo.go`
 ```
 IdempotencyRepository interface:
   GetByKey(ctx, key string) (*model.IdempotencyKey, error)
@@ -48,7 +48,7 @@ pgxIdempotencyRepository — implements the interface
 
 ## Tests
 
-`internal/api/db/*_test.go` — testcontainers-go spins up PostgreSQL, runs migrations, then:
+`api/internal/db/*_test.go` — testcontainers-go spins up PostgreSQL, runs migrations, then:
 
 - `TestNotificationRepo_Create` — insert + GetByID round-trip
 - `TestNotificationRepo_List_filters` — filter by status, channel, batch_id, date range

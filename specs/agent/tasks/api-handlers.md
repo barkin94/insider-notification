@@ -6,7 +6,7 @@
 
 ## What to build
 
-### `internal/api/handler/router.go`
+### `api/internal/handler/router.go`
 ```
 NewRouter(deps Deps) http.Handler
   — mounts all routes under /api/v1
@@ -23,7 +23,7 @@ Deps struct:
   Redis             *redis.Client
 ```
 
-### `internal/api/handler/notification.go`
+### `api/internal/handler/notification.go`
 ```
 POST /notifications      → CreateNotification
 GET  /notifications      → ListNotifications
@@ -31,7 +31,7 @@ GET  /notifications/:id  → GetNotification
 POST /notifications/:id/cancel → CancelNotification
 ```
 
-### `internal/api/handler/batch.go`
+### `api/internal/handler/batch.go`
 ```
 POST /notifications/batch → CreateBatch
   — validates each item independently
@@ -39,7 +39,7 @@ POST /notifications/batch → CreateBatch
   — returns 207 with per-item results (only rejected items in results array)
 ```
 
-### `internal/api/handler/health.go`
+### `api/internal/handler/health.go`
 ```
 GET /health → HealthCheck
   — SELECT 1 on PostgreSQL (2s timeout)
@@ -59,7 +59,7 @@ GET /health → HealthCheck
 
 ## Tests
 
-`internal/api/handler/*_test.go` using `httptest` + mock repositories:
+`api/internal/handler/*_test.go` using `httptest` + mock repositories:
 
 - `TestCreateNotification_201` — valid body → 201 + correct response shape
 - `TestCreateNotification_400_missingContent` — missing content → 400 VALIDATION_ERROR

@@ -6,7 +6,7 @@
 
 ## What to build
 
-### `internal/api/middleware/correlation.go`
+### `api/internal/middleware/correlation.go`
 ```
 CorrelationID(next http.Handler) http.Handler
   — reads X-Correlation-ID header; generates UUID v4 if absent
@@ -16,7 +16,7 @@ CorrelationID(next http.Handler) http.Handler
 FromContext(ctx) string  ← retrieves correlation ID from context
 ```
 
-### `internal/api/middleware/logger.go`
+### `api/internal/middleware/logger.go`
 ```
 Logger(logger *zap.Logger) func(http.Handler) http.Handler
   — logs each request: method, path, status, latency, correlation_id
@@ -25,10 +25,10 @@ Logger(logger *zap.Logger) func(http.Handler) http.Handler
 
 ## Tests
 
-`internal/api/middleware/correlation_test.go`:
+`api/internal/middleware/correlation_test.go`:
 - `TestCorrelationID_generated` — absent header → UUID generated and set in response
 - `TestCorrelationID_propagated` — present header → same value echoed in response
 - `TestCorrelationID_inContext` — handler can retrieve ID via FromContext
 
-`internal/api/middleware/logger_test.go`:
+`api/internal/middleware/logger_test.go`:
 - `TestLogger_fields` — log output contains required fields (ts, level, msg, service, version)

@@ -6,7 +6,7 @@
 
 ## What to build
 
-### `internal/processor/delivery/client.go`
+### `processor/internal/delivery/client.go`
 ```
 Result struct:
   Success        bool
@@ -33,7 +33,7 @@ Send(ctx, n, correlationID):
 
 ## Tests
 
-`internal/processor/delivery/client_test.go` using `httptest.NewServer`:
+`processor/internal/delivery/client_test.go` using `httptest.NewServer`:
 
 - `TestSend_202_success` — mock returns 202 → Result.Success=true, Retryable=false
 - `TestSend_400_nonRetryable` — mock returns 400 → Retryable=false
