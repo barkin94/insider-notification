@@ -1,3 +1,3 @@
 STATUS: in progress
-LAST_COMPLETED: shared-config
+LAST_COMPLETED: sql-migrations
 BLOCKED_REASON:
