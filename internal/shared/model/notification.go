@@ -15,7 +15,6 @@ type Notification struct {
 	Content        string          `db:"content"`
 	Priority       string          `db:"priority"`
 	Status         string          `db:"status"`
-	IdempotencyKey *string         `db:"idempotency_key"`
 	DeliverAfter   *time.Time      `db:"deliver_after"`
 	Attempts       int             `db:"attempts"`
 	MaxAttempts    int             `db:"max_attempts"`
@@ -36,10 +35,3 @@ type DeliveryAttempt struct {
 	AttemptedAt      time.Time       `db:"attempted_at"`
 }
 
-type IdempotencyKey struct {
-	Key            string    `db:"key"`
-	NotificationID uuid.UUID `db:"notification_id"`
-	KeyType        string    `db:"key_type"`
-	ExpiresAt      time.Time `db:"expires_at"`
-	CreatedAt      time.Time `db:"created_at"`
-}

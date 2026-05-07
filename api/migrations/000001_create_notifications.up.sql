@@ -6,7 +6,6 @@ CREATE TABLE notifications (
     content          TEXT         NOT NULL,
     priority         VARCHAR(20)  NOT NULL DEFAULT 'normal',
     status           VARCHAR(20)  NOT NULL DEFAULT 'pending',
-    idempotency_key  VARCHAR(255) UNIQUE,
     deliver_after    TIMESTAMPTZ,
     attempts         INT          NOT NULL DEFAULT 0,
     max_attempts     INT          NOT NULL DEFAULT 4,

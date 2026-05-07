@@ -8,7 +8,7 @@
 - [ ] All struct fields match `DATA_MODEL.md` (field names, types, nullability)
 - [ ] All three migrations apply cleanly via `golang-migrate`; `down` migrations reverse cleanly
 - [ ] All PostgreSQL indexes from `DATA_MODEL.md` present in migration files
-- [ ] `NotificationRepository`, `DeliveryAttemptRepository`, `IdempotencyRepository` interfaces implemented
+- [ ] `NotificationRepository`, `DeliveryAttemptRepository` interfaces implemented
 - [ ] `go test ./internal/shared/...` passes
 
 ---
@@ -19,16 +19,6 @@
 - [ ] Message fields match `MESSAGE_CONTRACT.md` (`notification_id`, `deliver_after`)
 - [ ] Consumer group `notify:cg:api` created on `notify:stream:status` on startup
 - [ ] `go test ./internal/shared/stream/...` passes (producer side)
-
----
-
-## Idempotency
-
-- [ ] Client-supplied `Idempotency-Key` checked in Redis (24h TTL) before DB insert
-- [ ] Content hash (`sha256(channel + recipient + content)`) checked in `idempotency_keys` table (1h TTL) when no client key
-- [ ] Duplicate client key → 409 `DUPLICATE_NOTIFICATION` with `existing_id`
-- [ ] Background cleanup goroutine deletes expired rows from `idempotency_keys` hourly
-- [ ] `go test ./internal/api/idempotency/...` passes
 
 ---
 
@@ -44,7 +34,6 @@
 
 - [ ] All 6 endpoints from `API_CONTRACT.md` registered in router
 - [ ] `POST /notifications` → 201; body matches `API_CONTRACT.md` response shape
-- [ ] `POST /notifications` duplicate idempotency key → 409
 - [ ] `POST /notifications/batch` → 207; rejected items include per-item error; accepted items have `id`
 - [ ] `POST /notifications/batch` > 1000 items → 400
 - [ ] `GET /notifications/:id` → 200 with `delivery_attempts` array

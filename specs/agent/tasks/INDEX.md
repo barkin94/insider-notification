@@ -11,14 +11,13 @@ scaffold
               └── sql-migrations
                     └── postgres-repos
                           └── stream-adapter
-                                ├── idempotency ──────────────────┐
-                                ├── api-middleware                 │
-                                ├── rate-limiter                   │
-                                ├── retry                          │
-                                └── delivery-client                │
-                                      ├── api-handlers ◄───────────┤
-                                      ├── processor-worker          │
-                                      └── status-consumer ◄────────┘
+                                ├── api-middleware
+                                ├── rate-limiter
+                                ├── retry
+                                └── delivery-client
+                                      ├── api-handlers
+                                      ├── processor-worker
+                                      └── status-consumer
                                             ├── api-main
                                             └── processor-main
                                                   └── observability
@@ -33,7 +32,6 @@ scaffold
 - [x] sql-migrations
 - [x] postgres-repos
 - [x] stream-adapter
-- [ ] idempotency
 - [ ] api-middleware
 - [ ] rate-limiter
 - [ ] retry

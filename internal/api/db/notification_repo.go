@@ -22,10 +22,10 @@ func (r *pgxNotificationRepo) Create(ctx context.Context, n *model.Notification)
 	_, err := r.pool.Exec(ctx, `
 		INSERT INTO notifications
 			(id, batch_id, recipient, channel, content, priority, status,
-			 idempotency_key, deliver_after, attempts, max_attempts, metadata, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+			 deliver_after, attempts, max_attempts, metadata, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
 		n.ID, n.BatchID, n.Recipient, n.Channel, n.Content, n.Priority, n.Status,
-		n.IdempotencyKey, n.DeliverAfter, n.Attempts, n.MaxAttempts, n.Metadata,
+		n.DeliverAfter, n.Attempts, n.MaxAttempts, n.Metadata,
 		n.CreatedAt, n.UpdatedAt,
 	)
 	return err

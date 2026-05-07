@@ -36,9 +36,3 @@ type DeliveryAttemptRepository interface {
 	ListByNotificationID(ctx context.Context, notificationID uuid.UUID) ([]*model.DeliveryAttempt, error)
 }
 
-// IdempotencyRepository is the port for idempotency key persistence.
-type IdempotencyRepository interface {
-	GetByKey(ctx context.Context, key string) (*model.IdempotencyKey, error)
-	Create(ctx context.Context, k *model.IdempotencyKey) error
-	DeleteExpired(ctx context.Context) error
-}

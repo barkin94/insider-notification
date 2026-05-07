@@ -6,7 +6,6 @@
 ## Common Headers
 ```
 Content-Type: application/json
-Idempotency-Key: <client-supplied string, optional>   ← for POST /notifications only
 ```
 
 ## Common Error Response
@@ -25,7 +24,6 @@ Idempotency-Key: <client-supplied string, optional>   ← for POST /notification
 |-------------|------|---------|
 | 400 | `VALIDATION_ERROR` | Invalid request body or field constraints |
 | 404 | `NOT_FOUND` | Resource does not exist |
-| 409 | `DUPLICATE_NOTIFICATION` | Idempotency key already used |
 | 409 | `INVALID_STATUS_TRANSITION` | Cannot cancel a delivered/failed notification |
 | 429 | `RATE_LIMITED` | API-level rate limit exceeded (not channel rate limit) |
 | 500 | `INTERNAL_ERROR` | Unhandled server error |
@@ -63,19 +61,6 @@ Create a single notification.
   "recipient": "+905551234567",
   "priority": "normal",
   "created_at": "2024-06-01T09:00:00Z"
-}
-```
-
-**Response: 409 Conflict** (duplicate idempotency key)
-```json
-{
-  "error": {
-    "code": "DUPLICATE_NOTIFICATION",
-    "message": "Notification already exists for this idempotency key",
-    "details": {
-      "existing_id": "uuid-of-original-notification"
-    }
-  }
 }
 ```
 

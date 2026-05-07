@@ -2,37 +2,47 @@
 
 **Specs:** `api-service/DATA_MODEL.md`, `api-service/API_CONTRACT.md`
 **Verification:** `api-service/VERIFICATION.md` § Idempotency
-**Status:** pending
+**Status:** complete
 
 ## What to build
 
-### `internal/api/idempotency/checker.go`
+### `internal/api/idempotency/service.go`
 ```
+KeyStore interface:
+  Get(ctx, key string) (uuid.UUID, error)
+  Set(ctx, key string, id uuid.UUID, ttl time.Duration) error
+
 Result struct:
   Duplicate       bool
   ExistingID      uuid.UUID
 
-Checker struct{ redis *redis.Client; idempotencyRepo db.IdempotencyRepository }
+Service struct{ keys KeyStore; idempotencyRepo db.IdempotencyRepository }
 
-Check(ctx, clientKey string, n *model.Notification) (Result, error)
-  1. If clientKey non-empty:
-     - GET idempotency:{clientKey} from Redis
+Check(ctx, idempotencyKey string, n *model.Notification) (Result, error)
+  1. If idempotencyKey non-empty:
+     - GET idempotency:{idempotencyKey} from Redis
      - Hit → return Result{Duplicate: true, ExistingID: <stored UUID>}
-     - Miss → proceed to insert, then SET idempotency:{clientKey} = n.ID, TTL 24h
-  2. If clientKey empty:
+     - Miss → return Result{Duplicate: false}
+  2. If idempotencyKey empty:
      - Compute sha256(channel + recipient + content)
      - Query idempotency_keys table for hash where expires_at > now
      - Hit → return Result{Duplicate: true, ExistingID: record.NotificationID}
-     - Miss → insert row with key_type="content_hash", expires_at = now+1h
+     - Miss → return Result{Duplicate: false}
 
-Store(ctx, clientKey string, id uuid.UUID) error
+Store(ctx, idempotencyKey string, n *model.Notification) error
   — called after notification is created; writes Redis key + DB row
 ```
 
-### `internal/api/idempotency/cleanup.go`
+### `internal/api/idempotency/redis_store.go`
 ```
-StartCleanup(ctx, repo db.IdempotencyRepository)
-  — goroutine: ticker every 1h → repo.DeleteExpired(ctx)
+redisKeyStore struct{ client *redis.Client }  — implements KeyStore
+  — Get: GET idempotency:{key}; returns db.ErrNotFound on cache miss
+  — Set: SET idempotency:{key} {id} EX {ttl}
+```
+
+```
+Service.StartCleanup(ctx)
+  — goroutine: ticker every 1h → idempotencyRepo.DeleteExpired(ctx)
 ```
 
 ## Tests

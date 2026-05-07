@@ -16,7 +16,6 @@ Migrations are versioned SQL files (`*.up.sql` / `*.down.sql`) managed by `golan
 | `content` | TEXT | NOT NULL |
 | `priority` | VARCHAR(20) | NOT NULL, default `normal`, enum: `high \| normal \| low` |
 | `status` | VARCHAR(20) | NOT NULL, default `pending`, enum: see Status Values below |
-| `idempotency_key` | VARCHAR(255) | nullable, UNIQUE |
 | `deliver_after` | TIMESTAMPTZ | nullable |
 | `attempts` | INT | NOT NULL, default 0 |
 | `max_attempts` | INT | NOT NULL, default 4 |
@@ -65,40 +64,6 @@ CREATE INDEX idx_notifications_status_updated_at    ON notifications(status, upd
 ```sql
 CREATE UNIQUE INDEX idx_delivery_attempts_unique ON delivery_attempts(notification_id, attempt_number);
 CREATE INDEX idx_delivery_attempts_attempted_at  ON delivery_attempts(attempted_at DESC);
-```
-
----
-
-## Table: idempotency_keys
-
-| Column | Type | Constraints |
-|--------|------|-------------|
-| `key` | VARCHAR(255) | PRIMARY KEY |
-| `notification_id` | UUID | NOT NULL, FK → notifications(id) |
-| `key_type` | VARCHAR(20) | NOT NULL, enum: `client \| content_hash` |
-| `expires_at` | TIMESTAMPTZ | NOT NULL |
-| `created_at` | TIMESTAMPTZ | NOT NULL, default now |
-
-**TTL rules:**
-- `client` key type: expires 24h after creation
-- `content_hash` key type: expires 1h after creation
-- Expired rows are deleted by a background cleanup process running hourly
-
-**Index:**
-```sql
-CREATE INDEX idx_idempotency_keys_expires_at ON idempotency_keys(expires_at);
-```
-
----
-
-## Redis Key Patterns
-
-See `system/MESSAGE_CONTRACT.md` (streams, consumer groups) and `processor-service/QUEUE_DESIGN.md` (lock, rate limiter keys).
-
-The only key owned exclusively by the API service:
-
-```
-idempotency:{key}   → notification_id UUID string, TTL: 24h
 ```
 
 ---
