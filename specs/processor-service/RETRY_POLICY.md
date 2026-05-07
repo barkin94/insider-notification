@@ -24,7 +24,7 @@ base_delay   = 60 seconds
 max_delay    = 480 seconds (8 minutes)
 jitter_range = [0, delay * 0.2]   ← uniform random
 
-delay(attempt) = min(base_delay * 2^(attempt - 1), max_delay) + random(jitter_range)
+delay(attempt) = min(base_delay * 2^(attempt - 2), max_delay) + random(jitter_range)
 ```
 
 **Computed delays per attempt:**

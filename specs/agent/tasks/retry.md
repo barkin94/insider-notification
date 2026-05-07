@@ -2,7 +2,7 @@
 
 **Specs:** `processor-service/RETRY_POLICY.md`
 **Verification:** `processor-service/VERIFICATION.md` § Retry
-**Status:** pending
+**Status:** complete
 
 ## What to build
 

@@ -13,17 +13,17 @@ scaffold
                           └── stream-adapter
                                 ├── api-middleware
                                 ├── rate-limiter
-                                ├── retry
-                                └── delivery-client
-                                      ├── api-handlers
-                                      ├── processor-worker
-                                      └── status-consumer
-                                            ├── api-main
-                                            └── processor-main
-                                                  └── observability
-                                                        └── priority-router
-                                                              └── ratelimit-replace
-                                                                    └── docs-readme
+                                └── retry
+                                      └── api-handlers
+                                            └── delivery-client
+                                                  └── processor-worker
+                                                        └── status-consumer
+                                                              ├── api-main
+                                                              └── processor-main
+                                                                    └── observability
+                                                                          └── priority-router
+                                                                                └── ratelimit-replace
+                                                                                      └── docs-readme
 ```
 
 ## Status
@@ -36,9 +36,9 @@ scaffold
 - [x] stream-adapter
 - [x] api-middleware
 - [x] rate-limiter
-- [ ] retry
-- [ ] delivery-client
+- [x] retry
 - [ ] api-handlers
+- [ ] delivery-client
 - [ ] processor-worker
 - [ ] status-consumer
 - [ ] api-main
