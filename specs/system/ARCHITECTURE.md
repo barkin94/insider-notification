@@ -7,7 +7,7 @@
 │               Notification Management API                  │
 │   POST /notifications      GET /notifications/:id          │
 │   POST /notifications/batch  POST /notifications/:id/cancel│
-│   GET /notifications       GET /metrics    GET /health     │
+│   GET /notifications       GET /health                     │
 └────────────┬──────────────────────────────────┬───────────┘
              │ writes                            │ reads
              ▼                                  │
@@ -25,7 +25,7 @@
 │  notify:stream:high      notify:stream:normal              │
 │  notify:stream:low       notify:stream:status              │
 │  ratelimit:{channel}     notify:lock:{id}                  │
-│  idempotency:{key}       metrics:*                         │
+│  idempotency:{key}                                         │
 └───────────────────────────────────────────────────────────┘
              │ XREADGROUP notify:cg:processor
              ▼
@@ -58,11 +58,14 @@
 | Language | Go 1.2x | Required by case study; excellent concurrency primitives |
 | HTTP Framework | `net/http` + `chi` | Lightweight, idiomatic Go |
 | Database | PostgreSQL 16 | ACID transactions, strong schema enforcement, UUID PKs, JSONB for metadata |
-| Message Broker | Redis 7 (Streams) | `XADD`/`XREADGROUP`/`XACK`, consumer groups, built-in pending entry list for crash recovery |
+| Message Broker | Redis 7 (Streams) | `XADD`/`XREADGROUP`/`XACK`, consumer groups, built-in PEL for crash recovery |
 | Rate Limiter | Redis token bucket | Distributed-safe, survives app restarts |
-| Migrations | `golang-migrate` | Most popular Go migration tool; SQL-file based, versioned up/down |
-| PostgreSQL Driver | `pgx/v5` + `pgxpool` | Most popular high-performance Go PostgreSQL driver |
-| Logging | `zap` | Structured, high-performance, supports correlation IDs |
+| Migrations | `golang-migrate` | SQL-file based, versioned up/down |
+| PostgreSQL Driver | `pgx/v5` + `pgxpool` | High-performance Go PostgreSQL driver |
+| Observability | OpenTelemetry Go SDK | Unified metrics + traces; industry standard |
+| Metrics backend | Prometheus | Scrapes OTel Prometheus exporter on both services |
+| Visualization | Grafana | Dashboards over Prometheus; trace UI via Jaeger |
+| Logging | `zap` | Structured, high-performance |
 | Config | `viper` | Env + file config, 12-factor compatible |
 | Testing | `testify` + `go test` | Standard Go testing with assertions |
 | API Docs | `swaggo/swag` | Generates OpenAPI from Go annotations |
@@ -73,27 +76,28 @@
 
 ```
 /
-├── cmd/
-│   ├── api/
-│   │   └── main.go              # Notification Management API entrypoint
-│   └── processor/
-│       └── main.go              # Notification Processor entrypoint
+├── go.mod
+├── api/
+│   ├── main.go                  # Notification Management API entrypoint
+│   └── migrations/              # golang-migrate SQL files (owned by API service)
+├── processor/
+│   └── main.go                  # Notification Processor entrypoint
 ├── internal/
+│   ├── shared/
+│   │   ├── model/               # domain structs (shared)
+│   │   ├── config/              # config loading — viper (shared)
+│   │   ├── stream/              # Redis Streams producer + consumer (shared)
+│   │   └── db/                  # PostgreSQL pool — pgxpool (shared)
 │   ├── api/
-│   │   ├── handler/             # HTTP handlers
-│   │   └── middleware/          # logging, correlation ID
-│   ├── config/                  # shared config loading (viper)
-│   ├── db/                      # PostgreSQL connection (pgxpool)
-│   │   └── migrations/          # golang-migrate SQL files (*.up.sql / *.down.sql)
-│   ├── model/                   # shared domain structs
-│   ├── stream/                  # Redis Streams producer (API) + consumer (Processor)
-│   ├── ratelimit/               # token bucket Lua script implementation
-│   ├── delivery/                # webhook.site HTTP client
-│   ├── retry/                   # retry logic + backoff computation
-│   ├── idempotency/             # key resolution + dedup logic
-│   ├── metrics/                 # in-memory metrics store (atomic counters + ring buffer)
-│   └── service/                 # orchestration layer
-├── specs/                       # this directory
+│   │   ├── handler/             # HTTP handlers (API only)
+│   │   ├── middleware/          # logging, correlation ID (API only)
+│   │   └── idempotency/         # dedup logic (API only)
+│   └── processor/
+│       ├── worker/              # stream consumer loop (Processor only)
+│       ├── delivery/            # webhook.site HTTP client (Processor only)
+│       ├── ratelimit/           # token bucket Lua script (Processor only)
+│       └── retry/               # backoff computation (Processor only)
+├── specs/
 ├── docker-compose.yml
 ├── Dockerfile.api
 ├── Dockerfile.processor
@@ -101,39 +105,47 @@
 └── docs/                        # swag-generated OpenAPI output
 ```
 
+`internal/` blocks external imports. `internal/api/` and `internal/processor/` boundaries
+are enforced by convention — the compiler allows cross-imports within the same module.
+
 ---
 
 ## Key Design Decisions
 
 ### ADR-1: Redis Streams as Priority Message Broker
 - **Decision:** Three separate Redis Streams (`notify:stream:high`, `notify:stream:normal`, `notify:stream:low`) with consumer group `notify:cg:processor`. Workers use `XREADGROUP` — polling high first, falling back to normal, then low. A fourth stream `notify:stream:status` carries status events from Processor back to API.
-- **Rationale:** Streams provide built-in consumer group semantics (at-least-once delivery), pending entry list (PEL) for crash recovery via `XAUTOCLAIM`, and per-message acknowledgement. No separate broker dependency beyond Redis which is already required.
+- **Rationale:** Streams provide built-in consumer group semantics (at-least-once delivery), PEL for crash recovery via `XAUTOCLAIM`, and per-message acknowledgement. No separate broker dependency beyond Redis.
 - **Tradeoff accepted:** Low-priority messages can starve under sustained high load. Acceptable for this scope.
 
 ### ADR-2: Redis Token Bucket for Rate Limiting
-- **Decision:** Lua script executed atomically in Redis. Key pattern: `ratelimit:{channel}`. Capacity: 100 tokens. Refill: 100/s. Burst allowance: 120 (20% headroom).
-- **Rationale:** Distributed-safe — works correctly across multiple Processor instances. Survives app restarts.
-- **Tradeoff accepted:** Adds Redis round-trip per notification dispatch. Negligible at this scale.
+- **Decision:** Lua script executed atomically in Redis. Key: `ratelimit:{channel}`. Capacity: 100 tokens. Refill: 100/s. Burst: 120.
+- **Rationale:** Distributed-safe across multiple Processor instances. Survives restarts.
+- **Tradeoff accepted:** Adds Redis round-trip per dispatch. Negligible at this scale.
 
 ### ADR-3: Exponential Backoff with Jitter for Retries
-- **Decision:** Failed deliveries are re-enqueued into the appropriate priority stream with `deliver_after` embedded in the message payload. The worker skips messages not yet due by putting them back (XACK + XADD with updated payload).
-- **Formula:** `delay = min(base * 2^attempt, max_delay) + jitter` where jitter is random in `[0, delay * 0.2]`.
-- **Tradeoff accepted:** Retry delays are approximate (worker poll interval adds latency). Acceptable.
+- **Decision:** Failed deliveries re-enqueued into the same priority stream with `deliver_after` in the message payload.
+- **Formula:** `delay = min(base * 2^attempt, max_delay) + jitter` where jitter ∈ `[0, delay * 0.2]`.
+- **Tradeoff accepted:** Retry delays are approximate. Acceptable.
 
 ### ADR-4: Dual Idempotency Strategy
-- **Decision:** Check client-supplied `Idempotency-Key` header first (stored in Redis, 24h TTL). If absent, compute `sha256(channel + recipient + content)` and check against `idempotency_keys` table with 1h window.
-- **Rationale:** Gives API consumers explicit control while protecting against accidental duplicates.
-- **Tradeoff accepted:** Content hash collisions theoretically possible but negligible risk.
+- **Decision:** Client-supplied `Idempotency-Key` header checked first (Redis, 24h TTL). If absent, `sha256(channel + recipient + content)` checked against `idempotency_keys` table (1h window).
+- **Rationale:** Explicit consumer control + protection against accidental duplicates.
+- **Tradeoff accepted:** Hash collisions theoretically possible but negligible.
 
 ### ADR-5: Two-Service Architecture
-- **Decision:** Single monorepo with two `cmd/` entrypoints — Notification Management API (owns PostgreSQL, exposes REST) and Notification Processor (consumes Redis Streams, performs delivery). Shared `internal/` packages for common types and infrastructure.
-- **Rationale:** Allows independent scaling of ingestion vs. delivery. API instances can be scaled horizontally; Processor worker count tuned separately via `WORKER_CONCURRENCY`.
-- **Tradeoff accepted:** Adds inter-service communication via Redis round-trips. Negligible at this scale.
+- **Decision:** Single monorepo, two entrypoints. API owns PostgreSQL and REST surface; Processor owns delivery. Shared `internal/shared/` packages for common types.
+- **Rationale:** Independent scaling of ingestion vs. delivery.
+- **Tradeoff accepted:** Inter-service communication via Redis round-trips. Negligible at this scale.
 
 ### ADR-6: Event-Driven Status Updates (Processor → API)
-- **Decision:** Processor publishes delivery outcomes to `notify:stream:status`. A consumer goroutine inside the API service reads this stream and writes `delivery_attempts` rows + updates `notifications.status` in PostgreSQL.
-- **Rationale:** Processor does not need its own database. Status persistence is the API service's responsibility.
-- **Tradeoff accepted:** Status updates are eventually consistent — there is a short lag between delivery and PostgreSQL reflecting the new status. Acceptable for this scope.
+- **Decision:** Processor publishes delivery outcomes to `notify:stream:status`. API status consumer writes `delivery_attempts` rows and updates `notifications.status` in PostgreSQL.
+- **Rationale:** Processor does not need its own database.
+- **Tradeoff accepted:** Status updates are eventually consistent. Acceptable for this scope.
+
+### ADR-7: OpenTelemetry for Observability
+- **Decision:** Both services instrument with the OTel Go SDK. Metrics exported via Prometheus exporter; traces via OTLP → OTel Collector → Jaeger. No custom metrics store.
+- **Rationale:** Industry standard; eliminates custom counter/ring buffer code; gives traces, metrics, and dashboards with no additional instrumentation effort.
+- **Tradeoff accepted:** Adds four services to `docker-compose.yml` (otel-collector, prometheus, grafana, jaeger). Acceptable for this scope.
 
 ---
 
@@ -146,8 +158,8 @@
 | Test all | `go test ./...` |
 | Test with race detector | `go test -race ./...` |
 | Lint | `golangci-lint run` |
-| Generate API docs | `swag init -dir cmd/api` |
-| Run migrations | `go run ./cmd/api migrate up` |
-| Run API service | `go run ./cmd/api` |
-| Run Processor | `go run ./cmd/processor` |
+| Generate API docs | `swag init -dir api` |
+| Run migrations | `go run ./api migrate up` |
+| Run API service | `go run ./api` |
+| Run Processor | `go run ./processor` |
 | Start full stack | `docker-compose up` |

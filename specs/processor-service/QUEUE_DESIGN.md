@@ -107,7 +107,6 @@ Each worker runs in its own goroutine:
 FUNCTION enqueue(notification_id UUID, priority string, deliver_after time.Time):
   stream = notify:stream:{priority}
   XADD stream * notification_id {uuid} deliver_after {rfc3339 or ""}
-  INCR metrics:queue_depth:{priority}
 ```
 
 **Called by:**
@@ -173,9 +172,8 @@ already-delivered message is safe (idempotent status guard).
 
 ## Queue Depth Tracking
 
-Queue depth is tracked via Redis counters (`metrics:queue_depth:{priority}`) updated on every
-enqueue. For accuracy, counters are reconciled against `XLEN notify:stream:{priority}` on
-startup to correct any drift from crashes.
+Queue depth is read via `XLEN notify:stream:{priority}` and exposed as an OTel gauge
+(`notification.queue.depth`) scraped by Prometheus on each metrics collection interval.
 
 ---
 

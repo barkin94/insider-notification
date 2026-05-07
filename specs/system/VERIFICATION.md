@@ -7,7 +7,7 @@ Run the relevant checklist when a component is substantially complete.
 ## Scaffold
 
 - [ ] `docker-compose config` passes
-- [ ] `go build ./...` passes (both `cmd/api` and `cmd/processor`)
+- [ ] `go build ./...` passes (both `api/` and `processor/`)
 - [ ] All directories from [Project Layout](./ARCHITECTURE.md#project-layout) exist
 - [ ] `.env.example` present with all required env vars
 - [ ] `golang-migrate` runs cleanly; all 3 migration files apply without error
@@ -29,7 +29,7 @@ Run the relevant checklist when a component is substantially complete.
 - [ ] Consumer group `notify:cg:processor` created on all three priority streams
 - [ ] Worker poll order: high → normal → low confirmed in test
 - [ ] Rate limiter Lua script executes atomically (concurrent goroutine test)
-- [ ] `go test ./internal/stream/... ./internal/ratelimit/...` passes
+- [ ] `go test ./internal/shared/stream/... ./internal/processor/ratelimit/...` passes
 
 ## Delivery & Retry
 
@@ -40,14 +40,14 @@ Run the relevant checklist when a component is substantially complete.
 - [ ] Backoff formula and jitter match RETRY_POLICY.md exactly
 - [ ] Worker acquires Redis lock before processing; ACKs stream message after each terminal outcome
 - [ ] Status events published to `notify:stream:status` after each attempt
-- [ ] `go test ./internal/delivery/... ./internal/retry/... ./internal/service/...` passes
+- [ ] `go test ./internal/processor/...` passes
 
 ## Status Event Consumer (API Service)
 
 - [ ] Consumer group `notify:cg:api` created on `notify:stream:status`
 - [ ] Status consumer writes `delivery_attempts` rows on each event
 - [ ] Status consumer updates `notifications.status` correctly
-- [ ] `go test ./internal/stream/...` passes (consumer side)
+- [ ] `go test ./internal/shared/stream/...` passes (consumer side)
 
 ## API (Notification Management API)
 
@@ -58,7 +58,6 @@ Run the relevant checklist when a component is substantially complete.
 - [ ] GET /notifications/:id includes `delivery_attempts` array
 - [ ] GET /notifications pagination matches API_CONTRACT.md
 - [ ] POST /notifications/:id/cancel → 409 for delivered/failed
-- [ ] GET /metrics returns all fields from API_CONTRACT.md; queue depth from `XLEN`
 - [ ] GET /health returns 200 with postgresql + redis checks
 - [ ] `go test ./internal/api/...` passes
 
@@ -69,6 +68,12 @@ Run the relevant checklist when a component is substantially complete.
 - [ ] Non-retryable: 400 → failed immediately
 - [ ] End-to-end: created → stream consumed → delivered → status = delivered
 - [ ] `go test -race ./...` clean
+
+## Observability
+
+- [ ] OTel SDK initialised in both services; traces appear in Jaeger after `docker-compose up`
+- [ ] Prometheus scrapes both services; all metrics from OBSERVABILITY.md visible
+- [ ] Grafana dashboard loads at `http://localhost:3000`
 
 ## Docs
 
@@ -83,7 +88,7 @@ Run the relevant checklist when a component is substantially complete.
 - [ ] `make test` passes all tests
 - [ ] `GET /health` returns `{"status": "ok"}`
 - [ ] `POST /notifications` → PostgreSQL record with `pending` status → Processor delivers → `delivered`
-- [ ] `GET /metrics` shows correct queue depths and delivery counts
+- [ ] Grafana shows delivery counter increment; Jaeger shows end-to-end trace
 - [ ] Duplicate `Idempotency-Key` → 409
 - [ ] Swagger UI accessible at `http://localhost:8080/swagger`
 - [ ] Commit history is clean and atomic

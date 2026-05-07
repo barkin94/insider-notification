@@ -125,8 +125,8 @@ If the token bucket for a channel is exhausted:
 
 ## Metrics Emitted on Retry Events
 
-| Event | Metric updated |
-|-------|---------------|
-| Delivery success | `metrics:sent:{channel}` +1, latency recorded |
-| Delivery failure (will retry) | `metrics:failed:{channel}` +1 (temporary) |
-| Notification moves to `failed` | permanent failed count in DB, visible via `/metrics` |
+| Event | OTel metric updated |
+|-------|---------------------|
+| Delivery success | `notification.sent` +1, `notification.delivery.latency_ms` recorded |
+| Delivery attempt (any outcome) | `notification.attempts` +1 |
+| Notification moves to `failed` | `notification.failed` +1 |

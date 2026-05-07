@@ -113,11 +113,6 @@ ratelimit:push                  → Hash { tokens, last_refill }
 
 # Idempotency fast path (client-supplied key only)
 idempotency:{key}               → notification_id UUID string, TTL: 24h
-
-# Metrics counters
-metrics:sent:{channel}          → integer
-metrics:failed:{channel}        → integer
-metrics:queue_depth:{priority}  → integer (reconciled against XLEN on startup)
 ```
 
 ---

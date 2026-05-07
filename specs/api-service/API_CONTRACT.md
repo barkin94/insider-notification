@@ -208,48 +208,6 @@ Cancel a pending or scheduled notification.
 
 ---
 
-### GET /metrics
-Real-time system metrics.
-
-**Response: 200 OK**
-```json
-{
-  "queues": {
-    "high":   { "depth": 142 },
-    "normal": { "depth": 1893 },
-    "low":    { "depth": 44 }
-  },
-  "delivery": {
-    "sms": {
-      "sent": 48291,
-      "failed": 103,
-      "success_rate": 0.9979,
-      "avg_latency_ms": 187
-    },
-    "email": {
-      "sent": 12004,
-      "failed": 22,
-      "success_rate": 0.9982,
-      "avg_latency_ms": 211
-    },
-    "push": {
-      "sent": 9841,
-      "failed": 55,
-      "success_rate": 0.9944,
-      "avg_latency_ms": 134
-    }
-  },
-  "rate_limiter": {
-    "sms":   { "available_tokens": 87, "capacity": 100 },
-    "email": { "available_tokens": 100, "capacity": 100 },
-    "push":  { "available_tokens": 62, "capacity": 100 }
-  },
-  "uptime_seconds": 38291
-}
-```
-
----
-
 ### GET /health
 Health check endpoint.
 

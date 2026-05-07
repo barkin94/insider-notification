@@ -1,151 +1,104 @@
 # OBSERVABILITY — Notification System
 
+Both services are instrumented with the OpenTelemetry Go SDK. Metrics are scraped by Prometheus
+and visualised in Grafana. Traces are exported via OTLP to Jaeger.
+
+---
+
+## OpenTelemetry Instrumentation
+
+| Concern | Tool |
+|---------|------|
+| SDK | `go.opentelemetry.io/otel` |
+| Metrics exporter | Prometheus (`go.opentelemetry.io/otel/exporters/prometheus`) |
+| Trace exporter | OTLP gRPC → OTel Collector → Jaeger |
+| Logging | `go.uber.org/zap` (OTel logs API not yet stable in Go) |
+
+### Metrics
+
+| Metric | Type | Labels | Recorded by |
+|--------|------|--------|-------------|
+| `notification.sent` | Counter | `channel` | Processor |
+| `notification.failed` | Counter | `channel` | Processor |
+| `notification.attempts` | Counter | `channel` | Processor |
+| `notification.delivery.latency_ms` | Histogram | `channel` | Processor |
+| `notification.queue.depth` | Gauge | `priority` | API (reads `XLEN` on scrape) |
+| `ratelimiter.tokens` | Gauge | `channel` | Processor |
+
+### Traces
+
+| Span | Service | Notes |
+|------|---------|-------|
+| HTTP request | API | root span per request |
+| DB query | API | child of HTTP request span |
+| Stream publish | API | child of HTTP request span |
+| Stream message processing | Processor | root span per message |
+| Delivery HTTP call | Processor | child of message span |
+
+---
+
 ## Structured Logging
 
-**Library:** `go.uber.org/zap` (production logger)
+**Format:** JSON, one object per line.
 
-**Format:** JSON, one object per line
+Required fields on every log line:
 
-**Required fields on every log line:**
-```json
-{
-  "ts":             "2024-06-01T09:00:00.000Z",
-  "level":          "info | warn | error",
-  "msg":            "human readable description",
-  "correlation_id": "uuid",        ← injected by middleware on every request
-  "service":        "notification-api | notification-processor",
-  "version":        "1.0.0"
-}
-```
+| Field | Value |
+|-------|-------|
+| `ts` | ISO8601 timestamp |
+| `level` | `debug \| info \| warn \| error` |
+| `msg` | human-readable description |
+| `service` | `notification-api \| notification-processor` |
+| `version` | `1.0.0` |
 
-**Additional fields by context:**
+Log level configurable via `LOG_LEVEL` env var (default: `info`).
 
-HTTP request logs:
-```json
-{
-  "method":         "POST",
-  "path":           "/api/v1/notifications",
-  "status":         201,
-  "latency_ms":     14,
-  "request_id":     "uuid"
-}
-```
+### Correlation ID
 
-Worker logs:
-```json
-{
-  "notification_id": "uuid",
-  "channel":         "sms",
-  "attempt":         2,
-  "event":           "delivery_attempt | retry_scheduled | exhausted"
-}
-```
-
-Delivery logs:
-```json
-{
-  "notification_id":   "uuid",
-  "channel":           "sms",
-  "provider_latency_ms": 187,
-  "http_status":       202,
-  "provider_message_id": "uuid"
-}
-```
-
----
-
-## Correlation ID Middleware
-
-Every incoming HTTP request gets a `X-Correlation-ID` header injected (or passed through
-if the client supplies one). The ID propagates through:
-
-- HTTP response headers (`X-Correlation-ID`)
+Every HTTP request gets a `X-Correlation-ID` header (generated if absent). It propagates through:
+- HTTP response headers
 - All log lines for that request lifecycle
-- All downstream calls (e.g. webhook.site request includes `X-Correlation-ID` header)
-
-**Implementation:**
-```go
-func CorrelationIDMiddleware(next http.Handler) http.Handler {
-  return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-    id := r.Header.Get("X-Correlation-ID")
-    if id == "" {
-      id = uuid.New().String()
-    }
-    ctx := context.WithValue(r.Context(), correlationIDKey, id)
-    w.Header().Set("X-Correlation-ID", id)
-    next.ServeHTTP(w, r.WithContext(ctx))
-  })
-}
-```
+- Outbound webhook calls (`X-Correlation-ID` header)
 
 ---
 
-## Metrics
+## Infrastructure (docker-compose.yml)
 
-Metrics are stored in-memory (atomic counters + ring buffers for latency) and exposed
-via `GET /metrics`. No external metrics system (Prometheus, etc.) is required for this scope.
-
-**Counters (atomic int64, reset on restart):**
-```
-sent_total_{channel}        ← incremented on each successful delivery
-failed_total_{channel}      ← incremented on each exhausted notification
-attempts_total_{channel}    ← incremented on each delivery attempt
-```
-
-**Latency tracking:**
-- Ring buffer of last 1000 latency values per channel
-- `avg_latency_ms` computed as mean of ring buffer on each `/metrics` request
-- Latency = time from worker pickup to provider response
-
-**Queue depth:**
-- Read from Redis via `XLEN notify:stream:{priority}` on each `/metrics` request
-- Also maintained as Redis counters for fast access (reconciled on startup)
-
-**Rate limiter state:**
-- Token count read from Redis on each `/metrics` request via Lua script (atomic read)
+| Service | Purpose | Default URL |
+|---------|---------|-------------|
+| `otel-collector` | Receives OTLP spans; forwards to Prometheus + Jaeger | — |
+| `prometheus` | Scrapes `/metrics` on both services | `http://localhost:9090` |
+| `grafana` | Dashboards over Prometheus data | `http://localhost:3000` |
+| `jaeger` | Stores and displays traces | `http://localhost:16686` |
 
 ---
 
 ## Health Check
 
-`GET /health` (Notification Management API) performs active checks:
+`GET /health` on the Notification Management API only.
 
 | Check | Implementation | Failure condition |
 |-------|---------------|------------------|
-| PostgreSQL | `SELECT 1` with 2s timeout | Error or timeout |
-| Redis | `PING` with 1s timeout | Error or timeout |
+| PostgreSQL | `SELECT 1`, 2s timeout | Error or timeout |
+| Redis | `PING`, 1s timeout | Error or timeout |
 
 Returns `200 OK` if all checks pass, `503 Service Unavailable` if any fail.
 
-The Notification Processor does not expose an HTTP health endpoint; its liveness is observed via metrics counters and structured logs.
-
----
-
-## Log Levels
-
-| Level | When to use |
-|-------|------------|
-| `debug` | Worker poll cycles, lock acquisition (disabled in production) |
-| `info` | Request received/completed, notification created, delivered |
-| `warn` | Retry scheduled, rate limiter token exhausted, idempotency hit |
-| `error` | Delivery failure, DB error, Redis error, provider non-retryable error |
-
-Log level configurable via `LOG_LEVEL` environment variable (default: `info`).
+The Notification Processor has no HTTP endpoint; its liveness is observable via metrics and logs.
 
 ---
 
 ## Key Log Events
 
 ```
-notification.created          info   {id, channel, priority, scheduled_at}
-notification.enqueued         info   {id, priority, queue}
+notification.created          info   {id, channel, priority}
+notification.enqueued         info   {id, priority, stream}
 notification.processing       info   {id, attempt, channel}
-notification.delivered        info   {id, channel, provider_message_id, latency_ms}
+notification.delivered        info   {id, channel, latency_ms}
 notification.retry_scheduled  warn   {id, attempt, next_attempt_at, delay_ms}
 notification.failed           error  {id, channel, attempts, last_error}
 notification.cancelled        info   {id}
 notification.duplicate        warn   {idempotency_key, existing_id, key_type}
-ratelimit.throttled           warn   {channel, available_tokens}
+ratelimit.throttled           warn   {channel}
 worker.lock_missed            debug  {id}
-worker.reconciliation         info   {requeued_count}
 ```

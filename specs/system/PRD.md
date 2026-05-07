@@ -18,7 +18,7 @@ visibility for both internal teams and API consumers.
 - Async processing engine with priority queues and rate limiting
 - Delivery & retry logic with exponential backoff
 - Idempotency support
-- Observability: metrics, structured logging, health checks
+- Observability: OpenTelemetry instrumentation, Prometheus metrics, Grafana dashboards, Jaeger traces, structured logging, health checks
 - External provider integration via webhook.site
 - Docker Compose one-command setup
 - OpenAPI/Swagger documentation
@@ -42,7 +42,8 @@ visibility for both internal teams and API consumers.
 - Duplicate notifications are rejected via idempotency checks
 - Notification status is queryable by ID and batch ID
 - Pending notifications can be cancelled
-- Metrics endpoint exposes queue depth, success/failure rates, latency
+- Grafana dashboard shows queue depth, delivery rates, and latency
+- Jaeger UI shows end-to-end traces per notification
 - `docker-compose up` starts the full system
 - All tests pass with a single command
 
