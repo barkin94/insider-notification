@@ -2,7 +2,7 @@
 
 **Specs:** `system/ARCHITECTURE.md`
 **Verification:** `system/VERIFICATION.md` § Scaffold
-**Status:** pending
+**Status:** complete
 
 ## What to build
 

@@ -27,7 +27,7 @@ scaffold
 
 ## Status
 
-- [ ] scaffold
+- [x] scaffold
 - [ ] shared-models
 - [ ] shared-config
 - [ ] sql-migrations

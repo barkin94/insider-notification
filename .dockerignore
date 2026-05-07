@@ -1,0 +1,30 @@
+# Version control
+.git
+.gitignore
+
+# Specs and docs (not needed in container)
+specs/
+docs/
+*.md
+
+# Infrastructure configs (not needed in container)
+grafana/
+prometheus.yml
+otel-collector-config.yaml
+docker-compose.yml
+Makefile
+
+# Environment files
+api/.env
+api/.env.*
+processor/.env
+processor/.env.*
+
+# Test artifacts
+**/*_test.go
+*.test
+*.out
+coverage.*
+
+# OS
+.DS_Store
