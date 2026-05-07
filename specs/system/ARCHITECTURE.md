@@ -74,40 +74,29 @@
 
 ## Code Architecture
 
-Both services follow **Hexagonal Architecture** (Ports and Adapters). The domain core is
-isolated from infrastructure — all external dependencies are accessed through interfaces
-(ports) implemented by swappable adapters.
+Both services follow a **Handler / Service / Repository** pattern. Handlers are thin HTTP
+adapters; business logic lives in the service layer; data access is isolated in repositories.
+All cross-layer dependencies are expressed as interfaces and injected via constructors.
+No globals, no `init()`.
 
 **Notification Management API:**
 
-| Role | Package |
-|------|---------|
-| Inbound adapter | `api/internal/handler/` (HTTP) |
-| Application core | `api/internal/handler/` (use case orchestration) |
-| Outbound adapters | `internal/shared/db/` (PostgreSQL), `internal/shared/stream/` (publish), `api/internal/idempotency/` (Redis + PostgreSQL) |
+| Layer | Package | Responsibility |
+|-------|---------|----------------|
+| HTTP handlers | `api/internal/handler/` | Decode request, validate input, call service, encode response |
+| Business logic | `api/internal/service/` | Orchestrate repo + stream publisher; own domain rules |
+| Data access | `api/internal/db/` | PostgreSQL via pgx; implements repository interfaces |
+| Stream | `internal/shared/stream/` | Publish `NotificationCreatedEvent` to Redis Streams |
 
 **Notification Processor:**
 
-| Role | Package |
-|------|---------|
-| Inbound adapter | `processor/internal/worker/` (stream consumer) |
-| Application core | `processor/internal/worker/` (delivery orchestration) |
-| Outbound adapters | `internal/shared/db/` (PostgreSQL), `internal/shared/stream/` (publish), `processor/internal/delivery/` (webhook), `processor/internal/ratelimit/` (Redis) |
-
-**Port pattern in Go** — a port is an interface defined close to the domain; an adapter is a
-struct in an infrastructure package that implements it:
-
-```go
-// port — defined in internal/shared/db/
-type NotificationRepository interface {
-    Create(ctx context.Context, n *model.Notification) error
-    GetByID(ctx context.Context, id uuid.UUID) (*model.Notification, error)
-    Transition(ctx context.Context, id uuid.UUID, from, to string) (*model.Notification, error)
-}
-
-// adapter — pgx implementation in internal/shared/db/postgres.go
-type pgxNotificationRepository struct{ pool *pgxpool.Pool }
-```
+| Layer | Package | Responsibility |
+|-------|---------|----------------|
+| Stream consumer | `processor/internal/worker/` | Poll streams, dispatch to delivery service |
+| Delivery | `processor/internal/delivery/` | HTTP POST to webhook provider |
+| Rate limiting | `processor/internal/ratelimit/` | Redis token bucket per channel |
+| Retry | `processor/internal/retry/` | Backoff formula; re-enqueue with `deliver_after` |
+| Stream | `internal/shared/stream/` | Publish `NotificationDeliveryResultEvent` to status stream |
 
 All dependencies are injected via constructors. No globals, no `init()`.
 
