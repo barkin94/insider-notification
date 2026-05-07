@@ -113,82 +113,44 @@ All dependencies are injected via constructors. No globals, no `init()`.
 
 ---
 
-## Project Layout
-
-```
-/
-├── go.mod
-├── api/
-│   ├── main.go                  # Notification Management API entrypoint
-│   └── migrations/              # golang-migrate SQL files (owned by API service)
-├── processor/
-│   └── main.go                  # Notification Processor entrypoint
-├── internal/
-│   ├── shared/
-│   │   ├── model/               # domain structs (shared)
-│   │   ├── config/              # config loading — viper (shared)
-│   │   ├── stream/              # Redis Streams producer + consumer (shared)
-│   │   └── db/                  # PostgreSQL pool — pgxpool (shared)
-│   ├── api/
-│   │   ├── handler/             # HTTP handlers (API only)
-│   │   ├── middleware/          # logging, correlation ID (API only)
-│   │   └── idempotency/         # dedup logic (API only)
-│   └── processor/
-│       ├── worker/              # stream consumer loop (Processor only)
-│       ├── delivery/            # webhook.site HTTP client (Processor only)
-│       ├── ratelimit/           # token bucket Lua script (Processor only)
-│       └── retry/               # backoff computation (Processor only)
-├── specs/
-├── docker-compose.yml
-├── Dockerfile.api
-├── Dockerfile.processor
-├── Makefile
-└── docs/                        # swag-generated OpenAPI output
-```
-
-`internal/` blocks external imports. `internal/api/` and `internal/processor/` boundaries
-are enforced by convention — the compiler allows cross-imports within the same module.
-
----
-
 ## Key Design Decisions
 
-### ADR-1: Redis Streams as Priority Message Broker
+### ADR: Redis Streams as Priority Message Broker
 - **Decision:** Three separate Redis Streams (`notify:stream:high`, `notify:stream:normal`, `notify:stream:low`) with consumer group `notify:cg:processor`. Workers use `XREADGROUP` — polling high first, falling back to normal, then low. A fourth stream `notify:stream:status` carries status events from Processor back to API.
 - **Rationale:** Streams provide built-in consumer group semantics (at-least-once delivery), PEL for crash recovery via `XAUTOCLAIM`, and per-message acknowledgement. No separate broker dependency beyond Redis.
 - **Tradeoff accepted:** Low-priority messages can starve under sustained high load. Acceptable for this scope.
 
-### ADR-2: Redis Token Bucket for Rate Limiting
+### ADR: Redis Token Bucket for Rate Limiting
 - **Decision:** Lua script executed atomically in Redis. Key: `ratelimit:{channel}`. Capacity: 100 tokens. Refill: 100/s. Burst: 120.
 - **Rationale:** Distributed-safe across multiple Processor instances. Survives restarts.
 - **Tradeoff accepted:** Adds Redis round-trip per dispatch. Negligible at this scale.
 
-### ADR-3: Exponential Backoff with Jitter for Retries
+### ADR: Exponential Backoff with Jitter for Retries
 - **Decision:** Failed deliveries re-enqueued into the same priority stream with `deliver_after` in the message payload.
 - **Formula:** `delay = min(base * 2^attempt, max_delay) + jitter` where jitter ∈ `[0, delay * 0.2]`.
 - **Tradeoff accepted:** Retry delays are approximate. Acceptable.
 
-### ADR-4: Dual Idempotency Strategy
+### ADR: Dual Idempotency Strategy
 - **Decision:** Client-supplied `Idempotency-Key` header checked first (Redis, 24h TTL). If absent, `sha256(channel + recipient + content)` checked against `idempotency_keys` table (1h window).
 - **Rationale:** Explicit consumer control + protection against accidental duplicates.
 - **Tradeoff accepted:** Hash collisions theoretically possible but negligible.
 
-### ADR-5: Two-Service Architecture
+### ADR: Two-Service Architecture
 - **Decision:** Single monorepo, two entrypoints. API owns PostgreSQL and REST surface; Processor owns delivery. Shared `internal/shared/` packages for common types.
 - **Rationale:** Independent scaling of ingestion vs. delivery.
 - **Tradeoff accepted:** Inter-service communication via Redis round-trips. Negligible at this scale.
 
-### ADR-6: Event-Driven Status Updates (Processor → API)
+### ADR: Event-Driven Status Updates (Processor → API)
 - **Decision:** Processor publishes delivery outcomes to `notify:stream:status`. API status consumer writes `delivery_attempts` rows and updates `notifications.status` in PostgreSQL.
 - **Rationale:** Processor does not need its own database.
 - **Tradeoff accepted:** Status updates are eventually consistent. Acceptable for this scope.
 
-### ADR-7: Hexagonal Architecture (Ports and Adapters)
+### ADR: Hexagonal Architecture (Ports and Adapters)
 - **Decision:** Both services follow hexagonal architecture. Domain logic has no import dependency on infrastructure packages. All external systems (PostgreSQL, Redis, webhook.site) are accessed through interfaces defined near the domain and implemented in adapter packages.
 - **Rationale:** Makes each adapter independently testable via mocks. Allows swapping infrastructure (e.g., delivery target, broker) without touching application logic. Natural fit for Go where interfaces are implicit and lightweight.
 - **Tradeoff accepted:** Slightly more files than a flat structure. Justified by testability.
 
-### ADR-9: OpenTelemetry for Observability
+### ADR: OpenTelemetry for Observability
 - **Decision:** Both services instrument with the OTel Go SDK. Metrics exported via Prometheus exporter; traces via OTLP → OTel Collector → Jaeger. No custom metrics store.
 - **Rationale:** Industry standard; eliminates custom counter/ring buffer code; gives traces, metrics, and dashboards with no additional instrumentation effort.
 - **Tradeoff accepted:** Adds four services to `docker-compose.yml` (otel-collector, prometheus, grafana, jaeger). Acceptable for this scope.

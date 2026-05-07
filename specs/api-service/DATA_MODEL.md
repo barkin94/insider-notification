@@ -93,29 +93,12 @@ CREATE INDEX idx_idempotency_keys_expires_at ON idempotency_keys(expires_at);
 
 ## Redis Key Patterns
 
+See `system/MESSAGE_CONTRACT.md` (streams, consumer groups) and `processor-service/QUEUE_DESIGN.md` (lock, rate limiter keys).
+
+The only key owned exclusively by the API service:
+
 ```
-# Priority streams (Redis Streams)
-notify:stream:high              → Stream; message fields: notification_id, deliver_after
-notify:stream:normal            → Stream; message fields: notification_id, deliver_after
-notify:stream:low               → Stream; message fields: notification_id, deliver_after
-
-# Status event stream (Processor → API)
-notify:stream:status            → Stream; delivery outcome events from Processor
-
-# Consumer groups
-notify:cg:processor             → Consumer group on priority streams (Processor workers)
-notify:cg:api                   → Consumer group on status stream (API status consumer)
-
-# Processing lock (prevents double-processing within Processor)
-notify:lock:{notification_id}   → string "1", TTL: 60s
-
-# Rate limiter (token bucket per channel)
-ratelimit:sms                   → Hash { tokens, last_refill }
-ratelimit:email                 → Hash { tokens, last_refill }
-ratelimit:push                  → Hash { tokens, last_refill }
-
-# Idempotency fast path (client-supplied key only)
-idempotency:{key}               → notification_id UUID string, TTL: 24h
+idempotency:{key}   → notification_id UUID string, TTL: 24h
 ```
 
 ---
