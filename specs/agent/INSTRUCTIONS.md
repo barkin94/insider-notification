@@ -36,6 +36,22 @@ The `specs/` directory is the source of truth for all implementation decisions.
 - If the spec does not cover something you need to decide, stop and ask
 - If you find a conflict between spec files, stop and report it
 
+### TDD Workflow (mandatory for every Go package)
+
+For each unit of behaviour:
+1. **Red** — write a failing test that asserts the expected behaviour
+2. **Green** — write the minimal implementation to make the test pass
+3. **Refactor** — clean up without breaking the test
+4. Repeat for the next unit
+
+Infrastructure-only files (docker-compose, Dockerfiles, SQL migrations, config files) have no application logic; verify them by running the stack, not by writing tests.
+
+### Git Strategy
+
+- Commit directly to the working branch after each task passes all checks
+- No per-task feature branches; one branch for the entire build session
+- Each commit must include the updated `specs/agent/TASKS.md`
+
 After writing code: run the build and lint commands defined in the project's architecture spec.
 After writing code in a component: run its tests.
 If any check fails: set `BLOCKED_REASON` in `specs/agent/STATE.md`, fix before continuing.
@@ -63,3 +79,4 @@ If any check fails: set `BLOCKED_REASON` in `specs/agent/STATE.md`, fix before c
 - Never silently resolve a spec conflict — always surface it
 - Never assume a previous session's work is correct — verify it builds and tests pass
 - Always search before implementing — grep for existing code before writing new
+- Never write implementation code without first having a failing test for it (TDD rule — applies to all Go packages)
