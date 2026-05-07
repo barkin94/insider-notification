@@ -29,7 +29,7 @@ scaffold
 
 - [x] scaffold
 - [x] shared-models
-- [ ] shared-config
+- [x] shared-config
 - [ ] sql-migrations
 - [ ] postgres-repos
 - [ ] stream-adapter
