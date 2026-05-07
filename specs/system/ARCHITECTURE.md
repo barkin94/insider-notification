@@ -72,6 +72,47 @@
 
 ---
 
+## Code Architecture
+
+Both services follow **Hexagonal Architecture** (Ports and Adapters). The domain core is
+isolated from infrastructure — all external dependencies are accessed through interfaces
+(ports) implemented by swappable adapters.
+
+**Notification Management API:**
+
+| Role | Package |
+|------|---------|
+| Inbound adapter | `internal/api/handler/` (HTTP) |
+| Application core | `internal/api/handler/` (use case orchestration) |
+| Outbound adapters | `internal/shared/db/` (PostgreSQL), `internal/shared/stream/` (publish), `internal/api/idempotency/` (Redis + PostgreSQL) |
+
+**Notification Processor:**
+
+| Role | Package |
+|------|---------|
+| Inbound adapter | `internal/processor/worker/` (stream consumer) |
+| Application core | `internal/processor/worker/` (delivery orchestration) |
+| Outbound adapters | `internal/shared/db/` (PostgreSQL), `internal/shared/stream/` (publish), `internal/processor/delivery/` (webhook), `internal/processor/ratelimit/` (Redis) |
+
+**Port pattern in Go** — a port is an interface defined close to the domain; an adapter is a
+struct in an infrastructure package that implements it:
+
+```go
+// port — defined in internal/shared/db/
+type NotificationRepository interface {
+    Create(ctx context.Context, n *model.Notification) error
+    GetByID(ctx context.Context, id uuid.UUID) (*model.Notification, error)
+    Transition(ctx context.Context, id uuid.UUID, from, to string) (*model.Notification, error)
+}
+
+// adapter — pgx implementation in internal/shared/db/postgres.go
+type pgxNotificationRepository struct{ pool *pgxpool.Pool }
+```
+
+All dependencies are injected via constructors. No globals, no `init()`.
+
+---
+
 ## Project Layout
 
 ```
@@ -142,7 +183,12 @@ are enforced by convention — the compiler allows cross-imports within the same
 - **Rationale:** Processor does not need its own database.
 - **Tradeoff accepted:** Status updates are eventually consistent. Acceptable for this scope.
 
-### ADR-7: OpenTelemetry for Observability
+### ADR-7: Hexagonal Architecture (Ports and Adapters)
+- **Decision:** Both services follow hexagonal architecture. Domain logic has no import dependency on infrastructure packages. All external systems (PostgreSQL, Redis, webhook.site) are accessed through interfaces defined near the domain and implemented in adapter packages.
+- **Rationale:** Makes each adapter independently testable via mocks. Allows swapping infrastructure (e.g., delivery target, broker) without touching application logic. Natural fit for Go where interfaces are implicit and lightweight.
+- **Tradeoff accepted:** Slightly more files than a flat structure. Justified by testability.
+
+### ADR-9: OpenTelemetry for Observability
 - **Decision:** Both services instrument with the OTel Go SDK. Metrics exported via Prometheus exporter; traces via OTLP → OTel Collector → Jaeger. No custom metrics store.
 - **Rationale:** Industry standard; eliminates custom counter/ring buffer code; gives traces, metrics, and dashboards with no additional instrumentation effort.
 - **Tradeoff accepted:** Adds four services to `docker-compose.yml` (otel-collector, prometheus, grafana, jaeger). Acceptable for this scope.
