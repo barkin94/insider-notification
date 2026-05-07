@@ -18,7 +18,7 @@
     │  idempotency_keys │
     └──────────────────┘
              │
-             │ XADD notify:stream:{priority}
+             │ publishes to notify:stream:{priority}
              ▼
 ┌───────────────────────────────────────────────────────────┐
 │                       Redis 7                              │
@@ -27,21 +27,21 @@
 │  ratelimit:{channel}     notify:lock:{id}                  │
 │  idempotency:{key}                                         │
 └───────────────────────────────────────────────────────────┘
-             │ XREADGROUP notify:cg:processor
+             │ consumes from notify:stream:{priority}
              ▼
 ┌───────────────────────────────────────────────────────────┐
 │               Notification Processor                       │
 │   Stream Consumer (10 workers)                             │
 │         │                                                  │
-│   Rate Limiter (Redis token bucket, 100 msg/s per channel) │
+│   Rate Limiter (token bucket, 100 msg/s per channel)       │
 │         │                                                  │
 │   Delivery Service (POST webhook.site/uuid)                │
 │         │                                                  │
 │   Retry Scheduler (exponential backoff + jitter, 4 max)    │
 │         │                                                  │
-│   Status Publisher (XADD notify:stream:status)             │
+│   Status Publisher (publishes to notify:stream:status)     │
 └───────────────────────────────────────────────────────────┘
-             │ XREADGROUP notify:cg:api (status events)
+             │ consumes from notify:stream:status
              ▼
     ┌──────────────────────────────────┐
     │  API Status Event Consumer        │
