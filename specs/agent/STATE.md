@@ -1,3 +1,3 @@
 STATUS: in progress
-LAST_COMPLETED: stream-adapter
+LAST_COMPLETED: api-middleware
 BLOCKED_REASON:

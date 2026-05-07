@@ -21,7 +21,8 @@ scaffold
                                             ├── api-main
                                             └── processor-main
                                                   └── observability
-                                                        └── docs-readme
+                                                        └── priority-router
+                                                              └── docs-readme
 ```
 
 ## Status
@@ -32,7 +33,7 @@ scaffold
 - [x] sql-migrations
 - [x] postgres-repos
 - [x] stream-adapter
-- [ ] api-middleware
+- [x] api-middleware
 - [ ] rate-limiter
 - [ ] retry
 - [ ] delivery-client
@@ -42,4 +43,5 @@ scaffold
 - [ ] api-main
 - [ ] processor-main
 - [ ] observability
+- [ ] priority-router
 - [ ] docs-readme

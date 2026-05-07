@@ -6,9 +6,9 @@
 
 ## What to build
 
-### `internal/shared/stream/message.go`
+### `internal/shared/stream/events.go`
 ```
-PriorityMessage struct:
+NotificationCreatedEvent struct:
   NotificationID string
   Channel        string
   Recipient      string
@@ -19,7 +19,7 @@ PriorityMessage struct:
   DeliverAfter   string  ← RFC3339 or empty
   Metadata       string  ← JSON string, "{}" if absent
 
-StatusMessage struct:
+NotificationDeliveryResultEvent struct:
   NotificationID    string
   Status            string
   AttemptNumber     int
@@ -27,41 +27,41 @@ StatusMessage struct:
   ErrorMessage      string
   ProviderMessageID string
   LatencyMS         int
-  UpdatedAt         string
+  UpdatedAt         string  ← RFC3339
+
+Trace context (traceparent, tracestate) travels in watermill message.Metadata,
+not in the event payload. Injected/extracted by OTel middleware (observability task).
 ```
 
-### `internal/shared/stream/producer.go`
+### `internal/shared/stream/topics.go`
 ```
-Producer interface:
-  Publish(ctx, priority string, msg PriorityMessage) error
-  PublishStatus(ctx, msg StatusMessage) error
-
-redisProducer struct{ client *redis.Client }
-  — Publish → XADD notify:stream:{priority}
-  — PublishStatus → XADD notify:stream:status
+TopicHigh, TopicNormal, TopicLow, TopicStatus  ← shared topic name constants
 ```
 
-### `internal/shared/stream/consumer.go`
+### `internal/shared/stream/publisher.go`
 ```
-Consumer interface:
-  ReadPriority(ctx) (*PriorityMessage, msgID string, err error)
-  ReadStatus(ctx) (*StatusMessage, msgID string, err error)
-  Ack(ctx, stream, msgID string) error
-  ReclaimStale(ctx, stream string, minIdle time.Duration) error
+Publisher struct{ pub message.Publisher }
+  Publish(ctx, topic string, payload any) error
+    — JSON-encodes payload, publishes to topic via Watermill
+    — callers choose topic and payload type; publisher has no business knowledge
+```
 
-redisConsumer struct{ client *redis.Client; groupName, consumerName string }
-  — ReadPriority: sweep high → normal → low (non-blocking), then block on high (1s timeout)
-  — Consumer group created on NewConsumer(); BUSYGROUP error swallowed
-  — ReclaimStale: XAUTOCLAIM with minIdle threshold
+### `internal/shared/stream/subscriber.go`
+```
+Subscribe[T any](ctx, sub message.Subscriber, topic string) (<-chan Result[T], error)
+  — generic helper: subscribes to topic, decodes JSON payload into T
+  — Nacks and forwards error on decode failure
+
+Result[T] struct{ Event T; Msg *message.Message; Err error }
+  — caller calls Msg.Ack() after processing or Msg.Nack() to requeue
 ```
 
 ## Tests
 
-testcontainers-go with real Redis:
+- `TestPublishNotificationCreated_routesToCorrectTopic` — high/normal/low events land in correct topics
+- `TestPublishDeliveryResult` — event lands in TopicStatus and round-trips correctly
 
-- `TestProducer_Publish_routesToCorrectStream` — high/normal/low messages land in correct streams
-- `TestProducer_PublishStatus` — message lands in notify:stream:status
-- `TestConsumer_ReadPriority_order` — high consumed before normal before low when all present
-- `TestConsumer_Ack` — message removed from PEL after ack
-- `TestConsumer_ReclaimStale` — unacked message reclaimed after minIdle
-- `TestConsumer_groupCreatedIfAbsent` — NewConsumer on fresh Redis creates group without error
+## Future work
+
+See `priority-router` task for priority-ordered fan-in across the three priority topics.
+OTel trace context injection/extraction via Watermill middleware: see `observability` task.
