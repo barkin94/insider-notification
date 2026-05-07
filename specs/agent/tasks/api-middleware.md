@@ -18,7 +18,7 @@ FromContext(ctx) string  ← retrieves correlation ID from context
 
 ### `api/internal/middleware/logger.go`
 ```
-Logger(logger *zap.Logger) func(http.Handler) http.Handler
+Logger(logger *slog.Logger) func(http.Handler) http.Handler
   — logs each request: method, path, status, latency, correlation_id
   — required log fields: ts, level, msg, service, version (from OBSERVABILITY.md)
 ```

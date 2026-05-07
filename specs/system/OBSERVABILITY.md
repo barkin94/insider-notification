@@ -12,7 +12,7 @@ and visualised in Grafana. Traces are exported via OTLP to Jaeger.
 | SDK | `go.opentelemetry.io/otel` |
 | Metrics exporter | Prometheus (`go.opentelemetry.io/otel/exporters/prometheus`) |
 | Trace exporter | OTLP gRPC → OTel Collector → Jaeger |
-| Logging | `go.uber.org/zap` (OTel logs API not yet stable in Go) |
+| Logging | `log/slog` (OTel logs API not yet stable in Go) |
 
 ### Metrics
 

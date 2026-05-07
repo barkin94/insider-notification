@@ -10,7 +10,7 @@
 
 Startup sequence:
 1. `config.Load()` → Config
-2. Init zap logger (level from config)
+2. Init slog logger (level from config)
 3. Init OTel SDK: Prometheus metrics exporter + OTLP trace exporter → OTel Collector
 4. `db.NewPool(ctx, cfg.DatabaseURL)` → pgxpool
 5. Run migrations via golang-migrate

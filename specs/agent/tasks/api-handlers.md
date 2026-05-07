@@ -18,7 +18,7 @@ Deps struct:
   IdempotencyRepo   db.IdempotencyRepository
   IdempotencyChecker idempotency.Checker
   Producer          stream.Producer
-  Logger            *zap.Logger
+  Logger            *slog.Logger
   DB                *pgxpool.Pool
   Redis             *redis.Client
 ```

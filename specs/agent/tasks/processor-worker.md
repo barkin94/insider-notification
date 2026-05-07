@@ -15,7 +15,7 @@ Worker struct:
   deliverer   delivery.Client
   limiter     ratelimit.Limiter
   redis       *redis.Client
-  logger      *zap.Logger
+  logger      *slog.Logger
 
 Run(ctx context.Context)
   — loop until ctx cancelled: processNext(ctx)

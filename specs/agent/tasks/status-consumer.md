@@ -12,7 +12,7 @@ StatusConsumer struct:
   consumer  stream.Consumer
   notifRepo db.NotificationRepository
   attemptRepo db.DeliveryAttemptRepository
-  logger    *zap.Logger
+  logger    *slog.Logger
 
 NewStatusConsumer(...) *StatusConsumer
 

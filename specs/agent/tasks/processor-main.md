@@ -10,7 +10,7 @@
 
 Startup sequence:
 1. `config.Load()` → Config
-2. Init zap logger
+2. Init slog logger
 3. Init OTel SDK: Prometheus metrics exporter + OTLP trace exporter → OTel Collector
 4. `redis.NewClient(cfg.RedisAddr)` → redis client
 5. `db.NewPool(ctx, cfg.DatabaseURL)` → pgxpool

@@ -65,7 +65,7 @@
 | Observability | OpenTelemetry Go SDK | Unified metrics + traces; industry standard |
 | Metrics backend | Prometheus | Scrapes OTel Prometheus exporter on both services |
 | Visualization | Grafana | Dashboards over Prometheus; trace UI via Jaeger |
-| Logging | `zap` | Structured, high-performance |
+| Logging | `slog` | Structured, high-performance |
 | Config | `viper` | Env + file config, 12-factor compatible |
 | Testing | `testify` + `go test` | Standard Go testing with assertions |
 | API Docs | `swaggo/swag` | Generates OpenAPI from Go annotations |

@@ -1,8 +1,7 @@
 package config
 
 import (
-	"fmt"
-	"log"
+	"log/slog"
 	"os"
 
 	shared "github.com/barkin/insider-notification/internal/shared/config"
@@ -22,14 +21,14 @@ func Load() *Config {
 
 	base, missing := shared.LoadBase(v)
 	if missing != "" {
-		fmt.Fprintf(os.Stderr, "config error: %s is required\n", missing)
-		log.Fatalf("missing required env var: %s", missing)
+		slog.Error("missing required env var", "var", missing)
+		os.Exit(1)
 	}
 
 	webhookURL := v.GetString("WEBHOOK_URL")
 	if webhookURL == "" {
-		fmt.Fprintf(os.Stderr, "config error: WEBHOOK_URL is required\n")
-		log.Fatal("missing required env var: WEBHOOK_URL")
+		slog.Error("missing required env var", "var", "WEBHOOK_URL")
+		os.Exit(1)
 	}
 
 	return &Config{
