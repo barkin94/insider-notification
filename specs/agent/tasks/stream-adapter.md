@@ -2,7 +2,7 @@
 
 **Specs:** `system/QUEUE_DESIGN.md`, `system/MESSAGE_CONTRACT.md`
 **Verification:** `api-service/VERIFICATION.md` § Stream Producer, `processor-service/VERIFICATION.md` § Stream Consumer & Worker Pool
-**Status:** pending
+**Status:** complete
 
 ## What to build
 
@@ -10,7 +10,14 @@
 ```
 PriorityMessage struct:
   NotificationID string
+  Channel        string
+  Recipient      string
+  Content        string
+  Priority       string
+  AttemptNumber  int
+  MaxAttempts    int
   DeliverAfter   string  ← RFC3339 or empty
+  Metadata       string  ← JSON string, "{}" if absent
 
 StatusMessage struct:
   NotificationID    string

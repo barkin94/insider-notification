@@ -1,3 +1,3 @@
 STATUS: in progress
-LAST_COMPLETED: postgres-repos
+LAST_COMPLETED: stream-adapter
 BLOCKED_REASON:

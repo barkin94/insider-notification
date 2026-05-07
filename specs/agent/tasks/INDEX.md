@@ -32,7 +32,7 @@ scaffold
 - [x] shared-config
 - [x] sql-migrations
 - [x] postgres-repos
-- [ ] stream-adapter
+- [x] stream-adapter
 - [ ] idempotency
 - [ ] api-middleware
 - [ ] rate-limiter
