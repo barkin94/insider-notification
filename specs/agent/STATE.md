@@ -1,3 +1,3 @@
 STATUS: in progress
-LAST_COMPLETED: api-middleware
+LAST_COMPLETED: rate-limiter
 BLOCKED_REASON:

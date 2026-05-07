@@ -2,7 +2,7 @@
 
 **Specs:** `system/ARCHITECTURE.md` (ADR: Redis Token Bucket), `processor-service/RETRY_POLICY.md`
 **Verification:** `processor-service/VERIFICATION.md` § Rate Limiter
-**Status:** pending
+**Status:** complete
 
 ## What to build
 
