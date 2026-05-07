@@ -18,11 +18,7 @@ visibility for both internal teams and API consumers.
 - Async processing engine with priority queues and rate limiting
 - Delivery & retry logic with exponential backoff
 - Idempotency support
-- Observability: metrics, structured logging, health checks
-- Scheduled notifications (future delivery)
-- WebSocket real-time status updates
-- Message template system with variable substitution
-- GitHub Actions CI/CD pipeline
+- Observability: OpenTelemetry instrumentation, Prometheus metrics, Grafana dashboards, Jaeger traces, structured logging, health checks
 - External provider integration via webhook.site
 - Docker Compose one-command setup
 - OpenAPI/Swagger documentation
@@ -46,10 +42,8 @@ visibility for both internal teams and API consumers.
 - Duplicate notifications are rejected via idempotency checks
 - Notification status is queryable by ID and batch ID
 - Pending notifications can be cancelled
-- Metrics endpoint exposes queue depth, success/failure rates, latency
-- WebSocket clients receive real-time status updates
-- Scheduled notifications are delivered at the correct time
-- Templates resolve variables correctly before delivery
+- Grafana dashboard shows queue depth, delivery rates, and latency
+- Jaeger UI shows end-to-end traces per notification
 - `docker-compose up` starts the full system
 - All tests pass with a single command
 
@@ -57,5 +51,5 @@ visibility for both internal teams and API consumers.
 
 - Language: Go 1.2x
 - External provider: webhook.site (simulated, returns 202 Accepted)
-- DB: MongoDB 7 (replica set)
-- Cache / Rate limiter / Queue broker: Redis
+- DB: PostgreSQL 16 (Notification Management API only)
+- Message broker / Rate limiter / Cache: Redis 7 (Streams for queuing, token bucket for rate limiting)

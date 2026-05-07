@@ -70,43 +70,30 @@ These failures immediately move the notification to `failed` status with no furt
 
 ## Retry Worker Implementation
 
+Driven by the stream consumer loop (see QUEUE_DESIGN.md). "publish event" = write to `notify:stream:status`.
+
 ```
-LOOP forever:
-  query notifications WHERE:
-    status = 'pending'
-    AND deliver_after <= NOW()
-    AND attempts < max_attempts
-
-  FOR each notification:
-    acquire Redis lock notify:lock:{id} (TTL: 60s)
-    IF lock not acquired: skip (another worker has it)
-
-    SET status = 'processing'
-    attempt delivery
-
-    IF success (provider returns 202):
-      SET status = 'delivered'
-      SET provider_message_id from response
-      INSERT delivery_attempt (status: success)
-      publish WebSocket update
-
-    IF failure:
-      INCREMENT attempts
-      INSERT delivery_attempt (status: failed, error details)
-
-      IF retryable AND attempts < max_attempts:
-        compute delay = backoff(attempts) + jitter()
-        SET deliver_after = NOW() + delay
-        SET status = 'pending'        ← re-queues for retry
-        re-enqueue into same priority queue
-
-      ELSE:
-        SET status = 'failed'         ← exhausted or non-retryable
-        publish WebSocket update
-
-    release Redis lock
-
-  SLEEP 1 second   ← poll interval
+              poll for next message
+                       │
+           deliver_after > NOW? ──yes──► re-enqueue · acknowledge · next
+                       │ no
+             lock acquired? ──no────────► acknowledge · next
+                       │ yes
+     transition to processing ──failed──► acknowledge · next
+                       │ ok
+           rate limiter ok? ──no──► status=pending · re-enqueue · acknowledge · next
+                       │ yes
+               deliver to provider
+                ┌──────┴──────┐
+               202          failure
+                │                │
+                │      retryable AND attempts < max_attempts?
+                │                ├── yes ──► deliver_after = NOW + backoff(attempts) + jitter
+                │                │           status=pending · re-enqueue · publish event · acknowledge
+                │                │
+                │                └── no ───► status=failed · publish event · acknowledge
+                │
+          status=delivered · publish event · acknowledge
 ```
 
 ---
@@ -114,11 +101,11 @@ LOOP forever:
 ## Dead Letter Behavior
 
 There is no separate dead-letter queue. Notifications that exhaust all attempts are marked
-`status = 'failed'` in MongoDB with full `delivery_attempts` history. This provides:
+`status = 'failed'` in PostgreSQL with full `delivery_attempts` history. This provides:
 
 - Full audit trail of all attempts, HTTP status codes, error messages, and latency
 - Queryable via `GET /notifications?status=failed`
-- Observable via metrics endpoint (`metrics.delivery.{channel}.failed` counter)
+- Observable via `notification.failed` OTel counter
 
 Manual reprocessing of failed notifications is **out of scope** for this implementation.
 
@@ -137,8 +124,8 @@ If the token bucket for a channel is exhausted:
 
 ## Metrics Emitted on Retry Events
 
-| Event | Metric updated |
-|-------|---------------|
-| Delivery success | `metrics:sent:{channel}` +1, latency recorded |
-| Delivery failure (will retry) | `metrics:failed:{channel}` +1 (temporary) |
-| Notification moves to `failed` | permanent failed count in DB, visible via `/metrics` |
+| Event | OTel metric updated |
+|-------|---------------------|
+| Delivery success | `notification.sent` +1, `notification.delivery.latency_ms` recorded |
+| Delivery attempt (any outcome) | `notification.attempts` +1 |
+| Notification moves to `failed` | `notification.failed` +1 |
