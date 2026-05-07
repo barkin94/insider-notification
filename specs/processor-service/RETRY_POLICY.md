@@ -70,19 +70,18 @@ These failures immediately move the notification to `failed` status with no furt
 
 ## Retry Worker Implementation
 
-Driven by `XREADGROUP` polling (see QUEUE_DESIGN.md). "publish event" = `XADD notify:stream:status`.
+Driven by the stream consumer loop (see QUEUE_DESIGN.md). "publish event" = write to `notify:stream:status`.
 
 ```
-            poll stream (XREADGROUP)
+              poll for next message
                        │
-           deliver_after > NOW? ──yes──► re-enqueue · XACK · next
+           deliver_after > NOW? ──yes──► re-enqueue · acknowledge · next
                        │ no
-           Redis lock acquired? ──no───► XACK · next
+             lock acquired? ──no────────► acknowledge · next
                        │ yes
-     UPDATE status=processing,
-     attempts++ WHERE status=pending ──no rows──► XACK · next
-                       │ updated
-           rate limiter ok? ──no──► status=pending · re-enqueue · XACK · next
+     transition to processing ──failed──► acknowledge · next
+                       │ ok
+           rate limiter ok? ──no──► status=pending · re-enqueue · acknowledge · next
                        │ yes
                deliver to provider
                 ┌──────┴──────┐
@@ -90,11 +89,11 @@ Driven by `XREADGROUP` polling (see QUEUE_DESIGN.md). "publish event" = `XADD no
                 │                │
                 │      retryable AND attempts < max_attempts?
                 │                ├── yes ──► deliver_after = NOW + backoff(attempts) + jitter
-                │                │           status=pending · re-enqueue · publish event · XACK
+                │                │           status=pending · re-enqueue · publish event · acknowledge
                 │                │
-                │                └── no ───► status=failed · publish event · XACK
+                │                └── no ───► status=failed · publish event · acknowledge
                 │
-          status=delivered · publish event · XACK
+          status=delivered · publish event · acknowledge
 ```
 
 ---
@@ -106,7 +105,7 @@ There is no separate dead-letter queue. Notifications that exhaust all attempts 
 
 - Full audit trail of all attempts, HTTP status codes, error messages, and latency
 - Queryable via `GET /notifications?status=failed`
-- Observable via metrics endpoint (`metrics.delivery.{channel}.failed` counter)
+- Observable via `notification.failed` OTel counter
 
 Manual reprocessing of failed notifications is **out of scope** for this implementation.
 

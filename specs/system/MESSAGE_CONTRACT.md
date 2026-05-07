@@ -96,7 +96,7 @@ On each `notify:stream:status` message, the API service consumer:
 2. Inserts a row into `delivery_attempts` (idempotent via `ON CONFLICT DO NOTHING` on `notification_id + attempt_number`)
 3. Updates `notifications.status` and `notifications.updated_at`
    - `status=processing` → sets `notifications.status = 'processing'`
-   - `status=delivered` → sets `notifications.status = 'delivered'`, `provider_message_id`
+   - `status=delivered` → sets `notifications.status = 'delivered'`
    - `status=failed` → sets `notifications.status = 'failed'`
 4. ACKs the message: `XACK notify:stream:status notify:cg:api {msg_id}`
 

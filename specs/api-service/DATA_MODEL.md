@@ -58,10 +58,13 @@ CREATE INDEX idx_notifications_status_updated_at    ON notifications(status, upd
 | `latency_ms` | INT | nullable |
 | `attempted_at` | TIMESTAMPTZ | NOT NULL, default now |
 
+**Constraints:**
+- `(notification_id, attempt_number)` — UNIQUE (enables idempotent insert on status event replay)
+
 **Indexes:**
 ```sql
-CREATE INDEX idx_delivery_attempts_notification_id ON delivery_attempts(notification_id);
-CREATE INDEX idx_delivery_attempts_attempted_at    ON delivery_attempts(attempted_at DESC);
+CREATE UNIQUE INDEX idx_delivery_attempts_unique ON delivery_attempts(notification_id, attempt_number);
+CREATE INDEX idx_delivery_attempts_attempted_at  ON delivery_attempts(attempted_at DESC);
 ```
 
 ---

@@ -6,7 +6,7 @@ The `specs/` directory is the source of truth for all implementation decisions.
 
 ## Session Start
 
-1. Read `specs/agent/STATE.md` and `specs/agent/DECISIONS.md`
+1. Read `specs/agent/STATE.md`, `specs/agent/DECISIONS.md`, and `specs/agent/CODEINDEX.md`
 2. Check if `specs/agent/TASKS.md` exists:
    - If yes: a previous session was interrupted — read it, report the remaining tasks, and ask the human whether to resume or restart
    - If no: proceed normally
