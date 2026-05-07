@@ -44,7 +44,7 @@ Create a single notification.
 {
   "recipient": "+905551234567",        // required, string, max 255
   "channel": "sms",                   // required, enum: sms | email | push
-  "content": "Your OTP is 123456",    // required unless template_id provided, string
+  "content": "Your OTP is 123456",    // required, string
   "priority": "high",                 // optional, enum: high | normal | low, default: normal
   "metadata": {}                      // optional, arbitrary JSON object
 }
