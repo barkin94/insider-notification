@@ -18,15 +18,10 @@ worker, and unacknowledged messages are automatically reclaimable after a timeou
 | `notify:stream:low` | API → Processor | Low-priority notifications |
 | `notify:stream:status` | Processor → API | Delivery outcome events |
 
-Payloads are intentionally minimal — full notification data is fetched from PostgreSQL after
-a message is consumed.
+Priority stream messages carry the full notification payload so the Processor requires no
+PostgreSQL access. The API embeds all delivery-relevant fields at enqueue time.
 
-**Priority stream message fields:**
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `notification_id` | UUID | Identifies the notification row in PostgreSQL |
-| `deliver_after` | RFC3339 or empty | If set, worker defers processing until this time |
+**Priority stream message fields:** see `MESSAGE_CONTRACT.md`.
 
 **Status stream message fields:** see `MESSAGE_CONTRACT.md`.
 
@@ -73,19 +68,25 @@ messages accumulate.
 10 workers run concurrently (configurable via `WORKER_CONCURRENCY`). Each worker loops:
 
 1. Poll for next message using priority ordering above
-2. Acquire a processing lock on the notification ID (TTL 60s) — skip if already held
-3. Fetch notification from PostgreSQL; skip if status is not `pending` or `deliver_after` is in the future
-4. Transition status to `processing` atomically — skip if another worker already did
-5. Execute rate limit → delivery → retry logic (see `RETRY_POLICY.md`)
-6. Acknowledge the message
+2. If `deliver_after` is set and `now < deliver_after` — re-enqueue with same `deliver_after`, ACK, and skip
+3. Check Redis key `cancelled:{notification_id}` — if present, ACK and skip
+4. Acquire a processing lock on the notification ID (TTL 60s) — if already held, ACK and skip
+5. Publish `processing` status event to `notify:stream:status`
+6. Execute rate limit → delivery → retry logic (see `RETRY_POLICY.md`)
+7. Publish `delivered` or `failed` status event, release lock, ACK the message
 
 ---
 
 ## Enqueue
 
 The API publishes a message to `notify:stream:{priority}` after creating a notification
-(status = `pending`). The Processor re-publishes to the same stream when scheduling a retry,
-setting `deliver_after` to the computed backoff time.
+(status = `pending`), embedding the full notification payload.
+
+On cancellation the API sets `SET cancelled:{id} 1 EX {ttl}` in Redis (TTL = 24 hours,
+covers the maximum retry window) so in-flight workers can detect and skip the notification.
+
+The API re-publishes to the same stream when scheduling a retry, incrementing `attempt_number`
+and setting `deliver_after` to the computed backoff time.
 
 ---
 
@@ -111,8 +112,10 @@ Full event shape: see `MESSAGE_CONTRACT.md`.
 
 The broker maintains a pending entry list (PEL) of messages delivered to a consumer but not
 yet acknowledged. On Processor startup, any message idle in the PEL for more than 2 minutes
-is reclaimed and re-processed. Because each worker re-checks `notification.status` in
-PostgreSQL before acting, re-processing an already-delivered message is safe.
+is reclaimed and re-processed. Re-processing is safe because:
+- A `cancelled:{id}` Redis key is checked before delivery
+- The processing lock prevents two workers from delivering the same message concurrently
+- The API's status consumer uses `ON CONFLICT DO NOTHING` on delivery_attempts rows
 
 ---
 

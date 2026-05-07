@@ -12,17 +12,35 @@ Consumed by Notification Processor workers via consumer group `notify:cg:process
 
 **Streams:** `notify:stream:high`, `notify:stream:normal`, `notify:stream:low`
 
+The full notification payload is embedded in each message so the Processor requires no
+PostgreSQL access. On retry re-enqueue the API increments `attempt_number` before publishing.
+
 **Fields:**
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `notification_id` | UUID string | yes | Identifies the notification row in PostgreSQL |
-| `deliver_after` | RFC3339 string | no | If set, worker skips until `now >= deliver_after`. Empty string means deliver immediately. |
+| `notification_id` | UUID string | yes | Notification identifier |
+| `channel` | string | yes | `sms` \| `email` \| `push` |
+| `recipient` | string | yes | Destination address (phone, email, device token) |
+| `content` | string | yes | Message body |
+| `priority` | string | yes | `high` \| `normal` \| `low` |
+| `attempt_number` | integer string | yes | 1-indexed; 1 on first enqueue, incremented on each retry |
+| `max_attempts` | integer string | yes | Maximum allowed attempts |
+| `deliver_after` | RFC3339 string | no | If set, worker defers until `now >= deliver_after`. Empty string means deliver immediately. |
+| `metadata` | JSON string | no | Arbitrary key-value pairs; empty JSON object `{}` if absent |
 
 **Example:**
 ```
-XADD notify:stream:high * notification_id 550e8400-e29b-41d4-a716-446655440000 deliver_after ""
-XADD notify:stream:normal * notification_id 660f9511-f30c-52e5-b827-557766551111 deliver_after 2024-06-01T09:02:00Z
+XADD notify:stream:high *
+  notification_id 550e8400-e29b-41d4-a716-446655440000
+  channel         sms
+  recipient       +15551234567
+  content         "Your OTP is 482910"
+  priority        high
+  attempt_number  1
+  max_attempts    3
+  deliver_after   ""
+  metadata        {}
 ```
 
 ---

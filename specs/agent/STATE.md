@@ -1,3 +1,3 @@
 STATUS: in progress
-LAST_COMPLETED: sql-migrations
+LAST_COMPLETED: postgres-repos
 BLOCKED_REASON:
