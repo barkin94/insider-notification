@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"log/slog"
 	"net/http"
 
 	"github.com/barkin/insider-notification/api/internal/middleware"
@@ -15,7 +14,6 @@ import (
 // Deps holds the dependencies required to build the HTTP router.
 type Deps struct {
 	Service service.NotificationService
-	Logger  *slog.Logger
 	DB      *pgxpool.Pool
 	Redis   *redis.Client
 }
@@ -25,7 +23,7 @@ func NewRouter(deps Deps) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(chiMiddleware.Recoverer)
-	r.Use(middleware.Logger(deps.Logger))
+	r.Use(middleware.Logger())
 
 	r.Get("/api/v1/health", healthCheck(deps.DB, deps.Redis))
 

@@ -46,7 +46,6 @@ func (m *mockService) CreateBatch(ctx context.Context, reqs []service.CreateRequ
 func newRouter(svc service.NotificationService) http.Handler {
 	return handler.NewRouter(handler.Deps{
 		Service: svc,
-		Logger:  discardLogger(),
 		DB:      nil, // health check not tested here
 		Redis:   nil,
 	})

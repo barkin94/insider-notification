@@ -2,7 +2,13 @@
 
 **Specs:** `processor-service/RETRY_POLICY.md`, `system/OBSERVABILITY.md`
 **Verification:** `processor-service/VERIFICATION.md` § Delivery Client
-**Status:** pending
+**Status:** complete
+
+## Note
+
+`internal/shared/httpclient.LoggingTransport` (a composable `http.RoundTripper`) was added as a
+shared building block. Delivery client constructs `*http.Client` with this transport. OTel can
+stack another `RoundTripper` on top during the observability task without modifying either package.
 
 ## What to build
 
@@ -17,13 +23,13 @@ Result struct:
   ErrorMessage   string
 
 Client interface:
-  Send(ctx context.Context, n *model.Notification, correlationID string) (Result, error)
+  Send(ctx context.Context, n *model.Notification) (Result, error)
 
 httpClient struct{ http *http.Client; webhookURL string }
 
-Send(ctx, n, correlationID):
+Send(ctx, n):
   — POST webhookURL with JSON body: {id, channel, recipient, content}
-  — header: X-Correlation-ID: correlationID
+  — OTel trace context injected into outbound headers by the observability task (via http.RoundTripper)
   — measure latency from request start to response
   — 202 → Result{Success: true}
   — 400 / 401 / 403 → Result{Retryable: false}
@@ -42,5 +48,4 @@ Send(ctx, n, correlationID):
 - `TestSend_503_retryable` — mock returns 503 → Retryable=true
 - `TestSend_429_retryable` — mock returns 429 → Retryable=true
 - `TestSend_timeout_retryable` — server hangs past client timeout → Retryable=true
-- `TestSend_correlationHeader` — X-Correlation-ID forwarded to mock server
 - `TestSend_latency_measured` — LatencyMS > 0 on any response

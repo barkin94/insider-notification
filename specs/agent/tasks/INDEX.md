@@ -26,6 +26,7 @@ scaffold
                                                                                       └── docs-readme
                                                                                             └── cursor-pagination
                                                                                                   └── refactor
+                                                                                                        └── shared-httpclient
 ```
 
 ## Status
@@ -40,7 +41,7 @@ scaffold
 - [x] rate-limiter
 - [x] retry
 - [x] api-handlers
-- [ ] delivery-client
+- [x] delivery-client
 - [ ] processor-worker
 - [ ] status-consumer
 - [ ] api-main
@@ -51,3 +52,4 @@ scaffold
 - [ ] docs-readme
 - [ ] cursor-pagination
 - [ ] refactor
+- [ ] shared-httpclient

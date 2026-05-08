@@ -13,9 +13,9 @@ import (
 
 func TestLogger_fields(t *testing.T) {
 	var buf bytes.Buffer
-	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
 
-	handler := middleware.Logger(logger)(
+	handler := middleware.Logger()(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}),

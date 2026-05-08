@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func Logger(logger *slog.Logger) func(http.Handler) http.Handler {
+func Logger() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			rw := &responseWriter{ResponseWriter: w, status: http.StatusOK}
@@ -14,8 +14,8 @@ func Logger(logger *slog.Logger) func(http.Handler) http.Handler {
 
 			next.ServeHTTP(rw, r)
 
-			// trace_id populated by OTel HTTP middleware (wired in observability task)
-			logger.Info("request",
+			// trace_id injected automatically when otelslog bridge is set via slog.SetDefault (observability task)
+			slog.InfoContext(r.Context(), "request",
 				"method", r.Method,
 				"path", r.URL.Path,
 				"status", rw.status,

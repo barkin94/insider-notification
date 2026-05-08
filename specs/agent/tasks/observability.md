@@ -21,16 +21,32 @@ Both services initialise the OTel SDK with:
 - `go.opentelemetry.io/otel/exporters/prometheus` → metrics on `/metrics`
 - `go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc` → traces to OTel Collector
 
+### slog integration (both services)
+
+All log calls in the codebase use package-level `slog.InfoContext(ctx, ...)` / `slog.ErrorContext`
+etc. — no logger fields in structs, no logger injection. `slog.SetDefault` in each `main()` is
+the single wiring point:
+
+```go
+bridge := otelslog.NewHandler("api") // go.opentelemetry.io/contrib/bridges/otelslog
+logger := slog.New(slog.NewMultiHandler(
+    slog.NewJSONHandler(os.Stdout, nil),
+    bridge,
+))
+slog.SetDefault(logger)
+```
+
+After this, every `slog.*Context(ctx, ...)` call anywhere in the codebase automatically:
+- Writes structured JSON to stdout
+- Ships the record to the OTel Collector with `trace_id`/`span_id` injected from the active span in ctx
+
+No other code changes needed — all log calls already pass ctx.
+
 ### OTel HTTP middleware (API service)
 
 Wrap the router with `go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp` so every
-incoming request creates a span automatically. Update `Logger` middleware to read trace ID
-from the span context:
-
-```go
-span := trace.SpanFromContext(r.Context())
-traceID := span.SpanContext().TraceID().String()
-```
+incoming request creates a span automatically. The active span is placed on `r.Context()`,
+which flows through to all `slog.*Context` calls automatically.
 
 ### Trace context propagation through Redis Streams
 

@@ -39,7 +39,6 @@
 ## Delivery Client
 
 - [ ] HTTP POST sent to webhook.site with correct JSON body
-- [ ] `X-Correlation-ID` header forwarded on every outbound call
 - [ ] Provider 202 → success
 - [ ] Provider 400 / 401 / 403 → non-retryable failure
 - [ ] Provider 5xx / 429 / timeout → retryable failure
