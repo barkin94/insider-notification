@@ -42,9 +42,9 @@ scaffold
 - [x] retry
 - [x] api-handlers
 - [x] delivery-client
-- [ ] processor-worker
-- [ ] status-consumer
-- [ ] api-main
+- [x] processor-worker
+- [x] status-consumer
+- [x] api-main
 - [ ] processor-main
 - [ ] observability
 - [ ] priority-router
@@ -53,3 +53,5 @@ scaffold
 - [ ] cursor-pagination
 - [ ] refactor
 - [ ] shared-httpclient
+- [ ] notification-processing
+- [ ] migrations-ci
