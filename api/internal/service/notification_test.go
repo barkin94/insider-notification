@@ -15,11 +15,12 @@ import (
 // --- mock repo ---
 
 type mockNotifRepo struct {
-	createFn     func(ctx context.Context, n *model.Notification) error
-	getByIDFn    func(ctx context.Context, id uuid.UUID) (*model.Notification, error)
-	listFn       func(ctx context.Context, f db.ListFilter) ([]*model.Notification, int, error)
-	transitionFn func(ctx context.Context, id uuid.UUID, from, to string) (*model.Notification, error)
-	incrFn       func(ctx context.Context, id uuid.UUID) error
+	createFn       func(ctx context.Context, n *model.Notification) error
+	getByIDFn      func(ctx context.Context, id uuid.UUID) (*model.Notification, error)
+	listFn         func(ctx context.Context, f db.ListFilter) ([]*model.Notification, int, error)
+	transitionFn   func(ctx context.Context, id uuid.UUID, from, to string) (*model.Notification, error)
+	incrFn         func(ctx context.Context, id uuid.UUID) error
+	updateStatusFn func(ctx context.Context, id uuid.UUID, status string) error
 }
 
 func (m *mockNotifRepo) Create(ctx context.Context, n *model.Notification) error {
@@ -36,6 +37,12 @@ func (m *mockNotifRepo) Transition(ctx context.Context, id uuid.UUID, from, to s
 }
 func (m *mockNotifRepo) IncrementAttempts(ctx context.Context, id uuid.UUID) error {
 	return m.incrFn(ctx, id)
+}
+func (m *mockNotifRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status string) error {
+	if m.updateStatusFn != nil {
+		return m.updateStatusFn(ctx, id, status)
+	}
+	return nil
 }
 
 // --- mock delivery attempt repo ---

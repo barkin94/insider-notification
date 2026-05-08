@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/barkin/insider-notification/internal/shared/model"
+	"github.com/barkin/insider-notification/shared/model"
 	"github.com/google/uuid"
 )
 
@@ -28,6 +28,7 @@ type NotificationRepository interface {
 	List(ctx context.Context, f ListFilter) ([]*model.Notification, int, error)
 	Transition(ctx context.Context, id uuid.UUID, from, to string) (*model.Notification, error)
 	IncrementAttempts(ctx context.Context, id uuid.UUID) error
+	UpdateStatus(ctx context.Context, id uuid.UUID, status string) error
 }
 
 // DeliveryAttemptRepository is the port for delivery attempt persistence.
