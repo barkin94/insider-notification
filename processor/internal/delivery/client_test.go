@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/barkin/insider-notification/internal/shared/model"
+	"github.com/barkin/insider-notification/shared/model"
 	"github.com/barkin/insider-notification/processor/internal/delivery"
 	"github.com/google/uuid"
 )

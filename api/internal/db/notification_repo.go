@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/barkin/insider-notification/internal/shared/model"
+	"github.com/barkin/insider-notification/shared/model"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -67,6 +67,12 @@ func (r *pgxNotificationRepo) Transition(ctx context.Context, id uuid.UUID, from
 func (r *pgxNotificationRepo) IncrementAttempts(ctx context.Context, id uuid.UUID) error {
 	_, err := r.pool.Exec(ctx,
 		`UPDATE notifications SET attempts = attempts + 1, updated_at = NOW() WHERE id = $1`, id)
+	return err
+}
+
+func (r *pgxNotificationRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status string) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE notifications SET status = $1, updated_at = NOW() WHERE id = $2`, status, id)
 	return err
 }
 

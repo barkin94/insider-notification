@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/barkin/insider-notification/api/internal/db"
-	"github.com/barkin/insider-notification/internal/shared/model"
+	"github.com/barkin/insider-notification/shared/model"
 )
 
 func TestDeliveryAttemptRepo_Create_idempotent(t *testing.T) {

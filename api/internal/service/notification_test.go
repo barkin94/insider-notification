@@ -7,8 +7,8 @@ import (
 
 	"github.com/barkin/insider-notification/api/internal/db"
 	"github.com/barkin/insider-notification/api/internal/service"
-	"github.com/barkin/insider-notification/internal/shared/model"
-	"github.com/barkin/insider-notification/internal/shared/stream"
+	"github.com/barkin/insider-notification/shared/model"
+	"github.com/barkin/insider-notification/shared/stream"
 	"github.com/google/uuid"
 )
 
@@ -150,13 +150,17 @@ func TestCreate_publishFailure(t *testing.T) {
 }
 
 func TestCancel_success(t *testing.T) {
-	svc := newSvc(okRepo(), okPublisher(nil))
+	var gotTopic string
+	svc := newSvc(okRepo(), okPublisher(&gotTopic))
 	n, err := svc.Cancel(context.Background(), uuid.New())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if n.Status != model.StatusCancelled {
 		t.Errorf("status = %q, want cancelled", n.Status)
+	}
+	if gotTopic != stream.TopicCancellation {
+		t.Errorf("cancel event published to %q, want %q", gotTopic, stream.TopicCancellation)
 	}
 }
 

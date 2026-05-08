@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/barkin/insider-notification/api/internal/db"
-	"github.com/barkin/insider-notification/internal/shared/model"
-	"github.com/barkin/insider-notification/internal/shared/stream"
+	"github.com/barkin/insider-notification/shared/model"
+	"github.com/barkin/insider-notification/shared/stream"
 	"github.com/google/uuid"
 )
 
@@ -188,7 +188,13 @@ func (s *notificationService) List(ctx context.Context, filter db.ListFilter) ([
 }
 
 func (s *notificationService) Cancel(ctx context.Context, id uuid.UUID) (*model.Notification, error) {
-	return s.repo.Transition(ctx, id, model.StatusPending, model.StatusCancelled)
+	n, err := s.repo.Transition(ctx, id, model.StatusPending, model.StatusCancelled)
+	if err != nil {
+		return nil, err
+	}
+	evt := stream.NotificationCancelledEvent{NotificationID: id.String()}
+	_ = s.publisher.Publish(ctx, stream.TopicCancellation, evt)
+	return n, nil
 }
 
 func (s *notificationService) CreateBatch(ctx context.Context, reqs []CreateRequest) (uuid.UUID, []BatchResult, error) {

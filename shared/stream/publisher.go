@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -23,5 +24,9 @@ func (p *Publisher) Publish(ctx context.Context, topic string, payload any) erro
 		return fmt.Errorf("marshal payload: %w", err)
 	}
 	msg := message.NewMessage(watermill.NewUUID(), b)
-	return p.pub.Publish(topic, msg)
+	if err := p.pub.Publish(topic, msg); err != nil {
+		slog.ErrorContext(ctx, "stream publish failed", "topic", topic, "error", err)
+		return err
+	}
+	return nil
 }

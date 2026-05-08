@@ -14,6 +14,12 @@ type NotificationCreatedEvent struct {
 	Metadata       string // JSON string, "{}" if absent
 }
 
+// NotificationCancelledEvent is published to the cancellation stream by the API
+// when a notification is cancelled. The Processor consumes this to skip in-flight delivery.
+type NotificationCancelledEvent struct {
+	NotificationID string
+}
+
 // NotificationDeliveryResultEvent is published to the status stream by the
 // Processor after each delivery attempt. Trace context travels in message.Metadata.
 type NotificationDeliveryResultEvent struct {

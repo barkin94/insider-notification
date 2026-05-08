@@ -3,7 +3,7 @@ package model_test
 import (
 	"testing"
 
-	"github.com/barkin/insider-notification/internal/shared/model"
+	"github.com/barkin/insider-notification/shared/model"
 )
 
 func TestChannelValues(t *testing.T) {

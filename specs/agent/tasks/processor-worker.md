@@ -2,7 +2,7 @@
 
 **Specs:** `system/QUEUE_DESIGN.md`, `processor-service/RETRY_POLICY.md`
 **Verification:** `processor-service/VERIFICATION.md` § Stream Consumer & Worker Pool, § Worker End-to-End
-**Status:** pending
+**Status:** complete
 
 ## What to build
 

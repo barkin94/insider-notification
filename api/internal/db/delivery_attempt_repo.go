@@ -3,7 +3,7 @@ package db
 import (
 	"context"
 
-	"github.com/barkin/insider-notification/internal/shared/model"
+	"github.com/barkin/insider-notification/shared/model"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"

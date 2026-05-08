@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill-redisstream/pkg/redisstream"
-	"github.com/barkin/insider-notification/internal/shared/stream"
+	"github.com/barkin/insider-notification/shared/stream"
 	"github.com/redis/go-redis/v9"
 	"github.com/testcontainers/testcontainers-go"
 	tcredis "github.com/testcontainers/testcontainers-go/modules/redis"

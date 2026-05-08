@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"os"
 
-	shared "github.com/barkin/insider-notification/internal/shared/config"
+	shared "github.com/barkin/insider-notification/shared/config"
 )
 
 type Config struct {

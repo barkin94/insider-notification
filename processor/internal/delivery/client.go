@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/barkin/insider-notification/internal/shared/model"
+	"github.com/barkin/insider-notification/shared/model"
 )
 
 // Result holds the outcome of a single delivery attempt.

@@ -9,7 +9,7 @@ import (
 
 	"github.com/barkin/insider-notification/api/internal/db"
 	"github.com/barkin/insider-notification/api/internal/service"
-	"github.com/barkin/insider-notification/internal/shared/model"
+	"github.com/barkin/insider-notification/shared/model"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
