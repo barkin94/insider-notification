@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -15,16 +17,25 @@ import (
 	"github.com/barkin/insider-notification/processor/internal/ratelimit"
 	"github.com/barkin/insider-notification/processor/internal/worker"
 	"github.com/barkin/insider-notification/shared/lock"
+	sharedotel "github.com/barkin/insider-notification/shared/otel"
 	sharedredis "github.com/barkin/insider-notification/shared/redis"
 	"github.com/barkin/insider-notification/shared/stream"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/contrib/bridges/otelslog"
 )
 
 func main() {
 	// --- config & logging ---
 	cfg := config.Load()
-	initLogger(cfg.LogLevel)
+	initLogger(cfg.LogLevel, "processor")
 
-	// TODO: init OTel SDK — Prometheus + OTLP trace exporter (observability task)
+	// --- OTel SDK: traces (OTLP gRPC) + metrics (Prometheus) ---
+	otelShutdown, err := sharedotel.Init(context.Background(), "processor", cfg.OTelEndpoint)
+	if err != nil {
+		slog.Error("init otel", "error", err)
+		os.Exit(1)
+	}
+	defer otelShutdown(context.Background())
 
 	// cancelled on SIGINT / SIGTERM; propagates to all goroutines
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -90,12 +101,25 @@ func main() {
 	}
 	slog.Info("processor started", "workers", cfg.WorkerConcurrency)
 
-	// TODO: expose Prometheus /metrics on cfg.MetricsPort (observability task)
+	// --- metrics server: Prometheus /metrics on cfg.MetricsPort ---
+	metricsMux := http.NewServeMux()
+	metricsMux.Handle("/metrics", promhttp.Handler())
+	metricsAddr := fmt.Sprintf(":%d", cfg.MetricsPort)
+	metricsServer := &http.Server{Addr: metricsAddr, Handler: metricsMux}
+	go func() {
+		slog.Info("metrics server starting", "addr", metricsAddr)
+		if err := metricsServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("metrics server error", "error", err)
+		}
+	}()
 
 	// --- graceful shutdown: wait for all workers to finish current message ---
 	<-ctx.Done()
 	slog.Info("shutting down, waiting for workers")
 	wg.Wait()
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	metricsServer.Shutdown(shutdownCtx)
 	slog.Info("all workers stopped")
 }
 
@@ -130,7 +154,7 @@ func fanIn(ctx context.Context, channels ...<-chan stream.Result[stream.Notifica
 	return out
 }
 
-func initLogger(level string) {
+func initLogger(level, serviceName string) {
 	var l slog.Level
 	switch strings.ToLower(level) {
 	case "debug":
@@ -142,5 +166,9 @@ func initLogger(level string) {
 	default:
 		l = slog.LevelInfo
 	}
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: l})))
+	opts := &slog.HandlerOptions{Level: l}
+	slog.SetDefault(slog.New(sharedotel.NewMultiHandler(
+		slog.NewJSONHandler(os.Stdout, opts),
+		otelslog.NewHandler(serviceName),
+	)))
 }

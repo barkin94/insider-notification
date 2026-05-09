@@ -1,7 +1,7 @@
 # OBSERVABILITY — Notification System
 
 Both services are instrumented with the OpenTelemetry Go SDK. Metrics are scraped by Prometheus
-and visualised in Grafana. Traces are exported via OTLP to Jaeger.
+and visualised in Grafana. Traces are exported via OTLP to Grafana Tempo.
 
 ---
 
@@ -11,7 +11,7 @@ and visualised in Grafana. Traces are exported via OTLP to Jaeger.
 |---------|------|
 | SDK | `go.opentelemetry.io/otel` |
 | Metrics exporter | Prometheus (`go.opentelemetry.io/otel/exporters/prometheus`) |
-| Trace exporter | OTLP gRPC → OTel Collector → Jaeger |
+| Trace exporter | OTLP gRPC → OTel Collector → Grafana Tempo |
 | Logging | `log/slog` (OTel logs API not yet stable in Go) |
 
 ### Metrics
@@ -66,10 +66,10 @@ Every HTTP request gets a `X-Correlation-ID` header (generated if absent). It pr
 
 | Service | Purpose | Default URL |
 |---------|---------|-------------|
-| `otel-collector` | Receives OTLP spans; forwards to Prometheus + Jaeger | — |
+| `otel-collector` | Receives OTLP spans; forwards traces to Tempo, metrics to Prometheus | — |
 | `prometheus` | Scrapes `/metrics` on both services | `http://localhost:9090` |
-| `grafana` | Dashboards over Prometheus data | `http://localhost:3000` |
-| `jaeger` | Stores and displays traces | `http://localhost:16686` |
+| `tempo` | Stores traces; queried by Grafana | `http://localhost:3200` |
+| `grafana` | Dashboards (metrics via Prometheus, traces via Tempo, logs via Loki) | `http://localhost:3000` |
 
 ---
 

@@ -17,16 +17,24 @@ import (
 	"github.com/barkin/insider-notification/api/internal/db"
 	"github.com/barkin/insider-notification/api/internal/handler"
 	"github.com/barkin/insider-notification/api/internal/service"
+	sharedotel "github.com/barkin/insider-notification/shared/otel"
 	sharedredis "github.com/barkin/insider-notification/shared/redis"
 	"github.com/barkin/insider-notification/shared/stream"
+	"go.opentelemetry.io/contrib/bridges/otelslog"
 )
 
 func main() {
 	// --- config & logging ---
 	cfg := config.Load()
-	initLogger(cfg.LogLevel)
+	initLogger(cfg.LogLevel, "api")
 
-	// TODO: init OTel SDK — Prometheus + OTLP trace exporter (observability task)
+	// --- OTel SDK: traces (OTLP gRPC) + metrics (Prometheus) ---
+	otelShutdown, err := sharedotel.Init(context.Background(), "api", cfg.OTelEndpoint)
+	if err != nil {
+		slog.Error("init otel", "error", err)
+		os.Exit(1)
+	}
+	defer otelShutdown(context.Background())
 
 	// cancelled on SIGINT / SIGTERM; propagates to all goroutines
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -115,7 +123,7 @@ func main() {
 	slog.Info("all goroutines stopped")
 }
 
-func initLogger(level string) {
+func initLogger(level, serviceName string) {
 	var l slog.Level
 	switch strings.ToLower(level) {
 	case "debug":
@@ -127,5 +135,9 @@ func initLogger(level string) {
 	default:
 		l = slog.LevelInfo
 	}
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: l})))
+	opts := &slog.HandlerOptions{Level: l}
+	slog.SetDefault(slog.New(sharedotel.NewMultiHandler(
+		slog.NewJSONHandler(os.Stdout, opts),
+		otelslog.NewHandler(serviceName),
+	)))
 }

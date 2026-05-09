@@ -23,11 +23,13 @@ services:
       timeout: 5s
       retries: 5
 
-  jaeger:
-    image: jaegertracing/all-in-one:latest
+  tempo:
+    image: grafana/tempo:latest
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./tempo.yaml:/etc/tempo.yaml:ro
     ports:
-      - "16686:16686"
-      - "4317:4317"
+      - "3200:3200"
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
@@ -37,7 +39,7 @@ services:
     ports:
       - "4318:4317"
     depends_on:
-      - jaeger
+      - tempo
 
   prometheus:
     image: prom/prometheus:latest
@@ -52,10 +54,24 @@ services:
       - "3000:3000"
     environment:
       GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
     depends_on:
       - prometheus
+      - tempo
+
+  migrate-api:
+    image: migrate/migrate
+    volumes:
+      - ./api/migrations:/migrations:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["migrate -path=/migrations -database $$DATABASE_URL up"]
+    env_file: api/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   api:
     build:
@@ -65,8 +81,8 @@ services:
     ports:
       - "8080:8080"
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate-api:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
       otel-collector:
@@ -80,8 +96,6 @@ services:
     ports:
       - "8081:8081"
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
       otel-collector:

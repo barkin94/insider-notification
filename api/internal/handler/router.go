@@ -8,7 +8,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 // Deps holds the dependencies required to build the HTTP router.
@@ -25,6 +27,7 @@ func NewRouter(deps Deps) http.Handler {
 	r.Use(chiMiddleware.Recoverer)
 	r.Use(middleware.Logger())
 
+	r.Get("/metrics", promhttp.Handler().ServeHTTP)
 	r.Get("/api/v1/health", healthCheck(deps.DB, deps.Redis))
 
 	r.Route("/api/v1/notifications", func(r chi.Router) {
@@ -35,5 +38,5 @@ func NewRouter(deps Deps) http.Handler {
 		r.Post("/{id}/cancel", cancelNotification(deps.Service))
 	})
 
-	return r
+	return otelhttp.NewHandler(r, "api")
 }

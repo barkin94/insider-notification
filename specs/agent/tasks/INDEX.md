@@ -45,8 +45,8 @@ scaffold
 - [x] processor-worker
 - [x] status-consumer
 - [x] api-main
-- [ ] processor-main
-- [ ] observability
+- [x] processor-main
+- [x] observability
 - [ ] priority-router
 - [ ] ratelimit-replace
 - [ ] docs-readme
