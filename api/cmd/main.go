@@ -27,13 +27,12 @@ import (
 	sharedotel "github.com/barkin/insider-notification/shared/otel"
 	sharedredis "github.com/barkin/insider-notification/shared/redis"
 	"github.com/barkin/insider-notification/shared/stream"
-	"go.opentelemetry.io/contrib/bridges/otelslog"
 )
 
 func main() {
 	// --- config & logging ---
 	cfg := config.Load()
-	initLogger(cfg.LogLevel, "api")
+	initLogger(cfg.LogLevel)
 
 	// --- OTel SDK: traces (OTLP gRPC) + metrics (Prometheus) ---
 	otelShutdown, err := sharedotel.Init(context.Background(), "api", cfg.OTelEndpoint)
@@ -130,7 +129,7 @@ func main() {
 	slog.Info("all goroutines stopped")
 }
 
-func initLogger(level, serviceName string) {
+func initLogger(level string) {
 	var l slog.Level
 	switch strings.ToLower(level) {
 	case "debug":
@@ -143,8 +142,7 @@ func initLogger(level, serviceName string) {
 		l = slog.LevelInfo
 	}
 	opts := &slog.HandlerOptions{Level: l}
-	slog.SetDefault(slog.New(sharedotel.NewMultiHandler(
+	slog.SetDefault(slog.New(sharedotel.NewTraceHandler(
 		slog.NewJSONHandler(os.Stdout, opts),
-		otelslog.NewHandler(serviceName),
 	)))
 }

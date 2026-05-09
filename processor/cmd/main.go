@@ -21,13 +21,12 @@ import (
 	sharedredis "github.com/barkin/insider-notification/shared/redis"
 	"github.com/barkin/insider-notification/shared/stream"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"go.opentelemetry.io/contrib/bridges/otelslog"
 )
 
 func main() {
 	// --- config & logging ---
 	cfg := config.Load()
-	initLogger(cfg.LogLevel, "processor")
+	initLogger(cfg.LogLevel)
 
 	// --- OTel SDK: traces (OTLP gRPC) + metrics (Prometheus) ---
 	otelShutdown, err := sharedotel.Init(context.Background(), "processor", cfg.OTelEndpoint)
@@ -154,7 +153,7 @@ func fanIn(ctx context.Context, channels ...<-chan stream.Result[stream.Notifica
 	return out
 }
 
-func initLogger(level, serviceName string) {
+func initLogger(level string) {
 	var l slog.Level
 	switch strings.ToLower(level) {
 	case "debug":
@@ -167,8 +166,7 @@ func initLogger(level, serviceName string) {
 		l = slog.LevelInfo
 	}
 	opts := &slog.HandlerOptions{Level: l}
-	slog.SetDefault(slog.New(sharedotel.NewMultiHandler(
+	slog.SetDefault(slog.New(sharedotel.NewTraceHandler(
 		slog.NewJSONHandler(os.Stdout, opts),
-		otelslog.NewHandler(serviceName),
 	)))
 }

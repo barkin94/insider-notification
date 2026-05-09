@@ -47,7 +47,7 @@ scaffold
 - [x] api-main
 - [x] processor-main
 - [x] swagger
-- [ ] observability
+- [x] observability
 - [ ] priority-router
 - [ ] ratelimit-replace
 - [ ] docs-readme
@@ -56,3 +56,4 @@ scaffold
 - [ ] shared-httpclient
 - [ ] notification-processing
 - [ ] migrations-ci
+- [ ] replace-promtail-with-otelcollector

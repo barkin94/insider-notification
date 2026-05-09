@@ -40,6 +40,7 @@ services:
       - "4318:4317"
     depends_on:
       - tempo
+      - loki
 
   prometheus:
     image: prom/prometheus:latest
@@ -47,6 +48,23 @@ services:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
     ports:
       - "9090:9090"
+
+  loki:
+    image: grafana/loki:latest
+    command: ["-config.file=/etc/loki/loki.yaml"]
+    volumes:
+      - ./loki.yaml:/etc/loki/loki.yaml:ro
+    ports:
+      - "3100:3100"
+
+  promtail:
+    image: grafana/promtail:latest
+    command: ["-config.file=/etc/promtail/promtail.yaml"]
+    volumes:
+      - ./promtail.yaml:/etc/promtail/promtail.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
 
   grafana:
     image: grafana/grafana:latest
@@ -61,6 +79,8 @@ services:
     depends_on:
       - prometheus
       - tempo
+      - loki
+      - otel-collector
 
   migrate-api:
     image: migrate/migrate
