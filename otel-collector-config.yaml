@@ -1,62 +1,8 @@
-# receivers:
-#   otlp:
-#     protocols:
-#       grpc:
-#         endpoint: 0.0.0.0:4317
-#   filelog:
-#     include: [/var/lib/docker/containers/*/*.log]
-#     start_at: end
-#     include_file_path: true
-#     operators:
-#       - type: json_parser
-#         timestamp:
-#           parse_from: attributes.time
-#           layout: '%Y-%m-%dT%H:%M:%S.%LZ'
-#       - type: move
-#         from: attributes.log
-#         to: body
-#       - type: json_parser
-#         id: parse_app_log
-#         parse_from: body
-#         on_error: send
-#       - type: move
-#         from: attributes.attrs.service
-#         to: attributes.service
-#         on_error: drop
-#
-# exporters:
-#   otlp/tempo:
-#     endpoint: tempo:4317
-#     tls:
-#       insecure: true
-#   otlphttp/loki:
-#     endpoint: http://loki:3100/otlp
-#     tls:
-#       insecure: true
-#
-# service:
-#   pipelines:
-#     traces:
-#       receivers: [otlp]
-#       exporters: [otlp/tempo]
-#     logs:
-#       receivers: [filelog]
-#       exporters: [otlphttp/loki]
 receivers:
   otlp:
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
-      http:
-        endpoint: 0.0.0.0:4318
-
-# --- ADD THIS SECTION ---
-processors:
-  batch:
-    # Optional: you can tune this, but defaults are usually fine for dev
-    send_batch_size: 1000
-    timeout: 10s
-# -------------------------
 
 exporters:
   otlp/tempo:
@@ -64,25 +10,8 @@ exporters:
     tls:
       insecure: true
 
-  prometheusremotewrite:
-    endpoint: "http://prometheus:9090/api/v1/write"
-
-  otlphttp/loki:
-    endpoint: "http://loki:3100/otlp"
-    tls:
-      insecure: true
-
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [batch] # Now it knows what "batch" is!
       exporters: [otlp/tempo]
-    metrics:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [prometheusremotewrite]
-    logs:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [otlphttp/loki]
