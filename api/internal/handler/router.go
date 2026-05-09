@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 
+	_ "github.com/barkin/insider-notification/api/docs"
 	"github.com/barkin/insider-notification/api/internal/middleware"
 	"github.com/barkin/insider-notification/api/internal/service"
 	"github.com/go-chi/chi/v5"
@@ -10,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
+	httpSwagger "github.com/swaggo/http-swagger"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
@@ -28,6 +30,7 @@ func NewRouter(deps Deps) http.Handler {
 	r.Use(middleware.Logger())
 
 	r.Get("/metrics", promhttp.Handler().ServeHTTP)
+	r.Get("/api/v1/docs/*", httpSwagger.WrapHandler)
 	r.Get("/api/v1/health", healthCheck(deps.DB, deps.Redis))
 
 	r.Route("/api/v1/notifications", func(r chi.Router) {

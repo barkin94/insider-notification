@@ -1,3 +1,10 @@
+// @title           Insider Notification API
+// @version         1.0
+// @description     Notification delivery service — create, list, and cancel notifications.
+// @host            localhost:8080
+// @BasePath        /api/v1
+// @schemes         http
+
 package main
 
 import (

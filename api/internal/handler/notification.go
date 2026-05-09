@@ -21,7 +21,7 @@ type createRequest struct {
 	Channel   string          `json:"channel"`
 	Content   string          `json:"content"`
 	Priority  string          `json:"priority"`
-	Metadata  json.RawMessage `json:"metadata"`
+	Metadata  json.RawMessage `json:"metadata" swaggertype:"object"`
 }
 
 type notificationResponse struct {
@@ -92,6 +92,16 @@ type batchResponse struct {
 
 // --- handler constructors ---
 
+// createNotification godoc
+// @Summary     Create a notification
+// @Tags        notifications
+// @Accept      json
+// @Produce     json
+// @Param       body body createRequest true "Notification payload"
+// @Success     201 {object} notificationResponse
+// @Failure     400 {object} errorBody
+// @Failure     500 {object} errorBody
+// @Router      /notifications [post]
 func createNotification(svc service.NotificationService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req createRequest
@@ -120,6 +130,16 @@ func createNotification(svc service.NotificationService) http.HandlerFunc {
 	}
 }
 
+// getNotification godoc
+// @Summary     Get a notification
+// @Tags        notifications
+// @Produce     json
+// @Param       id path string true "Notification ID (UUID)"
+// @Success     200 {object} notificationWithAttemptsResponse
+// @Failure     400 {object} errorBody
+// @Failure     404 {object} errorBody
+// @Failure     500 {object} errorBody
+// @Router      /notifications/{id} [get]
 func getNotification(svc service.NotificationService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := uuid.Parse(chi.URLParam(r, "id"))
@@ -146,6 +166,22 @@ func getNotification(svc service.NotificationService) http.HandlerFunc {
 	}
 }
 
+// listNotifications godoc
+// @Summary     List notifications
+// @Tags        notifications
+// @Produce     json
+// @Param       status    query string false "Filter by status"
+// @Param       channel   query string false "Filter by channel"
+// @Param       batch_id  query string false "Filter by batch ID (UUID)"
+// @Param       date_from query string false "Filter from date (RFC3339)"
+// @Param       date_to   query string false "Filter to date (RFC3339)"
+// @Param       sort      query string false "Sort field"
+// @Param       order     query string false "Sort order (asc|desc)"
+// @Param       page      query int    false "Page number (default 1)"
+// @Param       page_size query int    false "Page size (default 20, max 100)"
+// @Success     200 {object} listResponse
+// @Failure     500 {object} errorBody
+// @Router      /notifications [get]
 func listNotifications(svc service.NotificationService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
@@ -206,6 +242,17 @@ func listNotifications(svc service.NotificationService) http.HandlerFunc {
 	}
 }
 
+// cancelNotification godoc
+// @Summary     Cancel a notification
+// @Tags        notifications
+// @Produce     json
+// @Param       id path string true "Notification ID (UUID)"
+// @Success     200 {object} cancelResponse
+// @Failure     400 {object} errorBody
+// @Failure     404 {object} errorBody
+// @Failure     409 {object} errorBody
+// @Failure     500 {object} errorBody
+// @Router      /notifications/{id}/cancel [post]
 func cancelNotification(svc service.NotificationService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := uuid.Parse(chi.URLParam(r, "id"))
@@ -236,6 +283,16 @@ func cancelNotification(svc service.NotificationService) http.HandlerFunc {
 	}
 }
 
+// createBatch godoc
+// @Summary     Create a batch of notifications
+// @Tags        notifications
+// @Accept      json
+// @Produce     json
+// @Param       body body batchRequest true "Batch payload (max 1000 items)"
+// @Success     207 {object} batchResponse
+// @Failure     400 {object} errorBody
+// @Failure     500 {object} errorBody
+// @Router      /notifications/batch [post]
 func createBatch(svc service.NotificationService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req batchRequest

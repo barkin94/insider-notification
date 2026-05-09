@@ -1,4 +1,4 @@
-.PHONY: help infra up down build logs test lint
+.PHONY: help infra up down build logs test lint swag
 
 help: ## Show available commands
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-14s %s\n", $$1, $$2}'
@@ -23,3 +23,6 @@ test: ## Run all tests (requires Docker for testcontainers)
 
 lint: ## Run linter (requires golangci-lint)
 	golangci-lint run
+
+swag: ## Regenerate Swagger docs (requires swag CLI)
+	swag init -g api/cmd/main.go -o api/docs

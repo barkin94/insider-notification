@@ -64,6 +64,8 @@ Expected: `{"status":"ok"}`
 
 Base URL: `http://localhost:8080`
 
+**Swagger UI:** `http://localhost:8080/api/v1/docs/index.html`
+
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/api/v1/health` | Health check (Postgres + Redis) |
@@ -110,6 +112,12 @@ Integration tests spin up Postgres and Redis via testcontainers — Docker must 
 
 ```bash
 make lint
+```
+
+**Regenerate Swagger docs** (only needed after changing handler signatures or adding endpoints)
+
+```bash
+make swag
 ```
 
 **Run locally** (requires Postgres and Redis on localhost)

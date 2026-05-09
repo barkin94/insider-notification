@@ -16,6 +16,13 @@ type healthResponse struct {
 	Version string            `json:"version,omitempty"`
 }
 
+// healthCheck godoc
+// @Summary     Health check
+// @Tags        system
+// @Produce     json
+// @Success     200 {object} healthResponse
+// @Failure     503 {object} healthResponse
+// @Router      /health [get]
 func healthCheck(db *pgxpool.Pool, rdb *redis.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		checks := make(map[string]string, 2)
