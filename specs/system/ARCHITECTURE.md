@@ -93,9 +93,9 @@ No globals, no `init()`.
 | Layer | Package | Responsibility |
 |-------|---------|----------------|
 | Stream consumer | `processor/internal/worker/` | Poll streams, dispatch to delivery service |
-| Delivery | `processor/internal/delivery/` | HTTP POST to webhook provider |
-| Rate limiting | `processor/internal/ratelimit/` | Redis token bucket per channel |
-| Retry | `processor/internal/retry/` | Backoff formula; re-enqueue with `deliver_after` |
+| Delivery | `processor/internal/worker/delivery/` | HTTP POST to webhook provider |
+| Rate limiting | `processor/internal/worker/ratelimit/` | Redis token bucket per channel |
+| Retry | `processor/internal/worker/retry/` | Backoff formula; re-enqueue with `deliver_after` |
 | Stream | `internal/shared/stream/` | Publish `NotificationDeliveryResultEvent` to status stream |
 
 All dependencies are injected via constructors. No globals, no `init()`.

@@ -48,7 +48,7 @@ scaffold
 - [x] processor-main
 - [x] swagger
 - [x] observability
-- [ ] priority-router
+- [x] priority-router
 - [ ] ratelimit-replace
 - [ ] docs-readme
 - [ ] cursor-pagination

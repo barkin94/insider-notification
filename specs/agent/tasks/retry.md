@@ -6,7 +6,7 @@
 
 ## What to build
 
-### `processor/internal/retry/backoff.go`
+### `processor/internal/worker/retry/backoff.go`
 ```
 Delay(attempt int) time.Duration
   — formula: min(60s * 2^(attempt-1), 480s) + jitter
@@ -20,7 +20,7 @@ No external dependencies — pure computation.
 
 ## Tests
 
-`processor/internal/retry/backoff_test.go`:
+`processor/internal/worker/retry/backoff_test.go`:
 
 - `TestDelay_attempt2` — base = 60s; result in [60s, 72s]
 - `TestDelay_attempt3` — base = 120s; result in [120s, 144s]

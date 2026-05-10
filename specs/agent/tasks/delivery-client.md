@@ -12,7 +12,7 @@ stack another `RoundTripper` on top during the observability task without modify
 
 ## What to build
 
-### `processor/internal/delivery/client.go`
+### `processor/internal/worker/delivery/client.go`
 ```
 Result struct:
   Success        bool
@@ -39,7 +39,7 @@ Send(ctx, n):
 
 ## Tests
 
-`processor/internal/delivery/client_test.go` using `httptest.NewServer`:
+`processor/internal/worker/delivery/client_test.go` using `httptest.NewServer`:
 
 - `TestSend_202_success` — mock returns 202 → Result.Success=true, Retryable=false
 - `TestSend_400_nonRetryable` — mock returns 400 → Retryable=false

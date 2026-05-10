@@ -6,7 +6,7 @@
 
 ## What to build
 
-### `processor/internal/ratelimit/limiter.go`
+### `processor/internal/worker/ratelimit/limiter.go`
 ```
 Limiter interface:
   Allow(ctx, channel string) (bool, error)

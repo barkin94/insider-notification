@@ -24,7 +24,7 @@
 - [ ] Rate-limited notification re-enqueued immediately (no backoff); attempt counter not incremented
 - [ ] Worker sleeps `1000ms / capacity` (10ms) after a rate-limit hit
 - [ ] Concurrent goroutine test confirms atomic execution
-- [ ] `go test ./processor/internal/ratelimit/...` passes
+- [ ] `go test ./processor/internal/worker/ratelimit/...` passes
 
 ---
 
@@ -32,7 +32,7 @@
 
 - [ ] Backoff formula: `min(60s * 2^(attempt-1), 480s) + jitter` where `jitter ∈ [0, delay * 0.2]`
 - [ ] Computed delays match `RETRY_POLICY.md` table (attempt 2 ≈ 60–72s, attempt 3 ≈ 120–144s, attempt 4 ≈ 240–288s)
-- [ ] `go test ./processor/internal/retry/...` passes
+- [ ] `go test ./processor/internal/worker/retry/...` passes
 
 ---
 
@@ -43,7 +43,7 @@
 - [ ] Provider 400 / 401 / 403 → non-retryable failure
 - [ ] Provider 5xx / 429 / timeout → retryable failure
 - [ ] Latency measured from dispatch to response
-- [ ] `go test ./processor/internal/delivery/...` passes
+- [ ] `go test ./processor/internal/worker/delivery/...` passes
 
 ---
 

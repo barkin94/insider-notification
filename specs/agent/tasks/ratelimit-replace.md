@@ -5,14 +5,14 @@
 
 ## Context
 
-The current `processor/internal/ratelimit/limiter.go` uses an inline Lua script to implement
+The current `processor/internal/worker/ratelimit/limiter.go` uses an inline Lua script to implement
 the token bucket atomically in Redis. This was noted as temporary — the Lua approach is hard to
 read, test in isolation, and maintain.
 
 ## What to replace
 
 ### Current implementation
-`redisLimiter` in `processor/internal/ratelimit/limiter.go` — Lua script via `redis.NewScript`.
+`redisLimiter` in `processor/internal/worker/ratelimit/limiter.go` — Lua script via `redis.NewScript`.
 
 ### Replacement options to evaluate
 
@@ -35,5 +35,5 @@ read, test in isolation, and maintain.
 Evaluate and pick one option before implementing. The replacement must:
 - Preserve the `Limiter` interface (`Allow(ctx, channel string) (bool, error)`)
 - Keep the same token bucket semantics: capacity=100, burst=120, refill=100/s
-- Pass all existing tests in `processor/internal/ratelimit/limiter_test.go`
+- Pass all existing tests in `processor/internal/worker/ratelimit/limiter_test.go`
 - Contain no hand-written Lua scripts

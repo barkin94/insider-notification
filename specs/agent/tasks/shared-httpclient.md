@@ -4,7 +4,7 @@
 
 ## Context
 
-`processor/internal/delivery/client.go` hardcodes `*http.Client` construction with a fixed
+`processor/internal/worker/delivery/client.go` hardcodes `*http.Client` construction with a fixed
 timeout and no transport configuration. The observability task will need to wrap the transport
 with `otelhttp.NewTransport` for tracing. Making the client configurable now avoids touching
 delivery logic at observability time.

@@ -17,4 +17,4 @@ type: reference
 | `api-service/API_CONTRACT.md` | `api/internal/handler/`, `api/internal/middleware/` |
 | `processor-service/QUEUE_DESIGN.md` | `shared/stream/`, `processor/internal/worker/` ★ |
 | `processor-service/PRIORITY_ROUTER.md` | `processor/internal/priorityrouter/` |
-| `processor-service/RETRY_POLICY.md` | `processor/internal/worker/`, `processor/internal/retry/` |
+| `processor-service/RETRY_POLICY.md` | `processor/internal/worker/`, `processor/internal/worker/retry/` |
