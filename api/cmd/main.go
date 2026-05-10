@@ -29,17 +29,18 @@ import (
 )
 
 func main() {
-	// --- config & logging ---
+	// --- config ---
 	cfg := config.Load()
-	sharedotel.InitLogger(cfg.LogLevel)
 
-	// --- OTel SDK: traces (OTLP gRPC) + metrics (Prometheus) ---
+	// --- OTel SDK: traces + metrics + logs via OTLP gRPC ---
+	// InitLogger must come after Init so the global LoggerProvider is set.
 	otelShutdown, err := sharedotel.Init(context.Background(), "api", cfg.OTelEndpoint)
 	if err != nil {
-		slog.Error("init otel", "error", err)
+		fmt.Fprintf(os.Stderr, "init otel: %v\n", err)
 		os.Exit(1)
 	}
 	defer otelShutdown(context.Background())
+	sharedotel.InitLogger(cfg.LogLevel)
 
 	// cancelled on SIGINT / SIGTERM; propagates to all goroutines
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

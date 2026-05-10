@@ -23,17 +23,18 @@ import (
 var defaultWeights = [3]int{3, 2, 1} // high ~50%, normal ~33%, low ~17%
 
 func main() {
-	// --- config & logging ---
+	// --- config ---
 	cfg := config.Load()
-	sharedotel.InitLogger(cfg.LogLevel)
 
-	// --- OTel SDK: traces (OTLP gRPC) + metrics (Prometheus) ---
+	// --- OTel SDK: traces + metrics + logs via OTLP gRPC ---
+	// InitLogger must come after Init so the global LoggerProvider is set.
 	otelShutdown, err := sharedotel.Init(context.Background(), "processor", cfg.OTelEndpoint)
 	if err != nil {
 		slog.Error("init otel", "error", err)
 		os.Exit(1)
 	}
 	defer otelShutdown(context.Background())
+	sharedotel.InitLogger(cfg.LogLevel)
 
 	// cancelled on SIGINT / SIGTERM; propagates to all goroutines
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
