@@ -27,8 +27,9 @@ func (p *Publisher) Publish(ctx context.Context, topic string, payload any) erro
 	msg := message.NewMessage(watermill.NewUUID(), b)
 	otel.GetTextMapPropagator().Inject(ctx, NewStreamCarrier(msg.Metadata))
 	if err := p.pub.Publish(topic, msg); err != nil {
-		slog.ErrorContext(ctx, "stream publish failed", "topic", topic, "error", err)
+		slog.ErrorContext(ctx, "publish failed", "topic", topic, "error", err)
 		return err
 	}
+	slog.InfoContext(ctx, "publish success", "topic", topic, "payload", payload)
 	return nil
 }

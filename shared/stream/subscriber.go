@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	"github.com/ThreeDotsLabs/watermill/message"
 )
@@ -23,6 +24,7 @@ func Subscribe[T any](ctx context.Context, sub message.Subscriber, topic string)
 		for msg := range msgs {
 			var e T
 			if err := json.Unmarshal(msg.Payload, &e); err != nil {
+				slog.InfoContext(ctx, "message received", "topic", topic, "message", msg)
 				msg.Nack()
 				select {
 				case out <- Result[T]{Err: fmt.Errorf("unmarshal: %w", err)}:
