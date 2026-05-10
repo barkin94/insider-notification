@@ -15,6 +15,7 @@ import (
 	"github.com/barkin/insider-notification/processor/internal/config"
 	"github.com/barkin/insider-notification/processor/internal/delivery"
 	"github.com/barkin/insider-notification/processor/internal/ratelimit"
+	"github.com/barkin/insider-notification/processor/internal/priorityrouter"
 	"github.com/barkin/insider-notification/processor/internal/worker"
 	"github.com/barkin/insider-notification/shared/lock"
 	sharedotel "github.com/barkin/insider-notification/shared/otel"
@@ -22,6 +23,8 @@ import (
 	"github.com/barkin/insider-notification/shared/stream"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
+
+var defaultWeights = [3]int{3, 2, 1} // high ~50%, normal ~33%, low ~17%
 
 func main() {
 	// --- config & logging ---
@@ -63,7 +66,7 @@ func main() {
 
 	// TODO: PEL reclaim before workers start (priority-router task)
 
-	// --- subscribe to all three priority topics; fan-in to one channel ---
+	// --- subscribe to all three priority topics ---
 	highMsgs, err := stream.Subscribe[stream.NotificationCreatedEvent](ctx, sub, stream.TopicHigh)
 	if err != nil {
 		slog.Error("subscribe high", "error", err)
@@ -79,7 +82,7 @@ func main() {
 		slog.Error("subscribe low", "error", err)
 		os.Exit(1)
 	}
-	msgs := fanIn(ctx, highMsgs, normalMsgs, lowMsgs)
+	pRouter := priorityrouter.NewPriorityRouter(ctx, highMsgs, normalMsgs, lowMsgs, defaultWeights)
 
 	// --- worker dependencies ---
 	limiter := ratelimit.NewLimiter(rdb)
@@ -95,7 +98,7 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			w.Run(ctx, msgs)
+			w.Run(ctx, pRouter)
 		}()
 	}
 	slog.Info("processor started", "workers", cfg.WorkerConcurrency)
@@ -120,37 +123,6 @@ func main() {
 	defer cancel()
 	metricsServer.Shutdown(shutdownCtx)
 	slog.Info("all workers stopped")
-}
-
-func fanIn(ctx context.Context, channels ...<-chan stream.Result[stream.NotificationCreatedEvent]) <-chan stream.Result[stream.NotificationCreatedEvent] {
-	out := make(chan stream.Result[stream.NotificationCreatedEvent])
-	var wg sync.WaitGroup
-	for _, ch := range channels {
-		wg.Add(1)
-		go func(c <-chan stream.Result[stream.NotificationCreatedEvent]) {
-			defer wg.Done()
-			for {
-				select {
-				case msg, ok := <-c:
-					if !ok {
-						return
-					}
-					select {
-					case out <- msg:
-					case <-ctx.Done():
-						return
-					}
-				case <-ctx.Done():
-					return
-				}
-			}
-		}(ch)
-	}
-	go func() {
-		wg.Wait()
-		close(out)
-	}()
-	return out
 }
 
 func initLogger(level string) {

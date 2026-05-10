@@ -40,26 +40,9 @@ Both groups are created on startup if they do not already exist.
 
 ## Priority Ordering
 
-Workers sweep streams in priority order before blocking:
-
-```
-poll for next message:
-          │
-    high stream non-empty? ──yes──► return message
-          │ no
-    normal stream non-empty? ──yes──► return message
-          │ no
-    low stream non-empty? ──yes──► return message
-          │ no
-    block on high stream (1s timeout)
-          │
-    message arrived? ──yes──► return message
-          │ no
-    return nil
-```
-
-The non-blocking sweep prevents the worker from stalling on `high` while `normal` or `low`
-messages accumulate.
+> **Superseded.** Strict priority sweep has been replaced by weighted round-robin.
+> See [`PRIORITY_ROUTER.md`](./PRIORITY_ROUTER.md) for the authoritative algorithm,
+> interface, and test specification.
 
 ---
 
@@ -67,7 +50,7 @@ messages accumulate.
 
 10 workers run concurrently (configurable via `WORKER_CONCURRENCY`). Each worker loops:
 
-1. Poll for next message using priority ordering above
+1. Poll for next message via `PriorityRouter.Next()` (see `PRIORITY_ROUTER.md`)
 2. If `deliver_after` is set and `now < deliver_after` — re-enqueue with same `deliver_after`, ACK, and skip
 3. Check Redis key `cancelled:{notification_id}` — if present, ACK and skip
 4. Acquire a processing lock on the notification ID (TTL 60s) — if already held, ACK and skip
@@ -124,10 +107,3 @@ is reclaimed and re-processed. Re-processing is safe because:
 Queue depth is read from each stream and exposed as an OTel gauge
 (`notification.queue.depth` labelled by priority), scraped by Prometheus.
 
----
-
-## Starvation
-
-Under sustained high-priority load, `normal` and `low` streams will starve. This is
-intentional — OTPs and security alerts take precedence over marketing messages.
-Aging-based promotion is deferred (see `TODOS.md`).

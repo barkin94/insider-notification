@@ -15,5 +15,6 @@ type: reference
 | `system/OBSERVABILITY.md` | `api/main.go`, `processor/main.go`, `api/internal/middleware/` ★ |
 | `api-service/DATA_MODEL.md` | `internal/shared/model/`, `internal/shared/db/`, `api/migrations/` |
 | `api-service/API_CONTRACT.md` | `api/internal/handler/`, `api/internal/middleware/` |
-| `processor-service/QUEUE_DESIGN.md` | `internal/shared/stream/`, `processor/internal/worker/` ★ |
+| `processor-service/QUEUE_DESIGN.md` | `shared/stream/`, `processor/internal/worker/` ★ |
+| `processor-service/PRIORITY_ROUTER.md` | `processor/internal/priorityrouter/` |
 | `processor-service/RETRY_POLICY.md` | `processor/internal/worker/`, `processor/internal/retry/` |
