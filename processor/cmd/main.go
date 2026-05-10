@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/barkin/insider-notification/processor/internal/config"
-	"github.com/barkin/insider-notification/processor/internal/delivery"
-	"github.com/barkin/insider-notification/processor/internal/ratelimit"
+	"github.com/barkin/insider-notification/processor/internal/worker/delivery"
+	"github.com/barkin/insider-notification/processor/internal/worker/ratelimit"
 	"github.com/barkin/insider-notification/processor/internal/priorityrouter"
 	"github.com/barkin/insider-notification/processor/internal/worker"
 	"github.com/barkin/insider-notification/shared/lock"

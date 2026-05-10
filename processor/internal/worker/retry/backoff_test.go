@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/barkin/insider-notification/processor/internal/retry"
+	"github.com/barkin/insider-notification/processor/internal/worker/retry"
 )
 
 func TestDelay_attempt2(t *testing.T) {

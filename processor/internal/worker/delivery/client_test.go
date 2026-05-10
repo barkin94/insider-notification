@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/barkin/insider-notification/processor/internal/worker/delivery"
 	"github.com/barkin/insider-notification/shared/model"
-	"github.com/barkin/insider-notification/processor/internal/delivery"
 	"github.com/google/uuid"
 )
 
@@ -123,7 +123,7 @@ func TestSend_429_retryable(t *testing.T) {
 
 func TestSend_timeout_retryable(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(200 * time.Millisecond) // hang longer than client timeout
+		time.Sleep(200 * time.Millisecond)
 	}))
 	defer srv.Close()
 
@@ -139,7 +139,7 @@ func TestSend_timeout_retryable(t *testing.T) {
 
 func TestSend_latency_measured(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(2 * time.Millisecond) // ensure sub-ms response doesn't round to 0
+		time.Sleep(2 * time.Millisecond)
 		w.WriteHeader(http.StatusAccepted)
 	}))
 	defer srv.Close()

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/barkin/insider-notification/processor/internal/ratelimit"
+	"github.com/barkin/insider-notification/processor/internal/worker/ratelimit"
 	"github.com/redis/go-redis/v9"
 	"github.com/testcontainers/testcontainers-go"
 	tcredis "github.com/testcontainers/testcontainers-go/modules/redis"
@@ -63,9 +63,6 @@ func TestLimiter_throttles(t *testing.T) {
 	ctx := context.Background()
 	limiter := ratelimit.NewLimiter(newClient())
 
-	// Exhaust the bucket with enough calls that refill during the loop can't compensate.
-	// burst=120, refill=100/s. At worst ~5ms/call, refill ≈ 0.5 tokens/call, drain ≈ 0.5/call.
-	// Exhaustion by call ~240. With 500 calls we expect significant denials.
 	denied := 0
 	for i := 0; i < 500; i++ {
 		ok, err := limiter.Allow(ctx, "email")
@@ -85,12 +82,10 @@ func TestLimiter_refills(t *testing.T) {
 	ctx := context.Background()
 	limiter := ratelimit.NewLimiter(newClient())
 
-	// Drain the bucket with 500 calls — well past exhaustion even at 5ms/call.
 	for i := 0; i < 500; i++ {
 		limiter.Allow(ctx, "push") //nolint:errcheck
 	}
 
-	// Verify throttled
 	ok, err := limiter.Allow(ctx, "push")
 	if err != nil {
 		t.Fatal(err)
@@ -99,7 +94,6 @@ func TestLimiter_refills(t *testing.T) {
 		t.Fatal("expected denied after bucket exhausted")
 	}
 
-	// Wait for refill (at 100/s, 100ms yields ~10 tokens)
 	time.Sleep(100 * time.Millisecond)
 
 	ok, err = limiter.Allow(ctx, "push")
@@ -133,7 +127,6 @@ func TestLimiter_atomic(t *testing.T) {
 	}
 	wg.Wait()
 
-	// All 50 should be allowed (well within burst=120)
 	if allowed.Load() != 50 {
 		t.Errorf("expected 50 allowed, got %d", allowed.Load())
 	}

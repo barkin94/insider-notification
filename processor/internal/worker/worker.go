@@ -5,9 +5,9 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/barkin/insider-notification/processor/internal/delivery"
-	"github.com/barkin/insider-notification/processor/internal/ratelimit"
-	"github.com/barkin/insider-notification/processor/internal/retry"
+	"github.com/barkin/insider-notification/processor/internal/worker/delivery"
+	"github.com/barkin/insider-notification/processor/internal/worker/ratelimit"
+	"github.com/barkin/insider-notification/processor/internal/worker/retry"
 	"github.com/barkin/insider-notification/shared/lock"
 	"github.com/barkin/insider-notification/shared/model"
 	"github.com/barkin/insider-notification/shared/stream"
