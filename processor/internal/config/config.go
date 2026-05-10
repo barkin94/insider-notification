@@ -9,14 +9,12 @@ import (
 
 type Config struct {
 	shared.Base
-	MetricsPort       int
 	WorkerConcurrency int
 	WebhookURL        string
 }
 
 func Load() *Config {
 	v := shared.NewViper()
-	v.SetDefault("PROCESSOR_METRICS_PORT", 8081)
 	v.SetDefault("WORKER_CONCURRENCY", 10)
 
 	base, missing := shared.LoadBase(v)
@@ -33,7 +31,6 @@ func Load() *Config {
 
 	return &Config{
 		Base:              base,
-		MetricsPort:       v.GetInt("PROCESSOR_METRICS_PORT"),
 		WorkerConcurrency: v.GetInt("WORKER_CONCURRENCY"),
 		WebhookURL:        webhookURL,
 	}

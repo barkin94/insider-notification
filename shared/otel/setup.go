@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
-	"go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/propagation"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -20,9 +20,8 @@ import (
 // Shutdown cleanly flushes and stops the OTel SDK.
 type Shutdown func(context.Context) error
 
-// Init initialises the global TracerProvider (OTLP gRPC → collector) and
-// MeterProvider (Prometheus exporter → default registry). Call the returned
-// Shutdown on service exit.
+// Init initialises the global TracerProvider and MeterProvider, both pushing
+// via OTLP gRPC to the OTel Collector. Call the returned Shutdown on exit.
 func Init(ctx context.Context, serviceName, collectorEndpoint string) (Shutdown, error) {
 	res, err := resource.New(ctx,
 		resource.WithAttributes(semconv.ServiceNameKey.String(serviceName)),
@@ -31,7 +30,6 @@ func Init(ctx context.Context, serviceName, collectorEndpoint string) (Shutdown,
 		return nil, fmt.Errorf("otel resource: %w", err)
 	}
 
-	// --- traces: OTLP gRPC to OTel Collector ---
 	traceExp, err := otlptracegrpc.New(ctx,
 		otlptracegrpc.WithEndpoint(collectorEndpoint),
 		otlptracegrpc.WithInsecure(),
@@ -46,13 +44,15 @@ func Init(ctx context.Context, serviceName, collectorEndpoint string) (Shutdown,
 	otel.SetTracerProvider(tp)
 	otel.SetTextMapPropagator(propagation.TraceContext{})
 
-	// --- metrics: Prometheus exporter registers with default prometheus registry ---
-	metricExp, err := prometheus.New()
+	metricExp, err := otlpmetricgrpc.New(ctx,
+		otlpmetricgrpc.WithEndpoint(collectorEndpoint),
+		otlpmetricgrpc.WithInsecure(),
+	)
 	if err != nil {
-		return nil, fmt.Errorf("prometheus exporter: %w", err)
+		return nil, fmt.Errorf("otlp metric exporter: %w", err)
 	}
 	mp := sdkmetric.NewMeterProvider(
-		sdkmetric.WithReader(metricExp),
+		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(metricExp)),
 		sdkmetric.WithResource(res),
 	)
 	otel.SetMeterProvider(mp)

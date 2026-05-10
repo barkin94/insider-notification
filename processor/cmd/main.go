@@ -2,9 +2,7 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
 	"sync"
@@ -12,15 +10,14 @@ import (
 	"time"
 
 	"github.com/barkin/insider-notification/processor/internal/config"
-	"github.com/barkin/insider-notification/processor/internal/worker/delivery"
-	"github.com/barkin/insider-notification/processor/internal/worker/ratelimit"
 	"github.com/barkin/insider-notification/processor/internal/priorityrouter"
 	"github.com/barkin/insider-notification/processor/internal/worker"
+	"github.com/barkin/insider-notification/processor/internal/worker/delivery"
+	"github.com/barkin/insider-notification/processor/internal/worker/ratelimit"
 	"github.com/barkin/insider-notification/shared/lock"
 	sharedotel "github.com/barkin/insider-notification/shared/otel"
 	sharedredis "github.com/barkin/insider-notification/shared/redis"
 	"github.com/barkin/insider-notification/shared/stream"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 var defaultWeights = [3]int{3, 2, 1} // high ~50%, normal ~33%, low ~17%
@@ -102,25 +99,10 @@ func main() {
 	}
 	slog.Info("processor started", "workers", cfg.WorkerConcurrency)
 
-	// --- metrics server: Prometheus /metrics on cfg.MetricsPort ---
-	metricsMux := http.NewServeMux()
-	metricsMux.Handle("/metrics", promhttp.Handler())
-	metricsAddr := fmt.Sprintf(":%d", cfg.MetricsPort)
-	metricsServer := &http.Server{Addr: metricsAddr, Handler: metricsMux}
-	go func() {
-		slog.Info("metrics server starting", "addr", metricsAddr)
-		if err := metricsServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("metrics server error", "error", err)
-		}
-	}()
-
 	// --- graceful shutdown: wait for all workers to finish current message ---
 	<-ctx.Done()
 	slog.Info("shutting down, waiting for workers")
 	wg.Wait()
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	metricsServer.Shutdown(shutdownCtx)
 	slog.Info("all workers stopped")
 }
 

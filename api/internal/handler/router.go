@@ -8,7 +8,6 @@ import (
 	"github.com/barkin/insider-notification/api/internal/service"
 	"github.com/go-chi/chi/v5"
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 	httpSwagger "github.com/swaggo/http-swagger"
 	"github.com/uptrace/bun"
@@ -29,7 +28,6 @@ func NewRouter(deps Deps) http.Handler {
 	r.Use(chiMiddleware.Recoverer)
 	r.Use(middleware.Logger())
 
-	r.Get("/metrics", promhttp.Handler().ServeHTTP)
 	r.Get("/api/v1/docs/*", httpSwagger.WrapHandler)
 	r.Get("/api/v1/health", healthCheck(deps.DB, deps.Redis))
 
