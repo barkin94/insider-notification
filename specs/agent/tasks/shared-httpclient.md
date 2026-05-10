@@ -1,6 +1,6 @@
 # shared-httpclient
 
-**Status:** pending
+**Status:** complete
 
 ## Context
 

@@ -53,7 +53,7 @@ scaffold
 - [x] docs-readme
 - [x] cursor-pagination
 - [ ] refactor
-- [ ] shared-httpclient
+- [x] shared-httpclient
 - [ ] notification-processing
 - [ ] migrations-ci
 - [ ] replace-promtail-with-otelcollector

@@ -1,14 +1,13 @@
 package delivery
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
 
+	"github.com/barkin/insider-notification/shared/httpclient"
 	"github.com/barkin/insider-notification/shared/model"
 )
 
@@ -27,17 +26,14 @@ type Client interface {
 	Send(ctx context.Context, n *model.Notification) (Result, error)
 }
 
-type httpClient struct {
-	http       *http.Client
-	webhookURL string
+type webhookClient struct {
+	http *httpclient.Client
 }
 
 // NewClient returns a delivery Client that POSTs to webhookURL with the given timeout.
-// At the observability task, wrap with otelhttp.NewTransport to add trace spans.
 func NewClient(webhookURL string, timeout time.Duration) Client {
-	return &httpClient{
-		http:       &http.Client{Timeout: timeout},
-		webhookURL: webhookURL,
+	return &webhookClient{
+		http: httpclient.New(webhookURL, httpclient.WithTimeout(timeout)),
 	}
 }
 
@@ -48,33 +44,17 @@ type requestBody struct {
 	Content   string `json:"content"`
 }
 
-func (c *httpClient) Send(ctx context.Context, n *model.Notification) (Result, error) {
-	body, err := json.Marshal(requestBody{
+func (c *webhookClient) Send(ctx context.Context, n *model.Notification) (Result, error) {
+	start := time.Now()
+	resp, err := c.http.Request(ctx, http.MethodPost, "", requestBody{
 		ID:        n.ID.String(),
 		Channel:   n.Channel,
 		Recipient: n.Recipient,
 		Content:   n.Content,
 	})
-	if err != nil {
-		return Result{}, fmt.Errorf("marshal delivery body: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.webhookURL, bytes.NewReader(body))
-	if err != nil {
-		return Result{}, fmt.Errorf("build request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	start := time.Now()
-	resp, err := c.http.Do(req)
 	latency := time.Since(start).Milliseconds()
 
 	if err != nil {
-		slog.ErrorContext(ctx, "delivery request failed",
-			"notification_id", n.ID,
-			"latency_ms", latency,
-			"error", err,
-		)
 		return Result{Retryable: true, LatencyMS: latency, ErrorMessage: err.Error()}, nil
 	}
 	defer resp.Body.Close()
