@@ -8,17 +8,17 @@ import (
 	"github.com/barkin/insider-notification/api/internal/service"
 	"github.com/go-chi/chi/v5"
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 	httpSwagger "github.com/swaggo/http-swagger"
+	"github.com/uptrace/bun"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 // Deps holds the dependencies required to build the HTTP router.
 type Deps struct {
 	Service service.NotificationService
-	DB      *pgxpool.Pool
+	DB      *bun.DB
 	Redis   *redis.Client
 }
 

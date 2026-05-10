@@ -11,8 +11,8 @@ import (
 
 func TestDeliveryAttemptRepo_Create_idempotent(t *testing.T) {
 	ctx := context.Background()
-	nRepo := db.NewNotificationRepository(testPool)
-	aRepo := db.NewDeliveryAttemptRepository(testPool)
+	nRepo := db.NewNotificationRepository(testDB)
+	aRepo := db.NewDeliveryAttemptRepository(testDB)
 
 	n := newNotification()
 	nRepo.Create(ctx, n)
@@ -48,8 +48,8 @@ func TestDeliveryAttemptRepo_Create_idempotent(t *testing.T) {
 
 func TestDeliveryAttemptRepo_ListByNotificationID(t *testing.T) {
 	ctx := context.Background()
-	nRepo := db.NewNotificationRepository(testPool)
-	aRepo := db.NewDeliveryAttemptRepository(testPool)
+	nRepo := db.NewNotificationRepository(testDB)
+	aRepo := db.NewDeliveryAttemptRepository(testDB)
 
 	n := newNotification()
 	nRepo.Create(ctx, n)

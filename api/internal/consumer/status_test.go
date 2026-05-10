@@ -2,6 +2,7 @@ package consumer_test
 
 import (
 	"context"
+	"database/sql"
 	"log"
 	"os"
 	"testing"
@@ -16,13 +17,15 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
+	"github.com/uptrace/bun"
+	"github.com/uptrace/bun/dialect/pgdialect"
+	"github.com/uptrace/bun/driver/pgdriver"
 )
 
-var testPool *pgxpool.Pool
+var testDB *bun.DB
 
 func TestMain(m *testing.M) {
 	ctx := context.Background()
@@ -58,11 +61,9 @@ func TestMain(m *testing.M) {
 		log.Fatalf("run migrations: %v", err)
 	}
 
-	testPool, err = pgxpool.New(ctx, connStr)
-	if err != nil {
-		log.Fatalf("create pool: %v", err)
-	}
-	defer testPool.Close()
+	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(connStr)))
+	testDB = bun.NewDB(sqldb, pgdialect.New())
+	defer testDB.Close()
 
 	os.Exit(m.Run())
 }
@@ -78,12 +79,12 @@ func mustV7() uuid.UUID {
 func seedNotification(t *testing.T, id uuid.UUID, status string) {
 	t.Helper()
 	now := time.Now().UTC().Truncate(time.Millisecond)
-	_, err := testPool.Exec(context.Background(), `
+	_, err := testDB.NewRaw(`
 		INSERT INTO notifications
 			(id, recipient, channel, content, priority, status, attempts, max_attempts, metadata, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		id, "+1", "sms", "hello", "normal", status, 0, 4, `{}`, now, now,
-	)
+	).Exec(context.Background())
 	if err != nil {
 		t.Fatalf("seed notification: %v", err)
 	}
@@ -107,8 +108,8 @@ func TestStatusConsumer_delivered(t *testing.T) {
 	notifID := mustV7()
 	seedNotification(t, notifID, model.StatusPending)
 
-	notifRepo := db.NewNotificationRepository(testPool)
-	attemptRepo := db.NewDeliveryAttemptRepository(testPool)
+	notifRepo := db.NewNotificationRepository(testDB)
+	attemptRepo := db.NewDeliveryAttemptRepository(testDB)
 	c := consumer.NewStatusConsumer(notifRepo, attemptRepo)
 
 	latency := 120
@@ -123,7 +124,6 @@ func TestStatusConsumer_delivered(t *testing.T) {
 	}
 	runConsumer(c, makeResult(evt))
 
-	// verify notification status
 	got, err := notifRepo.GetByID(context.Background(), notifID)
 	if err != nil {
 		t.Fatalf("GetByID: %v", err)
@@ -132,7 +132,6 @@ func TestStatusConsumer_delivered(t *testing.T) {
 		t.Errorf("status = %q, want %q", got.Status, model.StatusDelivered)
 	}
 
-	// verify delivery attempt row
 	attempts, err := attemptRepo.ListByNotificationID(context.Background(), notifID)
 	if err != nil {
 		t.Fatalf("ListAttempts: %v", err)
@@ -152,8 +151,8 @@ func TestStatusConsumer_failed(t *testing.T) {
 	notifID := mustV7()
 	seedNotification(t, notifID, model.StatusPending)
 
-	notifRepo := db.NewNotificationRepository(testPool)
-	attemptRepo := db.NewDeliveryAttemptRepository(testPool)
+	notifRepo := db.NewNotificationRepository(testDB)
+	attemptRepo := db.NewDeliveryAttemptRepository(testDB)
 	c := consumer.NewStatusConsumer(notifRepo, attemptRepo)
 
 	evt := stream.NotificationDeliveryResultEvent{
@@ -179,8 +178,8 @@ func TestStatusConsumer_processing(t *testing.T) {
 	notifID := mustV7()
 	seedNotification(t, notifID, model.StatusPending)
 
-	notifRepo := db.NewNotificationRepository(testPool)
-	attemptRepo := db.NewDeliveryAttemptRepository(testPool)
+	notifRepo := db.NewNotificationRepository(testDB)
+	attemptRepo := db.NewDeliveryAttemptRepository(testDB)
 	c := consumer.NewStatusConsumer(notifRepo, attemptRepo)
 
 	evt := stream.NotificationDeliveryResultEvent{
@@ -205,8 +204,8 @@ func TestStatusConsumer_idempotent(t *testing.T) {
 	notifID := mustV7()
 	seedNotification(t, notifID, model.StatusPending)
 
-	notifRepo := db.NewNotificationRepository(testPool)
-	attemptRepo := db.NewDeliveryAttemptRepository(testPool)
+	notifRepo := db.NewNotificationRepository(testDB)
+	attemptRepo := db.NewDeliveryAttemptRepository(testDB)
 	c := consumer.NewStatusConsumer(notifRepo, attemptRepo)
 
 	evt := stream.NotificationDeliveryResultEvent{
@@ -218,7 +217,6 @@ func TestStatusConsumer_idempotent(t *testing.T) {
 		UpdatedAt:      time.Now().UTC().Format(time.RFC3339),
 	}
 
-	// send the same event twice
 	runConsumer(c, makeResult(evt))
 	runConsumer(c, makeResult(evt))
 

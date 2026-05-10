@@ -5,44 +5,27 @@ import (
 
 	"github.com/barkin/insider-notification/shared/model"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/uptrace/bun"
 )
 
-type pgxDeliveryAttemptRepo struct{ pool *pgxpool.Pool }
+type bunDeliveryAttemptRepo struct{ db *bun.DB }
 
-func NewDeliveryAttemptRepository(pool *pgxpool.Pool) DeliveryAttemptRepository {
-	return &pgxDeliveryAttemptRepo{pool: pool}
+func NewDeliveryAttemptRepository(db *bun.DB) DeliveryAttemptRepository {
+	return &bunDeliveryAttemptRepo{db: db}
 }
 
-func (r *pgxDeliveryAttemptRepo) Create(ctx context.Context, a *model.DeliveryAttempt) error {
-	_, err := r.pool.Exec(ctx, `
-		INSERT INTO delivery_attempts
-			(id, notification_id, attempt_number, status, http_status_code,
-			 provider_response, error_message, latency_ms, attempted_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-		ON CONFLICT (notification_id, attempt_number) DO NOTHING`,
-		a.ID, a.NotificationID, a.AttemptNumber, a.Status, a.HTTPStatusCode,
-		a.ProviderResponse, a.ErrorMessage, a.LatencyMS, a.AttemptedAt,
-	)
+func (r *bunDeliveryAttemptRepo) Create(ctx context.Context, a *model.DeliveryAttempt) error {
+	_, err := r.db.NewInsert().Model(a).
+		On("CONFLICT (notification_id, attempt_number) DO NOTHING").
+		Exec(ctx)
 	return err
 }
 
-func (r *pgxDeliveryAttemptRepo) ListByNotificationID(ctx context.Context, notificationID uuid.UUID) ([]*model.DeliveryAttempt, error) {
-	rows, err := r.pool.Query(ctx, `
-		SELECT * FROM delivery_attempts
-		WHERE notification_id = $1
-		ORDER BY attempt_number ASC`, notificationID)
-	if err != nil {
-		return nil, err
-	}
-	attempts, err := pgx.CollectRows(rows, pgx.RowToStructByName[model.DeliveryAttempt])
-	if err != nil {
-		return nil, err
-	}
-	result := make([]*model.DeliveryAttempt, len(attempts))
-	for i := range attempts {
-		result[i] = &attempts[i]
-	}
-	return result, nil
+func (r *bunDeliveryAttemptRepo) ListByNotificationID(ctx context.Context, notificationID uuid.UUID) ([]*model.DeliveryAttempt, error) {
+	var attempts []*model.DeliveryAttempt
+	err := r.db.NewSelect().Model(&attempts).
+		Where("notification_id = ?", notificationID).
+		OrderExpr("attempt_number ASC").
+		Scan(ctx)
+	return attempts, err
 }

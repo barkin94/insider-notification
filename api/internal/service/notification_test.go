@@ -17,7 +17,7 @@ import (
 type mockNotifRepo struct {
 	createFn       func(ctx context.Context, n *model.Notification) error
 	getByIDFn      func(ctx context.Context, id uuid.UUID) (*model.Notification, error)
-	listFn         func(ctx context.Context, f db.ListFilter) ([]*model.Notification, int, error)
+	listFn         func(ctx context.Context, f db.ListFilter) ([]*model.Notification, int, *uuid.UUID, error)
 	transitionFn   func(ctx context.Context, id uuid.UUID, from, to string) (*model.Notification, error)
 	incrFn         func(ctx context.Context, id uuid.UUID) error
 	updateStatusFn func(ctx context.Context, id uuid.UUID, status string) error
@@ -29,7 +29,7 @@ func (m *mockNotifRepo) Create(ctx context.Context, n *model.Notification) error
 func (m *mockNotifRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.Notification, error) {
 	return m.getByIDFn(ctx, id)
 }
-func (m *mockNotifRepo) List(ctx context.Context, f db.ListFilter) ([]*model.Notification, int, error) {
+func (m *mockNotifRepo) List(ctx context.Context, f db.ListFilter) ([]*model.Notification, int, *uuid.UUID, error) {
 	return m.listFn(ctx, f)
 }
 func (m *mockNotifRepo) Transition(ctx context.Context, id uuid.UUID, from, to string) (*model.Notification, error) {

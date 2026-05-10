@@ -3,6 +3,7 @@ package handler_test
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -22,7 +23,7 @@ import (
 type mockService struct {
 	createFn      func(ctx context.Context, req service.CreateRequest) (*model.Notification, error)
 	getByIDFn     func(ctx context.Context, id uuid.UUID) (*model.Notification, []*model.DeliveryAttempt, error)
-	listFn        func(ctx context.Context, f db.ListFilter) ([]*model.Notification, int, error)
+	listFn        func(ctx context.Context, f db.ListFilter) ([]*model.Notification, int, *uuid.UUID, error)
 	cancelFn      func(ctx context.Context, id uuid.UUID) (*model.Notification, error)
 	createBatchFn func(ctx context.Context, reqs []service.CreateRequest) (uuid.UUID, []service.BatchResult, error)
 }
@@ -33,7 +34,7 @@ func (m *mockService) Create(ctx context.Context, req service.CreateRequest) (*m
 func (m *mockService) GetByID(ctx context.Context, id uuid.UUID) (*model.Notification, []*model.DeliveryAttempt, error) {
 	return m.getByIDFn(ctx, id)
 }
-func (m *mockService) List(ctx context.Context, f db.ListFilter) ([]*model.Notification, int, error) {
+func (m *mockService) List(ctx context.Context, f db.ListFilter) ([]*model.Notification, int, *uuid.UUID, error) {
 	return m.listFn(ctx, f)
 }
 func (m *mockService) Cancel(ctx context.Context, id uuid.UUID) (*model.Notification, error) {
@@ -137,11 +138,11 @@ func TestCreateNotification_400_contentTooLong(t *testing.T) {
 // --- GET /notifications ---
 
 func TestListNotifications_pagination(t *testing.T) {
-	svc := &mockService{listFn: func(_ context.Context, f db.ListFilter) ([]*model.Notification, int, error) {
-		return []*model.Notification{newNotif()}, 42, nil
+	svc := &mockService{listFn: func(_ context.Context, f db.ListFilter) ([]*model.Notification, int, *uuid.UUID, error) {
+		return []*model.Notification{newNotif()}, 42, nil, nil
 	}}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/notifications?page=2&page_size=10", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/notifications?page_size=10", nil)
 	w := httptest.NewRecorder()
 
 	newRouter(svc).ServeHTTP(w, req)
@@ -152,22 +153,22 @@ func TestListNotifications_pagination(t *testing.T) {
 	var resp map[string]any
 	json.NewDecoder(w.Body).Decode(&resp) //nolint:errcheck
 	pg, _ := resp["pagination"].(map[string]any)
-	if pg["page"] != float64(2) {
-		t.Errorf("page = %v, want 2", pg["page"])
-	}
 	if pg["total"] != float64(42) {
 		t.Errorf("total = %v, want 42", pg["total"])
 	}
-	if pg["total_pages"] != float64(5) {
-		t.Errorf("total_pages = %v, want 5", pg["total_pages"])
+	if pg["page_size"] != float64(10) {
+		t.Errorf("page_size = %v, want 10", pg["page_size"])
+	}
+	if pg["next_cursor"] != nil {
+		t.Errorf("next_cursor = %v, want null on offset path", pg["next_cursor"])
 	}
 }
 
 func TestListNotifications_filterByStatus(t *testing.T) {
 	var gotFilter db.ListFilter
-	svc := &mockService{listFn: func(_ context.Context, f db.ListFilter) ([]*model.Notification, int, error) {
+	svc := &mockService{listFn: func(_ context.Context, f db.ListFilter) ([]*model.Notification, int, *uuid.UUID, error) {
 		gotFilter = f
-		return nil, 0, nil
+		return nil, 0, nil, nil
 	}}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/notifications?status=delivered", nil)
@@ -325,5 +326,128 @@ func TestCreateBatch_400_tooLarge(t *testing.T) {
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", w.Code)
+	}
+}
+
+// --- GET /notifications cursor pagination ---
+
+func encodeCursorForTest(id uuid.UUID) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(id.String()))
+}
+
+// No cursor → offset path, next_cursor is null.
+func TestListNotifications_NoCursor(t *testing.T) {
+	n := newNotif()
+	svc := &mockService{
+		listFn: func(_ context.Context, _ db.ListFilter) ([]*model.Notification, int, *uuid.UUID, error) {
+			return []*model.Notification{n}, 1, nil, nil
+		},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/notifications", nil)
+	w := httptest.NewRecorder()
+	newRouter(svc).ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	var resp map[string]any
+	json.NewDecoder(w.Body).Decode(&resp) //nolint:errcheck
+	pagination := resp["pagination"].(map[string]any)
+	if pagination["next_cursor"] != nil {
+		t.Errorf("next_cursor = %v, want null", pagination["next_cursor"])
+	}
+}
+
+// Valid cursor → List called with CursorID set, next_cursor returned.
+func TestListNotifications_WithCursor_NextPageExists(t *testing.T) {
+	n := newNotif()
+	nextID, _ := uuid.NewV7()
+	svc := &mockService{
+		listFn: func(_ context.Context, f db.ListFilter) ([]*model.Notification, int, *uuid.UUID, error) {
+			return []*model.Notification{n}, 50, &nextID, nil
+		},
+	}
+
+	cursorID, _ := uuid.NewV7()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/notifications?cursor="+encodeCursorForTest(cursorID), nil)
+	w := httptest.NewRecorder()
+	newRouter(svc).ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	var resp map[string]any
+	json.NewDecoder(w.Body).Decode(&resp) //nolint:errcheck
+	pagination := resp["pagination"].(map[string]any)
+	if pagination["next_cursor"] == nil {
+		t.Error("expected next_cursor, got null")
+	}
+}
+
+// Last cursor page → next_cursor is null.
+func TestListNotifications_WithCursor_LastPage(t *testing.T) {
+	n := newNotif()
+	svc := &mockService{
+		listFn: func(_ context.Context, f db.ListFilter) ([]*model.Notification, int, *uuid.UUID, error) {
+			return []*model.Notification{n}, 10, nil, nil
+		},
+	}
+
+	cursorID, _ := uuid.NewV7()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/notifications?cursor="+encodeCursorForTest(cursorID), nil)
+	w := httptest.NewRecorder()
+	newRouter(svc).ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	var resp map[string]any
+	json.NewDecoder(w.Body).Decode(&resp) //nolint:errcheck
+	pagination := resp["pagination"].(map[string]any)
+	if pagination["next_cursor"] != nil {
+		t.Errorf("next_cursor = %v, want null on last page", pagination["next_cursor"])
+	}
+}
+
+// Invalid cursor → 400.
+func TestListNotifications_InvalidCursor(t *testing.T) {
+	svc := &mockService{}
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/notifications?cursor=notvalidbase64!!!", nil)
+	w := httptest.NewRecorder()
+	newRouter(svc).ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
+}
+
+// Filters are forwarded to List with CursorID set when cursor param is present.
+func TestListNotifications_FiltersPreservedWithCursor(t *testing.T) {
+	var capturedFilter db.ListFilter
+	svc := &mockService{
+		listFn: func(_ context.Context, f db.ListFilter) ([]*model.Notification, int, *uuid.UUID, error) {
+			capturedFilter = f
+			return nil, 0, nil, nil
+		},
+	}
+
+	cursorID, _ := uuid.NewV7()
+	url := "/api/v1/notifications?cursor=" + encodeCursorForTest(cursorID) + "&status=pending&channel=sms"
+	req := httptest.NewRequest(http.MethodGet, url, nil)
+	w := httptest.NewRecorder()
+	newRouter(svc).ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	if capturedFilter.Status != "pending" {
+		t.Errorf("Status = %q, want pending", capturedFilter.Status)
+	}
+	if capturedFilter.Channel != "sms" {
+		t.Errorf("Channel = %q, want sms", capturedFilter.Channel)
+	}
+	if capturedFilter.CursorID == nil {
+		t.Error("CursorID should be set when cursor param is present")
 	}
 }

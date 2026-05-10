@@ -46,12 +46,12 @@ func main() {
 	defer stop()
 
 	// --- infrastructure ---
-	pool, err := db.NewPool(ctx, cfg.DatabaseURL)
+	bundb, err := db.Open(cfg.DatabaseURL)
 	if err != nil {
 		slog.Error("connect to postgres", "error", err)
 		os.Exit(1)
 	}
-	defer pool.Close()
+	defer bundb.Close()
 
 	rdb, err := sharedredis.NewClient(ctx, cfg.RedisAddr)
 	if err != nil {
@@ -60,8 +60,8 @@ func main() {
 	}
 
 	// --- repositories ---
-	notifRepo := db.NewNotificationRepository(pool)
-	attemptRepo := db.NewDeliveryAttemptRepository(pool)
+	notifRepo := db.NewNotificationRepository(bundb)
+	attemptRepo := db.NewDeliveryAttemptRepository(bundb)
 
 	// --- stream publisher & subscriber ---
 	pub, err := stream.NewRedisPublisher(rdb)
@@ -97,7 +97,7 @@ func main() {
 	// --- HTTP server ---
 	router := handler.NewRouter(handler.Deps{
 		Service: svc,
-		DB:      pool,
+		DB:      bundb,
 		Redis:   rdb,
 	})
 

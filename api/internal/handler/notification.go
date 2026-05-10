@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -59,10 +60,9 @@ type listResponse struct {
 }
 
 type paginationMeta struct {
-	Page       int `json:"page"`
-	PageSize   int `json:"page_size"`
-	Total      int `json:"total"`
-	TotalPages int `json:"total_pages"`
+	PageSize   int     `json:"page_size"`
+	Total      int     `json:"total"`
+	NextCursor *string `json:"next_cursor"`
 }
 
 type cancelResponse struct {
@@ -175,71 +175,102 @@ func getNotification(svc service.NotificationService) http.HandlerFunc {
 // @Param       batch_id  query string false "Filter by batch ID (UUID)"
 // @Param       date_from query string false "Filter from date (RFC3339)"
 // @Param       date_to   query string false "Filter to date (RFC3339)"
-// @Param       sort      query string false "Sort field"
-// @Param       order     query string false "Sort order (asc|desc)"
-// @Param       page      query int    false "Page number (default 1)"
 // @Param       page_size query int    false "Page size (default 20, max 100)"
+// @Param       cursor    query string false "Opaque cursor for keyset pagination (base64url-encoded UUID)"
 // @Success     200 {object} listResponse
+// @Failure     400 {object} errorBody
 // @Failure     500 {object} errorBody
 // @Router      /notifications [get]
 func listNotifications(svc service.NotificationService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 
-		filter := db.ListFilter{
+		pageSize := intParam(q.Get("page_size"), 20)
+		if pageSize > 100 {
+			pageSize = 100
+		}
+
+		var batchID *uuid.UUID
+		if s := q.Get("batch_id"); s != "" {
+			if id, err := uuid.Parse(s); err == nil {
+				batchID = &id
+			}
+		}
+		var dateFrom, dateTo *time.Time
+		if s := q.Get("date_from"); s != "" {
+			if t, err := time.Parse(time.RFC3339, s); err == nil {
+				dateFrom = &t
+			}
+		}
+		if s := q.Get("date_to"); s != "" {
+			if t, err := time.Parse(time.RFC3339, s); err == nil {
+				dateTo = &t
+			}
+		}
+
+		f := db.ListFilter{
 			Status:   q.Get("status"),
 			Channel:  q.Get("channel"),
+			BatchID:  batchID,
+			DateFrom: dateFrom,
+			DateTo:   dateTo,
 			Sort:     q.Get("sort"),
 			Order:    q.Get("order"),
 			Page:     intParam(q.Get("page"), 1),
-			PageSize: intParam(q.Get("page_size"), 20),
-		}
-		if filter.PageSize > 100 {
-			filter.PageSize = 100
+			PageSize: pageSize,
 		}
 
-		if batchIDStr := q.Get("batch_id"); batchIDStr != "" {
-			if id, err := uuid.Parse(batchIDStr); err == nil {
-				filter.BatchID = &id
+		if cursorStr := q.Get("cursor"); cursorStr != "" {
+			cursorID, err := decodeCursor(cursorStr)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid cursor", nil)
+				return
 			}
-		}
-		if df := q.Get("date_from"); df != "" {
-			if t, err := time.Parse(time.RFC3339, df); err == nil {
-				filter.DateFrom = &t
-			}
-		}
-		if dt := q.Get("date_to"); dt != "" {
-			if t, err := time.Parse(time.RFC3339, dt); err == nil {
-				filter.DateTo = &t
-			}
+			f.CursorID = cursorID
 		}
 
-		ns, total, err := svc.List(r.Context(), filter)
+		ns, total, nextCursor, err := svc.List(r.Context(), f)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error", nil)
 			return
 		}
-
-		data := make([]notificationResponse, len(ns))
-		for i, n := range ns {
-			data[i] = toNotificationResponse(n)
-		}
-
-		totalPages := (total + filter.PageSize - 1) / filter.PageSize
-		if totalPages == 0 {
-			totalPages = 1
-		}
-
 		writeJSON(w, http.StatusOK, listResponse{
-			Data: data,
+			Data: toNotificationResponses(ns),
 			Pagination: paginationMeta{
-				Page:       filter.Page,
-				PageSize:   filter.PageSize,
+				PageSize:   pageSize,
 				Total:      total,
-				TotalPages: totalPages,
+				NextCursor: encodeCursor(nextCursor),
 			},
 		})
 	}
+}
+
+func decodeCursor(s string) (*uuid.UUID, error) {
+	b, err := base64.RawURLEncoding.DecodeString(s)
+	if err != nil {
+		return nil, err
+	}
+	id, err := uuid.ParseBytes(b)
+	if err != nil {
+		return nil, err
+	}
+	return &id, nil
+}
+
+func encodeCursor(id *uuid.UUID) *string {
+	if id == nil {
+		return nil
+	}
+	s := base64.RawURLEncoding.EncodeToString([]byte(id.String()))
+	return &s
+}
+
+func toNotificationResponses(ns []*model.Notification) []notificationResponse {
+	data := make([]notificationResponse, len(ns))
+	for i, n := range ns {
+		data[i] = toNotificationResponse(n)
+	}
+	return data
 }
 
 // cancelNotification godoc

@@ -5,17 +5,17 @@
 
 ## Context
 
-`GET /notifications` currently uses offset-based pagination (`page` + `page_size`). For large
-datasets this becomes expensive as PostgreSQL must scan and discard all preceding rows. Cursor-based
-pagination (keyset pagination) is O(log n) regardless of depth.
+`GET /notifications` uses offset pagination (`page` + `page_size`), which requires PostgreSQL to scan all preceding rows. Since `id` is UUID v7 (time-ordered), it can serve directly as a cursor — no composite key or JSON encoding needed.
 
 ## What to change
 
-### API contract addition
+### Cursor encoding
 
-New query parameter: `cursor` (opaque string, base64-encoded). When present, `page` is ignored.
+Cursor is the last row's `id` (UUID v7), base64url-encoded. Decoding failure or invalid UUID → 400.
 
-Response gains a `next_cursor` field (null on last page):
+### API change
+
+Replace `page` with `cursor`. Response replaces `page`/`total_pages` with `next_cursor`:
 
 ```json
 {
@@ -23,40 +23,31 @@ Response gains a `next_cursor` field (null on last page):
   "pagination": {
     "page_size": 20,
     "total": 4821,
-    "next_cursor": "eyJpZCI6Inh4eCIsImNyZWF0ZWRfYXQiOiIuLi4ifQ=="
+    "next_cursor": "<base64url(uuid)> | null"
   }
 }
 ```
 
-### Cursor encoding
+`next_cursor` is null on the last page.
 
-Cursor encodes the last row's (`created_at`, `id`) pair as JSON, base64url-encoded.
-Decoding failure → 400 VALIDATION_ERROR.
+### Query
 
-### Repository change
-
-Add `ListByCursor` to `NotificationRepository`:
-
-```
-ListByCursor(ctx, cursor *Cursor, pageSize int, filter ListFilter) ([]*model.Notification, *Cursor, error)
-  — WHERE (created_at, id) < (cursor.CreatedAt, cursor.ID)  [for DESC order]
-  — LIMIT pageSize + 1 (peek to detect next page)
-  — returns next cursor if len(result) == pageSize+1, else nil
+```sql
+WHERE id < $cursor ORDER BY id DESC LIMIT $page_size + 1
 ```
 
-### Service change
+Fetch `page_size + 1` rows; if `len(result) == page_size+1`, a next page exists — encode `result[page_size-1].id` as `next_cursor` and trim the slice to `page_size`.
 
-Add `ListByCursor` to `NotificationService`. Existing `List` (offset) remains for backwards
-compatibility during transition.
+### Changes
 
-### Handler change
-
-`GET /notifications`: if `cursor` param present → call `ListByCursor`; else → existing offset path.
+- `NotificationRepository`: add `ListByCursor(ctx, cursorID *uuid.UUID, pageSize int, filter ListFilter)`
+- `NotificationService`: add `ListByCursor`
+- `GET /notifications` handler: if `cursor` param present → `ListByCursor`; else → existing offset path
 
 ## Tests
 
-- `TestListByCursor_firstPage` — no cursor → returns first N results + next_cursor
-- `TestListByCursor_secondPage` — decode next_cursor from first page → correct second page
+- `TestListByCursor_firstPage` — no cursor → first N results + next_cursor
+- `TestListByCursor_secondPage` — use next_cursor → correct second page, no overlap
 - `TestListByCursor_lastPage` — next_cursor is null on final page
-- `TestListByCursor_invalidCursor` → 400
-- `TestListByCursor_filtersPreserved` — status/channel filters apply with cursor
+- `TestListByCursor_invalidCursor` — 400 on bad cursor
+- `TestListByCursor_filtersPreserved` — status/channel filters work with cursor

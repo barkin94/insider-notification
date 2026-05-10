@@ -38,7 +38,7 @@
 - [ ] `POST /notifications/batch` > 1000 items → 400
 - [ ] `GET /notifications/:id` → 200 with `delivery_attempts` array
 - [ ] `GET /notifications/:id` unknown ID → 404
-- [ ] `GET /notifications` pagination fields match `API_CONTRACT.md` (`page`, `page_size`, `total`, `total_pages`)
+- [ ] `GET /notifications` pagination fields match `API_CONTRACT.md` (`page_size`, `total`, `next_cursor`)
 - [ ] `GET /notifications` filters (`status`, `channel`, `batch_id`, `date_from`, `date_to`) work correctly
 - [ ] `POST /notifications/:id/cancel` on `pending` → 200 with `status: cancelled`
 - [ ] `POST /notifications/:id/cancel` on `processing`/`delivered`/`failed` → 409 `INVALID_STATUS_TRANSITION`

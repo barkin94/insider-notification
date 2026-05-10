@@ -50,8 +50,8 @@ scaffold
 - [x] observability
 - [x] priority-router
 - [ ] ratelimit-replace
-- [ ] docs-readme
-- [ ] cursor-pagination
+- [x] docs-readme
+- [x] cursor-pagination
 - [ ] refactor
 - [ ] shared-httpclient
 - [ ] notification-processing

@@ -2,154 +2,124 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/barkin/insider-notification/shared/model"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/uptrace/bun"
 )
 
-type pgxNotificationRepo struct{ pool *pgxpool.Pool }
+type bunNotificationRepo struct{ db *bun.DB }
 
-func NewNotificationRepository(pool *pgxpool.Pool) NotificationRepository {
-	return &pgxNotificationRepo{pool: pool}
+func NewNotificationRepository(db *bun.DB) NotificationRepository {
+	return &bunNotificationRepo{db: db}
 }
 
-func (r *pgxNotificationRepo) Create(ctx context.Context, n *model.Notification) error {
-	_, err := r.pool.Exec(ctx, `
-		INSERT INTO notifications
-			(id, batch_id, recipient, channel, content, priority, status,
-			 deliver_after, attempts, max_attempts, metadata, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-		n.ID, n.BatchID, n.Recipient, n.Channel, n.Content, n.Priority, n.Status,
-		n.DeliverAfter, n.Attempts, n.MaxAttempts, n.Metadata,
-		n.CreatedAt, n.UpdatedAt,
-	)
+func (r *bunNotificationRepo) Create(ctx context.Context, n *model.Notification) error {
+	_, err := r.db.NewInsert().Model(n).Exec(ctx)
 	return err
 }
 
-func (r *pgxNotificationRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.Notification, error) {
-	rows, err := r.pool.Query(ctx, `SELECT * FROM notifications WHERE id = $1`, id)
-	if err != nil {
-		return nil, err
-	}
-	n, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[model.Notification])
-	if errors.Is(err, pgx.ErrNoRows) {
+func (r *bunNotificationRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.Notification, error) {
+	n := new(model.Notification)
+	err := r.db.NewSelect().Model(n).Where("id = ?", id).Scan(ctx)
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
-	if err != nil {
-		return nil, err
-	}
-	return &n, nil
+	return n, err
 }
 
-func (r *pgxNotificationRepo) Transition(ctx context.Context, id uuid.UUID, from, to string) (*model.Notification, error) {
-	rows, err := r.pool.Query(ctx, `
-		UPDATE notifications SET status = $1, updated_at = NOW()
-		WHERE id = $2 AND status = $3
-		RETURNING *`, to, id, from)
-	if err != nil {
-		return nil, err
-	}
-	n, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[model.Notification])
-	if errors.Is(err, pgx.ErrNoRows) {
+func (r *bunNotificationRepo) Transition(ctx context.Context, id uuid.UUID, from, to string) (*model.Notification, error) {
+	n := new(model.Notification)
+	err := r.db.NewRaw(`
+		UPDATE notifications SET status = ?, updated_at = NOW()
+		WHERE id = ? AND status = ?
+		RETURNING *`, to, id, from).Scan(ctx, n)
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrTransitionFailed
 	}
-	if err != nil {
-		return nil, err
-	}
-	return &n, nil
+	return n, err
 }
 
-func (r *pgxNotificationRepo) IncrementAttempts(ctx context.Context, id uuid.UUID) error {
-	_, err := r.pool.Exec(ctx,
-		`UPDATE notifications SET attempts = attempts + 1, updated_at = NOW() WHERE id = $1`, id)
+func (r *bunNotificationRepo) IncrementAttempts(ctx context.Context, id uuid.UUID) error {
+	_, err := r.db.NewRaw(
+		`UPDATE notifications SET attempts = attempts + 1, updated_at = NOW() WHERE id = ?`, id,
+	).Exec(ctx)
 	return err
 }
 
-func (r *pgxNotificationRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status string) error {
-	_, err := r.pool.Exec(ctx,
-		`UPDATE notifications SET status = $1, updated_at = NOW() WHERE id = $2`, status, id)
+func (r *bunNotificationRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status string) error {
+	_, err := r.db.NewRaw(
+		`UPDATE notifications SET status = ?, updated_at = NOW() WHERE id = ?`, status, id,
+	).Exec(ctx)
 	return err
 }
 
-func (r *pgxNotificationRepo) List(ctx context.Context, f ListFilter) ([]*model.Notification, int, error) {
-	conds := []string{}
-	args := []any{}
-	n := 1
-
+// applyFilters adds shared WHERE conditions to a notification select query.
+// Called by both the count and data queries inside List.
+func applyFilters(q *bun.SelectQuery, f ListFilter) *bun.SelectQuery {
 	if f.Status != "" {
-		conds = append(conds, fmt.Sprintf("status = $%d", n))
-		args = append(args, f.Status)
-		n++
+		q = q.Where("status = ?", f.Status)
 	}
 	if f.Channel != "" {
-		conds = append(conds, fmt.Sprintf("channel = $%d", n))
-		args = append(args, f.Channel)
-		n++
+		q = q.Where("channel = ?", f.Channel)
 	}
 	if f.BatchID != nil {
-		conds = append(conds, fmt.Sprintf("batch_id = $%d", n))
-		args = append(args, *f.BatchID)
-		n++
+		q = q.Where("batch_id = ?", f.BatchID)
 	}
 	if f.DateFrom != nil {
-		conds = append(conds, fmt.Sprintf("created_at >= $%d", n))
-		args = append(args, *f.DateFrom)
-		n++
+		q = q.Where("created_at >= ?", f.DateFrom)
 	}
 	if f.DateTo != nil {
-		conds = append(conds, fmt.Sprintf("created_at <= $%d", n))
-		args = append(args, *f.DateTo)
-		n++
+		q = q.Where("created_at <= ?", f.DateTo)
+	}
+	return q
+}
+
+func (r *bunNotificationRepo) List(ctx context.Context, f ListFilter) ([]*model.Notification, int, *uuid.UUID, error) {
+	pageSize := f.PageSize
+	if pageSize < 1 {
+		pageSize = 20
 	}
 
-	where := ""
-	if len(conds) > 0 {
-		where = "WHERE " + strings.Join(conds, " AND ")
-	}
-
-	var total int
-	if err := r.pool.QueryRow(ctx,
-		fmt.Sprintf("SELECT COUNT(*) FROM notifications %s", where), args...,
-	).Scan(&total); err != nil {
-		return nil, 0, err
-	}
-
-	sort := "created_at"
-	if f.Sort == "updated_at" {
-		sort = "updated_at"
-	}
-	order := "DESC"
-	if strings.EqualFold(f.Order, "asc") {
-		order = "ASC"
-	}
-	if f.Page < 1 {
-		f.Page = 1
-	}
-	if f.PageSize < 1 {
-		f.PageSize = 20
-	}
-
-	dataArgs := append(args, f.PageSize, (f.Page-1)*f.PageSize)
-	rows, err := r.pool.Query(ctx, fmt.Sprintf(`
-		SELECT * FROM notifications %s
-		ORDER BY %s %s
-		LIMIT $%d OFFSET $%d`, where, sort, order, n, n+1), dataArgs...)
+	total, err := applyFilters(r.db.NewSelect().Model((*model.Notification)(nil)), f).Count(ctx)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, nil, err
 	}
 
-	ns, err := pgx.CollectRows(rows, pgx.RowToStructByName[model.Notification])
-	if err != nil {
-		return nil, 0, err
+	var ns []*model.Notification
+	q := applyFilters(r.db.NewSelect().Model(&ns), f)
+
+	if f.CursorID != nil {
+		q = q.Where("id < ?", f.CursorID).OrderExpr("id DESC").Limit(pageSize + 1)
+	} else {
+		sort := "created_at"
+		if f.Sort == "updated_at" {
+			sort = "updated_at"
+		}
+		order := "DESC"
+		if strings.EqualFold(f.Order, "asc") {
+			order = "ASC"
+		}
+		page := f.Page
+		if page < 1 {
+			page = 1
+		}
+		q = q.OrderExpr(sort + " " + order).Limit(pageSize).Offset((page - 1) * pageSize)
 	}
-	result := make([]*model.Notification, len(ns))
-	for i := range ns {
-		result[i] = &ns[i]
+
+	if err := q.Scan(ctx); err != nil {
+		return nil, 0, nil, err
 	}
-	return result, total, nil
+
+	var nextCursor *uuid.UUID
+	if f.CursorID != nil && len(ns) == pageSize+1 {
+		id := ns[pageSize-1].ID
+		nextCursor = &id
+		ns = ns[:pageSize]
+	}
+
+	return ns, total, nextCursor, nil
 }

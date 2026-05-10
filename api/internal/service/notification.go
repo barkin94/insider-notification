@@ -40,7 +40,7 @@ type BatchResult struct {
 type NotificationService interface {
 	Create(ctx context.Context, req CreateRequest) (*model.Notification, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*model.Notification, []*model.DeliveryAttempt, error)
-	List(ctx context.Context, filter db.ListFilter) ([]*model.Notification, int, error)
+	List(ctx context.Context, filter db.ListFilter) ([]*model.Notification, int, *uuid.UUID, error)
 	Cancel(ctx context.Context, id uuid.UUID) (*model.Notification, error)
 	CreateBatch(ctx context.Context, reqs []CreateRequest) (uuid.UUID, []BatchResult, error)
 }
@@ -183,7 +183,7 @@ func (s *notificationService) GetByID(ctx context.Context, id uuid.UUID) (*model
 	return n, attempts, nil
 }
 
-func (s *notificationService) List(ctx context.Context, filter db.ListFilter) ([]*model.Notification, int, error) {
+func (s *notificationService) List(ctx context.Context, filter db.ListFilter) ([]*model.Notification, int, *uuid.UUID, error) {
 	return s.repo.List(ctx, filter)
 }
 

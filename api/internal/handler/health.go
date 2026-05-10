@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
+	"github.com/uptrace/bun"
 )
 
 type healthResponse struct {
@@ -23,14 +23,14 @@ type healthResponse struct {
 // @Success     200 {object} healthResponse
 // @Failure     503 {object} healthResponse
 // @Router      /health [get]
-func healthCheck(db *pgxpool.Pool, rdb *redis.Client) http.HandlerFunc {
+func healthCheck(db *bun.DB, rdb *redis.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		checks := make(map[string]string, 2)
 		degraded := false
 
 		pgCtx, pgCancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer pgCancel()
-		if err := db.QueryRow(pgCtx, "SELECT 1").Scan(new(int)); err != nil {
+		if err := db.PingContext(pgCtx); err != nil {
 			checks["postgresql"] = fmt.Sprintf("error: %s", err)
 			degraded = true
 		} else {

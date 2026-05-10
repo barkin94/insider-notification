@@ -2,6 +2,7 @@ package db_test
 
 import (
 	"context"
+	"database/sql"
 	"log"
 	"os"
 	"testing"
@@ -10,13 +11,15 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
+	"github.com/uptrace/bun"
+	"github.com/uptrace/bun/dialect/pgdialect"
+	"github.com/uptrace/bun/driver/pgdriver"
 )
 
-var testPool *pgxpool.Pool
+var testDB *bun.DB
 
 func TestMain(m *testing.M) {
 	ctx := context.Background()
@@ -52,11 +55,9 @@ func TestMain(m *testing.M) {
 		log.Fatalf("run migrations: %v", err)
 	}
 
-	testPool, err = pgxpool.New(ctx, connStr)
-	if err != nil {
-		log.Fatalf("create pool: %v", err)
-	}
-	defer testPool.Close()
+	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(connStr)))
+	testDB = bun.NewDB(sqldb, pgdialect.New())
+	defer testDB.Close()
 
 	os.Exit(m.Run())
 }

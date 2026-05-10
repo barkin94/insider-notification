@@ -152,24 +152,25 @@ channel      string    Filter by channel (sms|email|push)
 batch_id     uuid      Filter by batch ID
 date_from    ISO8601   Filter created_at >= date_from
 date_to      ISO8601   Filter created_at <= date_to
-page         int       Page number, default: 1
 page_size    int       Items per page, default: 20, max: 100
-sort         string    Field to sort by: created_at | updated_at, default: created_at
-order        string    asc | desc, default: desc
+cursor       string    Opaque cursor (base64url-encoded UUID v7). When present, returns the page after this ID.
 ```
+
+Results are always ordered by `id DESC` (newest first). `cursor` and offset `page` are mutually exclusive — `cursor` takes precedence.
 
 **Response: 200 OK**
 ```json
 {
   "data": [ /* array of notification objects (same shape as GET /notifications/:id, without delivery_attempts) */ ],
   "pagination": {
-    "page": 1,
     "page_size": 20,
     "total": 4821,
-    "total_pages": 242
+    "next_cursor": "eyJ1dWlkIjoiMDFIWC4uLiJ9"
   }
 }
 ```
+
+`next_cursor` is `null` on the last page.
 
 ---
 
