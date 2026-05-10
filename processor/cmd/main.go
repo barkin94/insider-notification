@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -29,7 +28,7 @@ var defaultWeights = [3]int{3, 2, 1} // high ~50%, normal ~33%, low ~17%
 func main() {
 	// --- config & logging ---
 	cfg := config.Load()
-	initLogger(cfg.LogLevel)
+	sharedotel.InitLogger(cfg.LogLevel)
 
 	// --- OTel SDK: traces (OTLP gRPC) + metrics (Prometheus) ---
 	otelShutdown, err := sharedotel.Init(context.Background(), "processor", cfg.OTelEndpoint)
@@ -125,20 +124,3 @@ func main() {
 	slog.Info("all workers stopped")
 }
 
-func initLogger(level string) {
-	var l slog.Level
-	switch strings.ToLower(level) {
-	case "debug":
-		l = slog.LevelDebug
-	case "warn":
-		l = slog.LevelWarn
-	case "error":
-		l = slog.LevelError
-	default:
-		l = slog.LevelInfo
-	}
-	opts := &slog.HandlerOptions{Level: l}
-	slog.SetDefault(slog.New(sharedotel.NewTraceHandler(
-		slog.NewJSONHandler(os.Stdout, opts),
-	)))
-}

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"strings"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -64,4 +66,23 @@ func Init(ctx context.Context, serviceName, collectorEndpoint string) (Shutdown,
 		}
 		return mp.Shutdown(ctx)
 	}, nil
+}
+
+// InitLogger configures the global slog logger with JSON output, the given
+// log level, and trace_id/span_id injection from active OTel spans.
+func InitLogger(level string) {
+	var l slog.Level
+	switch strings.ToLower(level) {
+	case "debug":
+		l = slog.LevelDebug
+	case "warn":
+		l = slog.LevelWarn
+	case "error":
+		l = slog.LevelError
+	default:
+		l = slog.LevelInfo
+	}
+	slog.SetDefault(slog.New(NewTraceHandler(
+		slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: l}),
+	)))
 }
