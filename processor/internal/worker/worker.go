@@ -11,6 +11,7 @@ import (
 	"github.com/barkin/insider-notification/shared/lock"
 	"github.com/barkin/insider-notification/shared/model"
 	"github.com/barkin/insider-notification/shared/stream"
+	"go.opentelemetry.io/otel"
 )
 
 // StreamPublisher publishes events to a stream topic.
@@ -67,15 +68,17 @@ func (w *Worker) Run(ctx context.Context, src MessageSource) {
 			return
 		}
 		if result.Err != nil {
-			slog.ErrorContext(ctx, "stream read error", "error", result.Err)
-			result.Msg.Nack()
+			slog.ErrorContext(result.Ctx, "stream read error", "error", result.Err)
 			continue
 		}
-		w.processOne(ctx, result)
+		w.processOne(result.Ctx, result)
 	}
 }
 
 func (w *Worker) processOne(ctx context.Context, result stream.Result[stream.NotificationCreatedEvent]) {
+	ctx, span := otel.Tracer("processor").Start(ctx, "processOne")
+	defer span.End()
+
 	evt := result.Event
 	msg := result.Msg
 

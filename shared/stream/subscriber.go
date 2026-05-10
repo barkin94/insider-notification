@@ -7,6 +7,7 @@ import (
 	"log/slog"
 
 	"github.com/ThreeDotsLabs/watermill/message"
+	"go.opentelemetry.io/otel"
 )
 
 // Subscribe returns a channel of decoded NotificationCreatedEvents for the
@@ -22,19 +23,21 @@ func Subscribe[T any](ctx context.Context, sub message.Subscriber, topic string)
 	go func() {
 		defer close(out)
 		for msg := range msgs {
+			// Extract the W3C trace context the publisher injected into metadata.
+			msgCtx := otel.GetTextMapPropagator().Extract(ctx, NewStreamCarrier(msg.Metadata))
+			slog.InfoContext(msgCtx, "message received", "topic", topic)
 			var e T
 			if err := json.Unmarshal(msg.Payload, &e); err != nil {
-				slog.InfoContext(ctx, "message received", "topic", topic, "message", msg)
 				msg.Nack()
 				select {
-				case out <- Result[T]{Err: fmt.Errorf("unmarshal: %w", err)}:
+				case out <- Result[T]{Ctx: msgCtx, Err: fmt.Errorf("unmarshal: %w", err)}:
 				case <-ctx.Done():
 					return
 				}
 				continue
 			}
 			select {
-			case out <- Result[T]{Event: e, Msg: msg}:
+			case out <- Result[T]{Ctx: msgCtx, Event: e, Msg: msg}:
 			case <-ctx.Done():
 				return
 			}
@@ -43,9 +46,11 @@ func Subscribe[T any](ctx context.Context, sub message.Subscriber, topic string)
 	return out, nil
 }
 
-// Result carries a decoded event and its underlying watermill message.
-// Call Msg.Ack() after processing or Msg.Nack() to requeue.
+// Result carries a decoded event, its underlying watermill message, and a
+// context that has the publisher's trace context extracted from the message
+// metadata. Use Ctx (not the caller's ctx) to continue the distributed trace.
 type Result[T any] struct {
+	Ctx   context.Context
 	Event T
 	Msg   *message.Message
 	Err   error

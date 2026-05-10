@@ -9,6 +9,7 @@ import (
 	"github.com/barkin/insider-notification/shared/model"
 	"github.com/barkin/insider-notification/shared/stream"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
 )
 
 // StatusConsumer processes NotificationDeliveryResultEvent messages from the status stream.
@@ -32,16 +33,18 @@ func (c *StatusConsumer) Run(ctx context.Context, msgs <-chan stream.Result[stre
 				return
 			}
 			if result.Err != nil {
-				slog.ErrorContext(ctx, "status stream read error", "error", result.Err)
-				result.Msg.Nack()
+				slog.ErrorContext(result.Ctx, "status stream read error", "error", result.Err)
 				continue
 			}
-			c.processOne(ctx, result)
+			c.processOne(result.Ctx, result)
 		}
 	}
 }
 
 func (c *StatusConsumer) processOne(ctx context.Context, result stream.Result[stream.NotificationDeliveryResultEvent]) {
+	ctx, span := otel.Tracer("api").Start(ctx, "statusConsumer.processOne")
+	defer span.End()
+
 	evt := result.Event
 	msg := result.Msg
 
