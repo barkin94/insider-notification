@@ -24,8 +24,7 @@
 
 ## Middleware
 
-- [ ] `X-Correlation-ID` generated if absent; echoed in response header
-- [ ] All log lines include `service`, `version`, `ts`, `level`, `msg` fields
+- [ ] All log lines include `trace_id` and `span_id` from the active span (injected by OTel log bridge)
 - [ ] `go test ./api/internal/middleware/...` passes
 
 ---

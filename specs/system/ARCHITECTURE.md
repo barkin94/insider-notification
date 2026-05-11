@@ -62,9 +62,9 @@
 | Rate Limiter | Redis token bucket | Distributed-safe, survives app restarts |
 | Migrations | `golang-migrate` | SQL-file based, versioned up/down |
 | PostgreSQL Driver | `pgx/v5` + `pgxpool` | High-performance Go PostgreSQL driver |
-| Observability | OpenTelemetry Go SDK | Unified metrics + traces; industry standard |
-| Metrics backend | Prometheus | Scrapes OTel Prometheus exporter on both services |
-| Visualization | Grafana | Dashboards over Prometheus; trace UI via Jaeger |
+| Observability | OpenTelemetry Go SDK | Unified traces, metrics, and logs via OTLP gRPC to OTel Collector |
+| Metrics backend | Prometheus | Scrapes OTel Collector's Prometheus endpoint (`:8889`); services do not expose `/metrics` directly |
+| Visualization | Grafana | Dashboards over Prometheus; trace UI via Tempo; logs via Loki |
 | Logging | `slog` | Structured, high-performance |
 | Config | `viper` | Env + file config, 12-factor compatible |
 | Testing | `testify` + `go test` | Standard Go testing with assertions |
@@ -86,17 +86,17 @@ No globals, no `init()`.
 | HTTP handlers | `api/internal/handler/` | Decode request, validate input, call service, encode response |
 | Business logic | `api/internal/service/` | Orchestrate repo + stream publisher; own domain rules |
 | Data access | `api/internal/db/` | PostgreSQL via pgx; implements repository interfaces |
-| Stream | `internal/shared/stream/` | Publish `NotificationCreatedEvent` to Redis Streams |
+| Stream | `shared/stream/` | Publish `NotificationCreatedEvent` to Redis Streams |
 
 **Notification Processor:**
 
 | Layer | Package | Responsibility |
 |-------|---------|----------------|
 | Stream consumer | `processor/internal/worker/` | Poll streams, dispatch to delivery service |
-| Delivery | `processor/internal/worker/delivery/` | HTTP POST to webhook provider |
+| Delivery | `processor/internal/worker/webhook/` | HTTP POST to webhook provider |
 | Rate limiting | `processor/internal/worker/ratelimit/` | Redis token bucket per channel |
 | Retry | `processor/internal/worker/retry/` | Backoff formula; re-enqueue with `deliver_after` |
-| Stream | `internal/shared/stream/` | Publish `NotificationDeliveryResultEvent` to status stream |
+| Stream | `shared/stream/` | Publish `NotificationDeliveryResultEvent` to status stream |
 
 All dependencies are injected via constructors. No globals, no `init()`.
 
@@ -140,9 +140,9 @@ All dependencies are injected via constructors. No globals, no `init()`.
 - **Tradeoff accepted:** Slightly more files than a flat structure. Justified by testability.
 
 ### ADR: OpenTelemetry for Observability
-- **Decision:** Both services instrument with the OTel Go SDK. Metrics exported via Prometheus exporter; traces via OTLP → OTel Collector → Jaeger. No custom metrics store.
-- **Rationale:** Industry standard; eliminates custom counter/ring buffer code; gives traces, metrics, and dashboards with no additional instrumentation effort.
-- **Tradeoff accepted:** Adds four services to `docker-compose.yml` (otel-collector, prometheus, grafana, jaeger). Acceptable for this scope.
+- **Decision:** Both services instrument with the OTel Go SDK. Metrics exported via Prometheus exporter; traces via OTLP gRPC → OTel Collector → Tempo; logs via OTLP gRPC → OTel Collector → Loki.
+- **Rationale:** Industry standard; eliminates custom counter/ring buffer code; gives traces, metrics, logs, and dashboards with no additional instrumentation effort.
+- **Tradeoff accepted:** Adds five services to `docker-compose.yml` (otel-collector, prometheus, grafana, tempo, loki). Acceptable for this scope.
 
 ---
 

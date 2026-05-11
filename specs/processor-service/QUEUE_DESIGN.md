@@ -51,12 +51,13 @@ Both groups are created on startup if they do not already exist.
 10 workers run concurrently (configurable via `WORKER_CONCURRENCY`). Each worker loops:
 
 1. Poll for next message via `PriorityRouter.Next()` (see `PRIORITY_ROUTER.md`)
-2. If `deliver_after` is set and `now < deliver_after` — re-enqueue with same `deliver_after`, ACK, and skip
-3. Check Redis key `cancelled:{notification_id}` — if present, ACK and skip
+2. If `deliver_after` is set and `now < deliver_after` — re-enqueue to same priority topic, ACK, and skip
+3. Check cancellation store — if cancelled, ACK and skip
 4. Acquire a processing lock on the notification ID (TTL 60s) — if already held, ACK and skip
-5. Publish `processing` status event to `notify:stream:status`
-6. Execute rate limit → delivery → retry logic (see `RETRY_POLICY.md`)
-7. Publish `delivered` or `failed` status event, release lock, ACK the message
+5. Check rate limiter — if denied, re-enqueue to same priority topic, ACK, and skip
+6. Publish `processing` status event to `notify:stream:status`
+7. Execute delivery → retry logic (see `RETRY_POLICY.md`)
+8. Publish `delivered` or `failed` status event, release lock, ACK the message
 
 ---
 

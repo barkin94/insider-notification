@@ -142,17 +142,3 @@ at notification creation time.
 - Add `.github/workflows/ci.yml` to project layout in `ARCHITECTURE.md`
 - Add CI/CD checklist item to `VERIFICATION.md`
 
----
-
-## Distributed Tracing
-
-**What:** Propagate trace context (e.g. OpenTelemetry) across HTTP requests, worker processing,
-and outbound webhook calls for end-to-end request visibility.
-
-**Notes:** Not specced in detail. The correlation ID middleware already provides a lightweight
-tracing primitive. Full distributed tracing would add an OTel SDK, a trace exporter, and
-span instrumentation across all components.
-
-**Spec files to write when prioritized:**
-- Add distributed tracing section to `OBSERVABILITY.md`
-- Add OTel dependency to Tech Stack in `ARCHITECTURE.md`

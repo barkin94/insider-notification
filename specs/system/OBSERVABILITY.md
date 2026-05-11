@@ -10,9 +10,10 @@ and visualised in Grafana. Traces are exported via OTLP to Grafana Tempo.
 | Concern | Tool |
 |---------|------|
 | SDK | `go.opentelemetry.io/otel` |
-| Metrics exporter | Prometheus (`go.opentelemetry.io/otel/exporters/prometheus`) |
+| Metrics exporter | OTLP gRPC → OTel Collector → Prometheus (Collector exposes scrape endpoint at `:8889`) |
 | Trace exporter | OTLP gRPC → OTel Collector → Grafana Tempo |
-| Logging | `log/slog` (OTel logs API not yet stable in Go) |
+| Log exporter | OTLP gRPC → OTel Collector → Loki (`go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc`) |
+| Logging | `log/slog` bridged to OTel log SDK via `go.opentelemetry.io/contrib/bridges/otelslog` |
 
 ### Metrics
 
@@ -39,26 +40,9 @@ and visualised in Grafana. Traces are exported via OTLP to Grafana Tempo.
 
 ## Structured Logging
 
-**Format:** JSON, one object per line.
-
-Required fields on every log line:
-
-| Field | Value |
-|-------|-------|
-| `ts` | ISO8601 timestamp |
-| `level` | `debug \| info \| warn \| error` |
-| `msg` | human-readable description |
-| `service` | `notification-api \| notification-processor` |
-| `version` | `1.0.0` |
+Logs are emitted via `log/slog` and exported to Loki through the OTel log bridge. The bridge automatically injects `trace_id` and `span_id` from the active span into every log record, correlating logs with traces.
 
 Log level configurable via `LOG_LEVEL` env var (default: `info`).
-
-### Correlation ID
-
-Every HTTP request gets a `X-Correlation-ID` header (generated if absent). It propagates through:
-- HTTP response headers
-- All log lines for that request lifecycle
-- Outbound webhook calls (`X-Correlation-ID` header)
 
 ---
 
@@ -66,9 +50,10 @@ Every HTTP request gets a `X-Correlation-ID` header (generated if absent). It pr
 
 | Service | Purpose | Default URL |
 |---------|---------|-------------|
-| `otel-collector` | Receives OTLP spans; forwards traces to Tempo, metrics to Prometheus | — |
+| `otel-collector` | Receives OTLP from services; forwards traces to Tempo, metrics to Prometheus, logs to Loki | — |
 | `prometheus` | Scrapes `/metrics` on both services | `http://localhost:9090` |
 | `tempo` | Stores traces; queried by Grafana | `http://localhost:3200` |
+| `loki` | Stores logs; queried by Grafana | `http://localhost:3100` |
 | `grafana` | Dashboards (metrics via Prometheus, traces via Tempo, logs via Loki) | `http://localhost:3000` |
 
 ---

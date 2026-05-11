@@ -77,12 +77,14 @@ Driven by the stream consumer loop (see QUEUE_DESIGN.md). "publish event" = writ
                        │
            deliver_after > NOW? ──yes──► re-enqueue · acknowledge · next
                        │ no
-             lock acquired? ──no────────► acknowledge · next
+               cancelled? ──yes──────────► acknowledge · next
+                       │ no
+             lock acquired? ──no──────────► acknowledge · next
                        │ yes
-     transition to processing ──failed──► acknowledge · next
-                       │ ok
-           rate limiter ok? ──no──► status=pending · re-enqueue · acknowledge · next
+           rate limiter ok? ──no──► re-enqueue · acknowledge · next
                        │ yes
+         publish "processing" status event
+                       │
                deliver to provider
                 ┌──────┴──────┐
                202          failure
@@ -117,7 +119,6 @@ The rate limiter check happens **before** the delivery attempt inside the worker
 If the token bucket for a channel is exhausted:
 - The worker **does not** count this as a failed attempt
 - The notification is re-enqueued immediately (no backoff delay applied)
-- The worker sleeps for `1000ms / capacity` (10ms for 100 msg/s) before next dispatch
 - This is transparent to the retry counter — only actual provider failures consume retry budget
 
 ---

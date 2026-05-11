@@ -7,10 +7,10 @@
 - [ ] Consumer group `notify:cg:processor` created on all three priority streams on startup
 - [ ] Worker poll order confirmed: high → normal → low before blocking
 - [ ] 10 workers run concurrently (configurable via `WORKER_CONCURRENCY`)
-- [ ] Redis lock acquired before processing; lock TTL is 60s
+- [ ] Cancellation checked before lock; cancelled → ACK and skip
+- [ ] Redis lock acquired after cancellation check; lock TTL is 60s
 - [ ] Lock miss → message acknowledged, worker moves to next
-- [ ] Notification fetched from PostgreSQL after lock acquired; cancelled/already-processed notifications skipped
-- [ ] Status transition to `processing` is atomic; skip if another worker already transitioned
+- [ ] Rate limit checked after lock; denied → re-enqueue and ACK (attempt counter not incremented)
 - [ ] Message acknowledged after every terminal outcome (success, failure, skip)
 - [ ] Crash recovery: messages idle in PEL > 2 minutes are reclaimed on startup
 - [ ] `go test ./internal/shared/stream/... ./processor/internal/worker/...` passes
@@ -22,7 +22,6 @@
 - [ ] Lua script executes atomically in Redis
 - [ ] Token bucket capacity 100, refill rate 100/s, burst 120 per channel
 - [ ] Rate-limited notification re-enqueued immediately (no backoff); attempt counter not incremented
-- [ ] Worker sleeps `1000ms / capacity` (10ms) after a rate-limit hit
 - [ ] Concurrent goroutine test confirms atomic execution
 - [ ] `go test ./processor/internal/worker/ratelimit/...` passes
 
@@ -43,7 +42,7 @@
 - [ ] Provider 400 / 401 / 403 → non-retryable failure
 - [ ] Provider 5xx / 429 / timeout → retryable failure
 - [ ] Latency measured from dispatch to response
-- [ ] `go test ./processor/internal/worker/delivery/...` passes
+- [ ] `go test ./processor/internal/worker/webhook/...` passes
 
 ---
 
