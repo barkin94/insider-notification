@@ -1,6 +1,6 @@
 # Insider Notification Service
 
-A notification delivery system built in Go. The API accepts notification requests, publishes them to Redis Streams by priority, and the Processor picks them up for delivery via webhook.
+A notification delivery system built in Go. The API accepts notification requests, publishes them to Redis Streams by priority, the Processor picks them up for delivery via webhook, and publishes delivery results back to Redis Streams.
 
 ## Architecture
 
@@ -24,8 +24,9 @@ A notification delivery system built in Go. The API accepts notification request
 | `redis` | Redis Streams for async message passing |
 | `otel-collector` | Receives OTLP traces, forwards to Tempo |
 | `tempo` | Trace storage, queried by Grafana |
-| `prometheus` | Scrapes `/metrics` from both services |
-| `grafana` | Dashboards — metrics (Prometheus) + traces (Tempo) |
+| `prometheus` | Scrapes `/metrics` from OTel Collector |
+| `loki` | Logs storage, queried by Grafana
+| `grafana` | Dashboards — metrics (Prometheus) + traces (Tempo) + logs (Loki) |
 
 ## Prerequisites
 
@@ -37,12 +38,8 @@ Run `make help` to see all available commands.
 
 ### 1. Configure environment
 
-The `.env` files in `api/` and `processor/` are pre-filled for docker-compose. The one value you must set before starting:
+Before running the services, `api/` and `processor/` folders need `.env` files inside. Each contains `.env.example` files that are pre-filled for docker-compose, which you can simply create a copy of and then rename to `.env`.
 
-```
-# processor/.env
-WEBHOOK_URL=https://webhook.site/<your-uuid>   # replace with a real webhook.site URL
-```
 
 ### 2. Start all services
 
@@ -66,33 +63,11 @@ Base URL: `http://localhost:8080`
 
 **Swagger UI:** `http://localhost:8080/api/v1/docs/index.html`
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/v1/health` | Health check (Postgres + Redis) |
-| `POST` | `/api/v1/notifications` | Create a notification |
-| `GET` | `/api/v1/notifications` | List notifications |
-| `POST` | `/api/v1/notifications/batch` | Create a batch of notifications |
-| `GET` | `/api/v1/notifications/{id}` | Get a notification by ID |
-| `POST` | `/api/v1/notifications/{id}/cancel` | Cancel a pending notification |
-
-**Create notification example**
-
-```bash
-curl -X POST http://localhost:8080/api/v1/notifications \
-  -H "Content-Type: application/json" \
-  -d '{
-    "recipient": "user@example.com",
-    "channel": "email",
-    "content": "Hello!",
-    "priority": "normal"
-  }'
-```
-
 ## Observability
 
 | URL | What you see |
 |-----|-------------|
-| `http://localhost:3000` | Grafana (admin / admin) — metrics dashboard + traces |
+| `http://localhost:3000` | Grafana — metrics dashboard + traces + logs |
 | `http://localhost:9090` | Prometheus — raw metrics |
 | `http://localhost:3200` | Tempo — raw trace API |
 
@@ -133,3 +108,40 @@ go run ./processor/cmd
 ```
 
 Change `REDIS_ADDR` and `DATABASE_URL` in the `.env` files to `localhost` for local runs. Migrations can be applied via the migrate container: `docker compose run --rm migrate-api`.
+
+## Functional Requirements Status
+
+### Notification Management API
+
+- [x] Create notification requests with recipient, channel, content, and priority
+- [x] Support batch creation (up to 1000 notifications per request)
+- [x] Query notification status by ID or batch ID
+- [x] Cancel pending notifications
+- [x] List notifications with filtering (status, channel, date range) and pagination
+
+### Processing Engine
+
+- [x] Process notifications asynchronously via queue workers
+- [ ] Implement rate limiting: maximum 100 messages per second per channel
+- [x] Priority queue support (high, normal, low)
+- [ ] Content validation (character limits, required fields)
+- [x] Idempotency support to prevent duplicate sends
+
+### Delivery & Retry Logic
+
+- [x] Will require thinking and design by candidate
+
+### Observability
+
+- [x] Real-time metrics endpoint (OpenTelemetry exports metrics to Prometheus)
+- [x] Structured logging with correlation IDs (Correlation is achieved with OpenTelemetry)
+- [x] Health check endpoint
+
+### Bonus Features
+
+- [ ] Failure Handling
+- [ ] Scheduled Notifications: Allow scheduling notifications for future delivery
+- [ ] Template System: Support message templates with variable substitution
+- [ ] WebSocket Updates: Real-time status updates via WebSocket
+- [x] Distributed Tracing
+- [ ] GitHub Actions CI/CD: Automated testing and linting pipeline
