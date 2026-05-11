@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/barkin/insider-notification/api/internal/db"
+	"github.com/barkin/insider-notification/api/internal/middleware"
 	"github.com/barkin/insider-notification/api/internal/service"
 	"github.com/barkin/insider-notification/shared/model"
 	"github.com/go-chi/chi/v5"
@@ -102,12 +103,11 @@ type batchResponse struct {
 // @Failure     400 {object} errorBody
 // @Failure     500 {object} errorBody
 // @Router      /notifications [post]
-func createNotification(svc service.NotificationService) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+func createNotification(svc service.NotificationService) middleware.AppHandler {
+	return func(w http.ResponseWriter, r *http.Request) error {
 		var req createRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid JSON body", nil)
-			return
+			return errBadRequest("VALIDATION_ERROR", "invalid JSON body")
 		}
 
 		n, err := svc.Create(r.Context(), service.CreateRequest{
@@ -119,14 +119,13 @@ func createNotification(svc service.NotificationService) http.HandlerFunc {
 		})
 		if err != nil {
 			if service.IsValidationError(err) {
-				writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error(), nil)
-				return
+				return errBadRequest("VALIDATION_ERROR", err.Error())
 			}
-			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error", nil)
-			return
+			return errInternal()
 		}
 
-		writeJSON(w, http.StatusCreated, toNotificationResponse(n))
+		middleware.WriteJSON(w, http.StatusCreated, toNotificationResponse(n))
+		return nil
 	}
 }
 
@@ -140,29 +139,26 @@ func createNotification(svc service.NotificationService) http.HandlerFunc {
 // @Failure     404 {object} errorBody
 // @Failure     500 {object} errorBody
 // @Router      /notifications/{id} [get]
-func getNotification(svc service.NotificationService) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+func getNotification(svc service.NotificationService) middleware.AppHandler {
+	return func(w http.ResponseWriter, r *http.Request) error {
 		id, err := uuid.Parse(chi.URLParam(r, "id"))
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid notification id", nil)
-			return
+			return errBadRequest("VALIDATION_ERROR", "invalid notification id")
 		}
 
 		n, attempts, err := svc.GetByID(r.Context(), id)
 		if err != nil {
 			if errors.Is(err, db.ErrNotFound) {
-				writeError(w, http.StatusNotFound, "NOT_FOUND", "notification not found", nil)
-				return
+				return errNotFound("notification not found")
 			}
-			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error", nil)
-			return
+			return errInternal()
 		}
 
-		resp := notificationWithAttemptsResponse{
+		middleware.WriteJSON(w, http.StatusOK, notificationWithAttemptsResponse{
 			notificationResponse: toNotificationResponse(n),
 			DeliveryAttempts:     toAttemptResponses(attempts),
-		}
-		writeJSON(w, http.StatusOK, resp)
+		})
+		return nil
 	}
 }
 
@@ -181,8 +177,8 @@ func getNotification(svc service.NotificationService) http.HandlerFunc {
 // @Failure     400 {object} errorBody
 // @Failure     500 {object} errorBody
 // @Router      /notifications [get]
-func listNotifications(svc service.NotificationService) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+func listNotifications(svc service.NotificationService) middleware.AppHandler {
+	return func(w http.ResponseWriter, r *http.Request) error {
 		q := r.URL.Query()
 
 		pageSize := intParam(q.Get("page_size"), 20)
@@ -223,18 +219,16 @@ func listNotifications(svc service.NotificationService) http.HandlerFunc {
 		if cursorStr := q.Get("cursor"); cursorStr != "" {
 			cursorID, err := decodeCursor(cursorStr)
 			if err != nil {
-				writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid cursor", nil)
-				return
+				return errBadRequest("VALIDATION_ERROR", "invalid cursor")
 			}
 			f.CursorID = cursorID
 		}
 
 		ns, total, nextCursor, err := svc.List(r.Context(), f)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error", nil)
-			return
+			return errInternal()
 		}
-		writeJSON(w, http.StatusOK, listResponse{
+		middleware.WriteJSON(w, http.StatusOK, listResponse{
 			Data: toNotificationResponses(ns),
 			Pagination: paginationMeta{
 				PageSize:   pageSize,
@@ -242,6 +236,7 @@ func listNotifications(svc service.NotificationService) http.HandlerFunc {
 				NextCursor: encodeCursor(nextCursor),
 			},
 		})
+		return nil
 	}
 }
 
@@ -284,33 +279,30 @@ func toNotificationResponses(ns []*model.Notification) []notificationResponse {
 // @Failure     409 {object} errorBody
 // @Failure     500 {object} errorBody
 // @Router      /notifications/{id}/cancel [post]
-func cancelNotification(svc service.NotificationService) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+func cancelNotification(svc service.NotificationService) middleware.AppHandler {
+	return func(w http.ResponseWriter, r *http.Request) error {
 		id, err := uuid.Parse(chi.URLParam(r, "id"))
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid notification id", nil)
-			return
+			return errBadRequest("VALIDATION_ERROR", "invalid notification id")
 		}
 
 		n, err := svc.Cancel(r.Context(), id)
 		if err != nil {
 			if errors.Is(err, db.ErrTransitionFailed) {
-				writeError(w, http.StatusConflict, "INVALID_STATUS_TRANSITION", "notification cannot be cancelled in its current status", nil)
-				return
+				return errConflict("INVALID_STATUS_TRANSITION", "notification cannot be cancelled in its current status")
 			}
 			if errors.Is(err, db.ErrNotFound) {
-				writeError(w, http.StatusNotFound, "NOT_FOUND", "notification not found", nil)
-				return
+				return errNotFound("notification not found")
 			}
-			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error", nil)
-			return
+			return errInternal()
 		}
 
-		writeJSON(w, http.StatusOK, cancelResponse{
+		middleware.WriteJSON(w, http.StatusOK, cancelResponse{
 			ID:        n.ID.String(),
 			Status:    n.Status,
 			UpdatedAt: n.UpdatedAt.Format(time.RFC3339),
 		})
+		return nil
 	}
 }
 
@@ -324,16 +316,14 @@ func cancelNotification(svc service.NotificationService) http.HandlerFunc {
 // @Failure     400 {object} errorBody
 // @Failure     500 {object} errorBody
 // @Router      /notifications/batch [post]
-func createBatch(svc service.NotificationService) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+func createBatch(svc service.NotificationService) middleware.AppHandler {
+	return func(w http.ResponseWriter, r *http.Request) error {
 		var req batchRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid JSON body", nil)
-			return
+			return errBadRequest("VALIDATION_ERROR", "invalid JSON body")
 		}
 		if len(req.Notifications) > 1000 {
-			writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "batch size exceeds 1000", nil)
-			return
+			return errBadRequest("VALIDATION_ERROR", "batch size exceeds 1000")
 		}
 
 		svcReqs := make([]service.CreateRequest, len(req.Notifications))
@@ -349,8 +339,7 @@ func createBatch(svc service.NotificationService) http.HandlerFunc {
 
 		batchID, results, err := svc.CreateBatch(r.Context(), svcReqs)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error", nil)
-			return
+			return errInternal()
 		}
 
 		accepted := 0
@@ -368,13 +357,14 @@ func createBatch(svc service.NotificationService) http.HandlerFunc {
 			itemResults = append(itemResults, item)
 		}
 
-		writeJSON(w, http.StatusMultiStatus, batchResponse{
+		middleware.WriteJSON(w, http.StatusMultiStatus, batchResponse{
 			BatchID:  batchID.String(),
 			Total:    len(req.Notifications),
 			Accepted: accepted,
 			Rejected: len(req.Notifications) - accepted,
 			Results:  itemResults,
 		})
+		return nil
 	}
 }
 

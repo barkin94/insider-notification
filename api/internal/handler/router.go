@@ -21,17 +21,35 @@ type Deps struct {
 	Redis   *redis.Client
 }
 
+// appRouter wraps chi.Router and automatically applies middleware.ErrorHandler
+// on every AppHandler route, so call sites never need to wrap manually.
+type appRouter struct{ chi.Router }
+
+func (r *appRouter) Get(path string, h middleware.AppHandler) {
+	r.Router.Get(path, middleware.ErrorHandler(h))
+}
+
+func (r *appRouter) Post(path string, h middleware.AppHandler) {
+	r.Router.Post(path, middleware.ErrorHandler(h))
+}
+
+func (r *appRouter) Route(path string, fn func(*appRouter)) {
+	r.Router.Route(path, func(sub chi.Router) {
+		fn(&appRouter{sub})
+	})
+}
+
 // NewRouter builds and returns the chi router with all routes registered.
 func NewRouter(deps Deps) http.Handler {
-	r := chi.NewRouter()
+	mux := chi.NewRouter()
+	mux.Use(chiMiddleware.Recoverer)
+	mux.Use(middleware.Logger())
 
-	r.Use(chiMiddleware.Recoverer)
-	r.Use(middleware.Logger())
+	mux.Get("/api/v1/docs/*", httpSwagger.WrapHandler)
+	mux.Get("/api/v1/health", healthCheck(deps.DB, deps.Redis))
 
-	r.Get("/api/v1/docs/*", httpSwagger.WrapHandler)
-	r.Get("/api/v1/health", healthCheck(deps.DB, deps.Redis))
-
-	r.Route("/api/v1/notifications", func(r chi.Router) {
+	r := &appRouter{mux}
+	r.Route("/api/v1/notifications", func(r *appRouter) {
 		r.Post("/", createNotification(deps.Service))
 		r.Get("/", listNotifications(deps.Service))
 		r.Post("/batch", createBatch(deps.Service))
@@ -39,5 +57,5 @@ func NewRouter(deps Deps) http.Handler {
 		r.Post("/{id}/cancel", cancelNotification(deps.Service))
 	})
 
-	return otelhttp.NewHandler(r, "api")
+	return otelhttp.NewHandler(mux, "api")
 }

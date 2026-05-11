@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/barkin/insider-notification/processor/internal/worker/delivery"
+	"github.com/barkin/insider-notification/processor/internal/worker/webhook"
 	"github.com/barkin/insider-notification/processor/internal/worker/ratelimit"
 	"github.com/barkin/insider-notification/processor/internal/worker/retry"
 	"github.com/barkin/insider-notification/shared/lock"
@@ -33,7 +33,7 @@ var topicByPriority = map[string]string{
 // Worker processes notification delivery events from a stream.
 type Worker struct {
 	pub      StreamPublisher
-	delivery delivery.Client
+	webhookClient webhook.Client
 	limiter  ratelimit.Limiter
 	locker   lock.Locker
 	cancel   CancellationStore
@@ -41,14 +41,14 @@ type Worker struct {
 
 func NewWorker(
 	pub StreamPublisher,
-	delivery delivery.Client,
+	webhookClient webhook.Client,
 	limiter ratelimit.Limiter,
 	locker lock.Locker,
 	cancel CancellationStore,
 ) *Worker {
 	return &Worker{
 		pub:      pub,
-		delivery: delivery,
+		webhookClient: webhookClient,
 		limiter:  limiter,
 		locker:   locker,
 		cancel:   cancel,
@@ -122,6 +122,24 @@ func (w *Worker) processOne(ctx context.Context, result stream.Result[stream.Not
 	}
 	defer w.locker.Unlock(ctx, evt.NotificationID) //nolint:errcheck
 
+	// rate limit
+	allowed, err := w.limiter.Allow(ctx, evt.Channel)
+	if err != nil {
+		slog.ErrorContext(ctx, "rate limit error", "id", evt.NotificationID, "error", err)
+		msg.Nack()
+		return
+	}
+	if !allowed {
+		slog.InfoContext(ctx, "rate limited, re-enqueuing", "id", evt.NotificationID, "channel", evt.Channel)
+		if err := w.pub.Publish(ctx, topicByPriority[evt.Priority], evt); err != nil {
+			slog.ErrorContext(ctx, "re-enqueue rate-limited failed", "id", evt.NotificationID, "error", err)
+			msg.Nack()
+			return
+		}
+		msg.Ack()
+		return
+	}
+
 	w.publishStatus(ctx, stream.NotificationDeliveryResultEvent{
 		NotificationID: evt.NotificationID,
 		Status:         model.StatusProcessing,
@@ -129,8 +147,12 @@ func (w *Worker) processOne(ctx context.Context, result stream.Result[stream.Not
 		UpdatedAt:      time.Now().UTC().Format(time.RFC3339),
 	})
 
-	// TODO: call delivery client (notification-processing task)
-	dr := delivery.Result{}
+	dr, err := w.webhookClient.Send(ctx, evt.Recipient, evt.Channel, evt.Content)
+	if err != nil {
+		slog.ErrorContext(ctx, "delivery transport error", "id", evt.NotificationID, "error", err)
+		msg.Nack()
+		return
+	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	switch {

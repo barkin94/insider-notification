@@ -12,7 +12,7 @@ import (
 	"github.com/barkin/insider-notification/processor/internal/config"
 	"github.com/barkin/insider-notification/processor/internal/priorityrouter"
 	"github.com/barkin/insider-notification/processor/internal/worker"
-	"github.com/barkin/insider-notification/processor/internal/worker/delivery"
+	"github.com/barkin/insider-notification/processor/internal/worker/webhook"
 	"github.com/barkin/insider-notification/processor/internal/worker/ratelimit"
 	"github.com/barkin/insider-notification/shared/lock"
 	sharedotel "github.com/barkin/insider-notification/shared/otel"
@@ -83,7 +83,7 @@ func main() {
 
 	// --- worker dependencies ---
 	limiter := ratelimit.NewLimiter(rdb)
-	deliveryClient := delivery.NewClient(cfg.WebhookURL, 10*time.Second)
+	deliveryClient := webhook.NewClient(cfg.WebhookURL, 10*time.Second)
 	locker := lock.NewRedisLocker(rdb)
 	canceller := worker.NewRedisCancellationStore(rdb)
 

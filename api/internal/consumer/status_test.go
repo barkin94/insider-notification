@@ -92,7 +92,7 @@ func seedNotification(t *testing.T, id uuid.UUID, status string) {
 
 func makeResult(evt stream.NotificationDeliveryResultEvent) stream.Result[stream.NotificationDeliveryResultEvent] {
 	msg := watermill.NewMessage(uuid.New().String(), nil)
-	return stream.Result[stream.NotificationDeliveryResultEvent]{Event: evt, Msg: msg}
+	return stream.Result[stream.NotificationDeliveryResultEvent]{Ctx: context.Background(), Event: evt, Msg: msg}
 }
 
 func runConsumer(c *consumer.StatusConsumer, result stream.Result[stream.NotificationDeliveryResultEvent]) {

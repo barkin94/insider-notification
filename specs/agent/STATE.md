@@ -1,3 +1,3 @@
 STATUS: in progress
-LAST_COMPLETED: shared-httpclient
+LAST_COMPLETED: notification-processing
 BLOCKED_REASON:

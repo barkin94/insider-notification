@@ -54,6 +54,6 @@ scaffold
 - [x] cursor-pagination
 - [ ] refactor
 - [x] shared-httpclient
-- [ ] notification-processing
+- [x] notification-processing
 - [ ] migrations-ci
 - [ ] replace-promtail-with-otelcollector

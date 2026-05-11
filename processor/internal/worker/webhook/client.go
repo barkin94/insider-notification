@@ -1,4 +1,4 @@
-package delivery
+package webhook
 
 import (
 	"context"
@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/barkin/insider-notification/shared/httpclient"
-	"github.com/barkin/insider-notification/shared/model"
 )
 
 // Result holds the outcome of a single delivery attempt.
@@ -23,7 +22,7 @@ type Result struct {
 
 // Client delivers a notification to the webhook provider.
 type Client interface {
-	Send(ctx context.Context, n *model.Notification) (Result, error)
+	Send(ctx context.Context, to, channel, content string) (Result, error)
 }
 
 type webhookClient struct {
@@ -38,19 +37,17 @@ func NewClient(webhookURL string, timeout time.Duration) Client {
 }
 
 type requestBody struct {
-	ID        string `json:"id"`
-	Channel   string `json:"channel"`
-	Recipient string `json:"recipient"`
-	Content   string `json:"content"`
+	To      string `json:"to"`
+	Channel string `json:"channel"`
+	Content string `json:"content"`
 }
 
-func (c *webhookClient) Send(ctx context.Context, n *model.Notification) (Result, error) {
+func (c *webhookClient) Send(ctx context.Context, to, channel, content string) (Result, error) {
 	start := time.Now()
 	resp, err := c.http.Request(ctx, http.MethodPost, "", requestBody{
-		ID:        n.ID.String(),
-		Channel:   n.Channel,
-		Recipient: n.Recipient,
-		Content:   n.Content,
+		To:      to,
+		Channel: channel,
+		Content: content,
 	})
 	latency := time.Since(start).Milliseconds()
 
@@ -73,7 +70,8 @@ func (c *webhookClient) Send(ctx context.Context, n *model.Notification) (Result
 	}
 
 	slog.InfoContext(ctx, "delivery response",
-		"notification_id", n.ID,
+		"to", to,
+		"channel", channel,
 		"status", code,
 		"latency_ms", latency,
 		"success", result.Success,

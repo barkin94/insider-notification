@@ -1,26 +1,30 @@
 package handler
 
 import (
-	"encoding/json"
 	"net/http"
+
+	"github.com/barkin/insider-notification/api/internal/middleware"
 )
 
+// errorBody is used for per-item errors in batch responses.
 type errorBody struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 	Details any    `json:"details,omitempty"`
 }
 
-type errorResponse struct {
-	Error errorBody `json:"error"`
+func errBadRequest(code, msg string) *middleware.AppError {
+	return &middleware.AppError{Status: http.StatusBadRequest, Code: code, Message: msg}
 }
 
-func writeJSON(w http.ResponseWriter, status int, body any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(body) //nolint:errcheck
+func errNotFound(msg string) *middleware.AppError {
+	return &middleware.AppError{Status: http.StatusNotFound, Code: "NOT_FOUND", Message: msg}
 }
 
-func writeError(w http.ResponseWriter, status int, code, message string, details any) {
-	writeJSON(w, status, errorResponse{Error: errorBody{Code: code, Message: message, Details: details}})
+func errConflict(code, msg string) *middleware.AppError {
+	return &middleware.AppError{Status: http.StatusConflict, Code: code, Message: msg}
+}
+
+func errInternal() *middleware.AppError {
+	return &middleware.AppError{Status: http.StatusInternalServerError, Code: "INTERNAL_ERROR", Message: "internal server error"}
 }
