@@ -23,7 +23,7 @@ Migrations are versioned SQL files (`*.up.sql` / `*.down.sql`) managed by `golan
 | `created_at` | TIMESTAMPTZ | NOT NULL, default now |
 | `updated_at` | TIMESTAMPTZ | NOT NULL, default now |
 
-**Status values:** `pending` | `processing` | `delivered` | `failed` | `cancelled`
+**Status values:** `pending` | `delivered` | `failed` | `cancelled`
 
 **Field constraints:**
 - `recipient`: max 255 chars, required
@@ -71,19 +71,11 @@ CREATE INDEX idx_delivery_attempts_attempted_at  ON delivery_attempts(attempted_
 ## Status Transition Map
 
 ```
-    [pending] ──── published to stream ────► [processing]
-                                               /         \
-                                   provider 202          provider error
-                                       │                      │
-                                       ▼                      ▼
-                                 [delivered]          attempts < max?
-                                                        /           \
-                                                      yes            no
-                                                       │             │
-                                                re-enqueue       [failed]
-                                                (backoff delay)
-
-    [pending] ──── cancel API ────► [cancelled]
+                         ┌─ provider 202 ──────────────► [delivered]
+                         │
+    [pending] ───────────┼─ attempts exhausted ─────────► [failed]
+                         │
+                         └─ cancel API ────────────────► [cancelled]
 ```
 
 ---

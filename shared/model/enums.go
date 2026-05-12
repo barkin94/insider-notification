@@ -9,9 +9,8 @@ const (
 	PriorityNormal = "normal"
 	PriorityLow    = "low"
 
-	StatusPending    = "pending"
-	StatusProcessing = "processing"
-	StatusDelivered  = "delivered"
+	StatusPending   = "pending"
+	StatusDelivered = "delivered"
 	StatusFailed     = "failed"
 	StatusCancelled  = "cancelled"
 )

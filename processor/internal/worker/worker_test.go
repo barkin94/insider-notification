@@ -119,15 +119,6 @@ func isAcked(msg *message.Message) bool {
 	}
 }
 
-func isNacked(msg *message.Message) bool {
-	select {
-	case <-msg.Nacked():
-		return true
-	default:
-		return false
-	}
-}
-
 // --- tests ---
 
 // deliver_after in the future: re-enqueues to same topic and ACKs; no status published.
@@ -167,9 +158,9 @@ func TestProcessOne_DeliverAfterPast(t *testing.T) {
 		t.Error("expected ACK")
 	}
 	topics := pub.topicsPublished()
-	// processing + failed
-	if len(topics) != 2 {
-		t.Errorf("expected 2 status publishes, got %d: %v", len(topics), topics)
+	// failed only
+	if len(topics) != 1 {
+		t.Errorf("expected 1 status publish, got %d: %v", len(topics), topics)
 	}
 }
 
@@ -205,7 +196,7 @@ func TestProcessOne_LockMiss(t *testing.T) {
 	}
 }
 
-// Full pipeline with terminal non-retryable failure: publishes processing then failed.
+// Full pipeline with terminal non-retryable failure: publishes failed only.
 func TestProcessOne_TerminalFailure(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: webhook.Result{Success: false, Retryable: false}}
@@ -218,25 +209,16 @@ func TestProcessOne_TerminalFailure(t *testing.T) {
 	if !isAcked(result.Msg) {
 		t.Error("expected ACK")
 	}
-	topics := pub.topicsPublished()
-	if len(topics) != 2 {
-		t.Fatalf("expected 2 publishes, got %d: %v", len(topics), topics)
-	}
-	for _, topic := range topics {
-		if topic != stream.TopicStatus {
-			t.Errorf("expected all publishes to %s, got %s", stream.TopicStatus, topic)
-		}
-	}
-
 	calls := pub.calls()
-	first := calls[0].payload.(stream.NotificationDeliveryResultEvent)
-	second := calls[1].payload.(stream.NotificationDeliveryResultEvent)
-
-	if first.Status != model.StatusProcessing {
-		t.Errorf("first publish: expected %s, got %s", model.StatusProcessing, first.Status)
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 publish, got %d: %v", len(calls), calls)
 	}
-	if second.Status != model.StatusFailed {
-		t.Errorf("second publish: expected %s, got %s", model.StatusFailed, second.Status)
+	if calls[0].topic != stream.TopicStatus {
+		t.Errorf("expected publish to %s, got %s", stream.TopicStatus, calls[0].topic)
+	}
+	evt := calls[0].payload.(stream.NotificationDeliveryResultEvent)
+	if evt.Status != model.StatusFailed {
+		t.Errorf("expected status %s, got %s", model.StatusFailed, evt.Status)
 	}
 }
 
@@ -254,10 +236,10 @@ func TestWorker_delivered(t *testing.T) {
 		t.Error("expected ACK")
 	}
 	calls := pub.calls()
-	if len(calls) != 2 {
-		t.Fatalf("expected 2 publishes (processing + delivered), got %d", len(calls))
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 publish (delivered), got %d", len(calls))
 	}
-	evt := calls[1].payload.(stream.NotificationDeliveryResultEvent)
+	evt := calls[0].payload.(stream.NotificationDeliveryResultEvent)
 	if evt.Status != model.StatusDelivered {
 		t.Errorf("expected status %s, got %s", model.StatusDelivered, evt.Status)
 	}
@@ -280,33 +262,19 @@ func TestWorker_retryable_requeued(t *testing.T) {
 		t.Error("expected ACK")
 	}
 	calls := pub.calls()
-	// processing status + retry re-enqueue + processing status (retry)
-	if len(calls) != 3 {
-		t.Fatalf("expected 3 publishes, got %d: %v", len(calls), calls)
+	// re-enqueue to priority topic only; no status events on retryable failure
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 publish (re-enqueue), got %d: %v", len(calls), calls)
 	}
-
-	// First publish: processing status
-	first := calls[0].payload.(stream.NotificationDeliveryResultEvent)
-	if first.Status != model.StatusProcessing {
-		t.Errorf("first: expected %s, got %s", model.StatusProcessing, first.Status)
+	if calls[0].topic != stream.TopicHigh {
+		t.Errorf("publish should be re-enqueue to %s, got %s", stream.TopicHigh, calls[0].topic)
 	}
-
-	// Second publish: re-enqueue to priority topic
-	if calls[1].topic != stream.TopicHigh {
-		t.Errorf("second publish should be re-enqueue to %s, got %s", stream.TopicHigh, calls[1].topic)
-	}
-	retryEvt := calls[1].payload.(stream.NotificationCreatedEvent)
+	retryEvt := calls[0].payload.(stream.NotificationCreatedEvent)
 	if retryEvt.AttemptNumber != 2 {
 		t.Errorf("re-enqueued AttemptNumber: expected 2, got %d", retryEvt.AttemptNumber)
 	}
 	if retryEvt.DeliverAfter == "" {
 		t.Error("re-enqueued event should have DeliverAfter set")
-	}
-
-	// Third publish: status for this attempt
-	third := calls[2].payload.(stream.NotificationDeliveryResultEvent)
-	if third.Status != model.StatusProcessing {
-		t.Errorf("third: expected %s, got %s", model.StatusProcessing, third.Status)
 	}
 }
 
@@ -327,15 +295,13 @@ func TestWorker_exhausted_failed(t *testing.T) {
 		t.Error("expected ACK")
 	}
 	calls := pub.calls()
-	if len(calls) != 2 {
-		t.Fatalf("expected 2 publishes (processing + failed), got %d", len(calls))
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 publish (failed), got %d", len(calls))
 	}
-	for _, c := range calls {
-		if c.topic != stream.TopicStatus {
-			t.Errorf("expected all publishes to %s, got %s", stream.TopicStatus, c.topic)
-		}
+	if calls[0].topic != stream.TopicStatus {
+		t.Errorf("expected publish to %s, got %s", stream.TopicStatus, calls[0].topic)
 	}
-	last := calls[1].payload.(stream.NotificationDeliveryResultEvent)
+	last := calls[0].payload.(stream.NotificationDeliveryResultEvent)
 	if last.Status != model.StatusFailed {
 		t.Errorf("expected status %s, got %s", model.StatusFailed, last.Status)
 	}
@@ -355,10 +321,10 @@ func TestWorker_nonRetryable_failed(t *testing.T) {
 		t.Error("expected ACK")
 	}
 	calls := pub.calls()
-	if len(calls) != 2 {
-		t.Fatalf("expected 2 publishes (processing + failed), got %d", len(calls))
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 publish (failed), got %d", len(calls))
 	}
-	last := calls[1].payload.(stream.NotificationDeliveryResultEvent)
+	last := calls[0].payload.(stream.NotificationDeliveryResultEvent)
 	if last.Status != model.StatusFailed {
 		t.Errorf("expected status %s, got %s", model.StatusFailed, last.Status)
 	}

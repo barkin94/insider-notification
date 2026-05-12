@@ -174,32 +174,6 @@ func TestStatusConsumer_failed(t *testing.T) {
 	}
 }
 
-func TestStatusConsumer_processing(t *testing.T) {
-	notifID := mustV7()
-	seedNotification(t, notifID, model.StatusPending)
-
-	notifRepo := db.NewNotificationRepository(testDB)
-	attemptRepo := db.NewDeliveryAttemptRepository(testDB)
-	c := consumer.NewStatusConsumer(notifRepo, attemptRepo)
-
-	evt := stream.NotificationDeliveryResultEvent{
-		NotificationID: notifID.String(),
-		Status:         model.StatusProcessing,
-		AttemptNumber:  1,
-		LatencyMS:      10,
-		UpdatedAt:      time.Now().UTC().Format(time.RFC3339),
-	}
-	runConsumer(c, makeResult(evt))
-
-	got, err := notifRepo.GetByID(context.Background(), notifID)
-	if err != nil {
-		t.Fatalf("GetByID: %v", err)
-	}
-	if got.Status != model.StatusProcessing {
-		t.Errorf("status = %q, want %q", got.Status, model.StatusProcessing)
-	}
-}
-
 func TestStatusConsumer_idempotent(t *testing.T) {
 	notifID := mustV7()
 	seedNotification(t, notifID, model.StatusPending)

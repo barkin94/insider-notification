@@ -40,7 +40,7 @@
 - [ ] `GET /notifications` pagination fields match `API_CONTRACT.md` (`page_size`, `total`, `next_cursor`)
 - [ ] `GET /notifications` filters (`status`, `channel`, `batch_id`, `date_from`, `date_to`) work correctly
 - [ ] `POST /notifications/:id/cancel` on `pending` → 200 with `status: cancelled`
-- [ ] `POST /notifications/:id/cancel` on `processing`/`delivered`/`failed` → 409 `INVALID_STATUS_TRANSITION`
+- [ ] `POST /notifications/:id/cancel` on `delivered`/`failed`/`cancelled` → 409 `INVALID_STATUS_TRANSITION`
 - [ ] `GET /health` → 200 with `postgresql` and `redis` checks; 503 if either fails
 - [ ] Content length enforced per channel (SMS 1600, Email 100000, Push 4096)
 - [ ] `go test ./api/internal/handler/...` passes
@@ -51,7 +51,7 @@
 
 - [ ] Consumer reads from `notify:stream:status` via consumer group `notify:cg:api`
 - [ ] Inserts `delivery_attempts` row on each event (`ON CONFLICT DO NOTHING` on `notification_id + attempt_number`)
-- [ ] Updates `notifications.status` for `processing`, `delivered`, `failed` events
+- [ ] Updates `notifications.status` for `delivered` and `failed` events
 - [ ] Acknowledges message after DB writes complete
 - [ ] Re-processing a duplicate status event is safe (idempotent)
 - [ ] `go test ./internal/shared/stream/...` passes (consumer side)

@@ -75,12 +75,12 @@ func TestNotificationRepo_Transition(t *testing.T) {
 	n := newNotification()
 	repo.Create(ctx, n)
 
-	updated, err := repo.Transition(ctx, n.ID, model.StatusPending, model.StatusProcessing)
+	updated, err := repo.Transition(ctx, n.ID, model.StatusPending, model.StatusCancelled)
 	if err != nil {
 		t.Fatalf("Transition: %v", err)
 	}
-	if updated.Status != model.StatusProcessing {
-		t.Errorf("Status = %q, want processing", updated.Status)
+	if updated.Status != model.StatusCancelled {
+		t.Errorf("Status = %q, want cancelled", updated.Status)
 	}
 }
 
@@ -91,7 +91,7 @@ func TestNotificationRepo_Transition_wrongFrom(t *testing.T) {
 	n := newNotification()
 	repo.Create(ctx, n)
 
-	_, err := repo.Transition(ctx, n.ID, model.StatusDelivered, model.StatusProcessing)
+	_, err := repo.Transition(ctx, n.ID, model.StatusDelivered, model.StatusCancelled)
 	if err != db.ErrTransitionFailed {
 		t.Errorf("expected ErrTransitionFailed, got %v", err)
 	}

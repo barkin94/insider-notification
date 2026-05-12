@@ -44,18 +44,16 @@ func TestPriorityValues(t *testing.T) {
 
 func TestStatusValues(t *testing.T) {
 	cases := map[string]string{
-		"Pending":    model.StatusPending,
-		"Processing": model.StatusProcessing,
-		"Delivered":  model.StatusDelivered,
-		"Failed":     model.StatusFailed,
-		"Cancelled":  model.StatusCancelled,
+		"Pending":   model.StatusPending,
+		"Delivered": model.StatusDelivered,
+		"Failed":    model.StatusFailed,
+		"Cancelled": model.StatusCancelled,
 	}
 	want := map[string]string{
-		"Pending":    "pending",
-		"Processing": "processing",
-		"Delivered":  "delivered",
-		"Failed":     "failed",
-		"Cancelled":  "cancelled",
+		"Pending":   "pending",
+		"Delivered": "delivered",
+		"Failed":    "failed",
+		"Cancelled": "cancelled",
 	}
 	for name, got := range cases {
 		if got != want[name] {

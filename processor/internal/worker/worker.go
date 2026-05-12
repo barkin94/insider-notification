@@ -140,13 +140,6 @@ func (w *Worker) processOne(ctx context.Context, result stream.Result[stream.Not
 		return
 	}
 
-	w.publishStatus(ctx, stream.NotificationDeliveryResultEvent{
-		NotificationID: evt.NotificationID,
-		Status:         model.StatusProcessing,
-		AttemptNumber:  evt.AttemptNumber,
-		UpdatedAt:      time.Now().UTC().Format(time.RFC3339),
-	})
-
 	dr, err := w.webhookClient.Send(ctx, evt.Recipient, evt.Channel, evt.Content)
 	if err != nil {
 		slog.ErrorContext(ctx, "delivery transport error", "id", evt.NotificationID, "error", err)
@@ -175,16 +168,6 @@ func (w *Worker) processOne(ctx context.Context, result stream.Result[stream.Not
 		if err := w.pub.Publish(ctx, topicByPriority[evt.Priority], retryEvt); err != nil {
 			slog.ErrorContext(ctx, "publish retry failed", "id", evt.NotificationID, "error", err)
 		}
-		w.publishStatus(ctx, stream.NotificationDeliveryResultEvent{
-			NotificationID: evt.NotificationID,
-			Status:         model.StatusProcessing,
-			AttemptNumber:  evt.AttemptNumber,
-			HTTPStatusCode: dr.StatusCode,
-			ErrorMessage:   dr.ErrorMessage,
-			LatencyMS:      int(dr.LatencyMS),
-			UpdatedAt:      now,
-		})
-
 	default:
 		w.publishStatus(ctx, stream.NotificationDeliveryResultEvent{
 			NotificationID: evt.NotificationID,

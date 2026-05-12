@@ -53,7 +53,7 @@ Consumed by the API service's status consumer via consumer group `notify:cg:api`
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `notification_id` | UUID string | yes | Matches the notification row in PostgreSQL |
-| `status` | string | yes | `processing` \| `delivered` \| `failed` |
+| `status` | string | yes | `delivered` \| `failed` |
 | `attempt_number` | integer | yes | 1-indexed attempt counter |
 | `http_status_code` | integer | no | Provider HTTP response code; 0 on network error |
 | `error_message` | string | no | Human-readable failure reason; empty on success |

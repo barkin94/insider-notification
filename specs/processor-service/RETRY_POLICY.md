@@ -44,7 +44,7 @@ Total elapsed before final failure: ~7–8.4 minutes.
 
 A failed delivery attempt is eligible for retry if ALL of the following are true:
 - `notification.attempts < notification.max_attempts` (i.e. < 4)
-- `notification.status` is `processing` (not `cancelled`)
+- notification is not cancelled (Redis cancellation key is absent)
 - The failure is **retryable** (see non-retryable conditions below)
 
 ---
@@ -83,19 +83,17 @@ Driven by the stream consumer loop (see QUEUE_DESIGN.md). "publish event" = writ
                        │ yes
            rate limiter ok? ──no──► re-enqueue · acknowledge · next
                        │ yes
-         publish "processing" status event
-                       │
                deliver to provider
                 ┌──────┴──────┐
                202          failure
                 │                │
                 │      retryable AND attempts < max_attempts?
                 │                ├── yes ──► deliver_after = NOW + backoff(attempts) + jitter
-                │                │           status=pending · re-enqueue · publish event · acknowledge
+                │                │           re-enqueue · acknowledge · next
                 │                │
-                │                └── no ───► status=failed · publish event · acknowledge
+                │                └── no ───► publish "failed" event · acknowledge
                 │
-          status=delivered · publish event · acknowledge
+          publish "delivered" event · acknowledge
 ```
 
 ---

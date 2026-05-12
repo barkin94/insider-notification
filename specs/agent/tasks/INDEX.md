@@ -1,19 +1,30 @@
 # TASKS INDEX
-Date: 2026-05-07
-Session: first build — full spec suite
+
+Date: 2026-05-12
+Source: specs/system/TODOS.md §§ Processor Database, Scheduled Notifications
 
 ## Sequence
 
+```text
+remove-processing-status ──────────────────┐
+                                            │
+processor-postgres                          │
+  └── processor-db-package ────────────────►├──► processor-worker-attempts
+                                            │          └── api-remove-attempts
+scheduled-api
+  └── scheduled-worker
 ```
-ratelimit-replace
-  └── refactor
-migrations-ci
-replace-promtail-with-otelcollector
-```
+
+`processor-worker-attempts` depends on both `processor-db-package` and
+`remove-processing-status` (both touch `worker.go`).
+The two chains (processor-db and scheduled) are otherwise independent.
 
 ## Status
 
-- [ ] ratelimit-replace
-- [ ] refactor
-- [ ] migrations-ci
-- [ ] replace-promtail-with-otelcollector
+- [x] remove-processing-status
+- [ ] processor-postgres
+- [ ] processor-db-package
+- [ ] processor-worker-attempts
+- [ ] api-remove-attempts
+- [ ] scheduled-api
+- [ ] scheduled-worker

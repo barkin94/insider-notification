@@ -147,7 +147,7 @@ List notifications with filtering and pagination.
 
 **Query Parameters:**
 ```
-status       string    Filter by status (pending|processing|delivered|failed|cancelled)
+status       string    Filter by status (pending|delivered|failed|cancelled)
 channel      string    Filter by channel (sms|email|push)
 batch_id     uuid      Filter by batch ID
 date_from    ISO8601   Filter created_at >= date_from
@@ -179,7 +179,7 @@ Cancel a pending or scheduled notification.
 
 **Rules:**
 - Only `pending` notifications can be cancelled
-- Returns 409 if status is `processing`, `delivered`, `failed`, or `cancelled`
+- Returns 409 if status is `delivered`, `failed`, or `cancelled`
 
 **Request:** empty body
 

@@ -55,9 +55,8 @@ Both groups are created on startup if they do not already exist.
 3. Check cancellation store — if cancelled, ACK and skip
 4. Acquire a processing lock on the notification ID (TTL 60s) — if already held, ACK and skip
 5. Check rate limiter — if denied, re-enqueue to same priority topic, ACK, and skip
-6. Publish `processing` status event to `notify:stream:status`
-7. Execute delivery → retry logic (see `RETRY_POLICY.md`)
-8. Publish `delivered` or `failed` status event, release lock, ACK the message
+6. Execute delivery → retry logic (see `RETRY_POLICY.md`)
+7. Publish `delivered` or `failed` status event, release lock, ACK the message
 
 ---
 
