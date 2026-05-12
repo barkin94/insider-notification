@@ -5,12 +5,14 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/barkin/insider-notification/processor/internal/worker/webhook"
+	processordb "github.com/barkin/insider-notification/processor/internal/db"
 	"github.com/barkin/insider-notification/processor/internal/worker/ratelimit"
 	"github.com/barkin/insider-notification/processor/internal/worker/retry"
+	"github.com/barkin/insider-notification/processor/internal/worker/webhook"
 	"github.com/barkin/insider-notification/shared/lock"
 	"github.com/barkin/insider-notification/shared/model"
 	"github.com/barkin/insider-notification/shared/stream"
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 )
 
@@ -24,6 +26,11 @@ type CancellationStore interface {
 	IsCancelled(ctx context.Context, id string) (bool, error)
 }
 
+// DeliveryAttemptWriter persists a delivery attempt record.
+type DeliveryAttemptWriter interface {
+	Create(ctx context.Context, a *processordb.DeliveryAttempt) error
+}
+
 var topicByPriority = map[string]string{
 	model.PriorityHigh:   stream.TopicHigh,
 	model.PriorityNormal: stream.TopicNormal,
@@ -32,11 +39,12 @@ var topicByPriority = map[string]string{
 
 // Worker processes notification delivery events from a stream.
 type Worker struct {
-	pub      StreamPublisher
+	pub           StreamPublisher
 	webhookClient webhook.Client
-	limiter  ratelimit.Limiter
-	locker   lock.Locker
-	cancel   CancellationStore
+	limiter       ratelimit.Limiter
+	locker        lock.Locker
+	cancel        CancellationStore
+	attempts      DeliveryAttemptWriter
 }
 
 func NewWorker(
@@ -45,13 +53,15 @@ func NewWorker(
 	limiter ratelimit.Limiter,
 	locker lock.Locker,
 	cancel CancellationStore,
+	attempts DeliveryAttemptWriter,
 ) *Worker {
 	return &Worker{
-		pub:      pub,
+		pub:           pub,
 		webhookClient: webhookClient,
-		limiter:  limiter,
-		locker:   locker,
-		cancel:   cancel,
+		limiter:       limiter,
+		locker:        locker,
+		cancel:        cancel,
+		attempts:      attempts,
 	}
 }
 
@@ -150,6 +160,7 @@ func (w *Worker) processOne(ctx context.Context, result stream.Result[stream.Not
 	now := time.Now().UTC().Format(time.RFC3339)
 	switch {
 	case dr.Success:
+		w.writeAttempt(ctx, evt.NotificationID, evt.AttemptNumber, model.StatusDelivered)
 		w.publishStatus(ctx, stream.NotificationDeliveryResultEvent{
 			NotificationID:    evt.NotificationID,
 			Status:            model.StatusDelivered,
@@ -161,6 +172,7 @@ func (w *Worker) processOne(ctx context.Context, result stream.Result[stream.Not
 		})
 
 	case dr.Retryable && evt.AttemptNumber < evt.MaxAttempts:
+		w.writeAttempt(ctx, evt.NotificationID, evt.AttemptNumber, model.StatusFailed)
 		nextAttempt := evt.AttemptNumber + 1
 		retryEvt := evt
 		retryEvt.AttemptNumber = nextAttempt
@@ -169,6 +181,7 @@ func (w *Worker) processOne(ctx context.Context, result stream.Result[stream.Not
 			slog.ErrorContext(ctx, "publish retry failed", "id", evt.NotificationID, "error", err)
 		}
 	default:
+		w.writeAttempt(ctx, evt.NotificationID, evt.AttemptNumber, model.StatusFailed)
 		w.publishStatus(ctx, stream.NotificationDeliveryResultEvent{
 			NotificationID: evt.NotificationID,
 			Status:         model.StatusFailed,
@@ -186,5 +199,33 @@ func (w *Worker) processOne(ctx context.Context, result stream.Result[stream.Not
 func (w *Worker) publishStatus(ctx context.Context, evt stream.NotificationDeliveryResultEvent) {
 	if err := w.pub.Publish(ctx, stream.TopicStatus, evt); err != nil {
 		slog.ErrorContext(ctx, "publish status failed", "id", evt.NotificationID, "error", err)
+	}
+}
+
+func (w *Worker) writeAttempt(ctx context.Context, notifIDStr string, attemptNumber int, status string) {
+	if w.attempts == nil {
+		return
+	}
+	notifID, err := uuid.Parse(notifIDStr)
+	if err != nil {
+		slog.ErrorContext(ctx, "invalid notification_id for attempt write", "id", notifIDStr, "error", err)
+		return
+	}
+	id, err := uuid.NewV7()
+	if err != nil {
+		slog.ErrorContext(ctx, "generate attempt id failed", "error", err)
+		return
+	}
+	now := time.Now().UTC()
+	a := &processordb.DeliveryAttempt{
+		NotificationID: notifID,
+		AttemptNumber:  attemptNumber,
+		Status:         status,
+	}
+	a.ID = id
+	a.CreatedAt = now
+	a.UpdatedAt = now
+	if err := w.attempts.Create(ctx, a); err != nil {
+		slog.ErrorContext(ctx, "write delivery attempt failed", "id", notifIDStr, "error", err)
 	}
 }

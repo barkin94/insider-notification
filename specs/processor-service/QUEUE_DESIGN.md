@@ -83,9 +83,11 @@ Rate-limited notifications are re-enqueued rather than acknowledged in place.
 
 ## Status Events
 
-After each delivery attempt the Processor publishes an event to `notify:stream:status`.
-The API status consumer reads each event, writes a `delivery_attempts` row to PostgreSQL,
-updates `notifications.status`, then acknowledges the message.
+After each delivery attempt the Processor publishes an event to `notify:stream:status` and
+writes a row to `processor.delivery_attempts` in its own schema.
+The API status consumer reads each event, updates `notifications.status`, then acknowledges
+the message. The `delivery_attempts` table is owned exclusively by the processor — the API
+does not read or write it.
 
 Full event shape: see `MESSAGE_CONTRACT.md`.
 

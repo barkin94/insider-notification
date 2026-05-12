@@ -126,17 +126,7 @@ Get a single notification by ID.
   "max_attempts": 4,
   "metadata": null,
   "created_at": "ISO8601",
-  "updated_at": "ISO8601",
-  "delivery_attempts": [
-    {
-      "id": "uuid",
-      "attempt_number": 1,
-      "status": "success",
-      "http_status_code": 202,
-      "latency_ms": 143,
-      "attempted_at": "ISO8601"
-    }
-  ]
+  "updated_at": "ISO8601"
 }
 ```
 

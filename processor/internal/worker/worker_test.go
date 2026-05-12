@@ -2,17 +2,20 @@ package worker_test
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
+	processordb "github.com/barkin/insider-notification/processor/internal/db"
 	"github.com/barkin/insider-notification/processor/internal/worker"
-	"github.com/barkin/insider-notification/processor/internal/worker/webhook"
 	"github.com/barkin/insider-notification/processor/internal/worker/ratelimit"
+	"github.com/barkin/insider-notification/processor/internal/worker/webhook"
 	"github.com/barkin/insider-notification/shared/model"
 	"github.com/barkin/insider-notification/shared/stream"
+	"github.com/google/uuid"
 )
 
 // --- fakes ---
@@ -77,6 +80,27 @@ func (f *fakeLimiter) Allow(_ context.Context, _ string) (bool, error) {
 	return f.allowed, nil
 }
 
+type mockAttemptWriter struct {
+	mu      sync.Mutex
+	calls   []*processordb.DeliveryAttempt
+	err     error
+}
+
+func (m *mockAttemptWriter) Create(_ context.Context, a *processordb.DeliveryAttempt) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.calls = append(m.calls, a)
+	return m.err
+}
+
+func (m *mockAttemptWriter) recorded() []*processordb.DeliveryAttempt {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]*processordb.DeliveryAttempt, len(m.calls))
+	copy(out, m.calls)
+	return out
+}
+
 // --- helpers ---
 
 func newResult(evt stream.NotificationCreatedEvent) stream.Result[stream.NotificationCreatedEvent] {
@@ -100,13 +124,14 @@ func baseEvent() stream.NotificationCreatedEvent {
 	}
 }
 
-func newWorker(pub *fakePublisher, dc webhook.Client, lim ratelimit.Limiter, cancelled bool, lockGranted bool) *worker.Worker {
+func newWorker(pub *fakePublisher, dc webhook.Client, lim ratelimit.Limiter, cancelled bool, lockGranted bool, attempts worker.DeliveryAttemptWriter) *worker.Worker {
 	return worker.NewWorker(
 		pub,
 		dc,
 		lim,
 		&fakeLocker{locked: lockGranted},
 		&fakeCancellationStore{cancelled: cancelled},
+		attempts,
 	)
 }
 
@@ -124,7 +149,7 @@ func isAcked(msg *message.Message) bool {
 // deliver_after in the future: re-enqueues to same topic and ACKs; no status published.
 func TestProcessOne_DeliverAfterFuture(t *testing.T) {
 	pub := &fakePublisher{}
-	w := newWorker(pub, nil, nil, false, true)
+	w := newWorker(pub, nil, nil, false, true, nil)
 
 	evt := baseEvent()
 	evt.DeliverAfter = time.Now().Add(10 * time.Minute).UTC().Format(time.RFC3339)
@@ -146,7 +171,7 @@ func TestProcessOne_DeliverAfterPast(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: webhook.Result{Success: false, Retryable: false}}
 	lim := &fakeLimiter{allowed: true}
-	w := newWorker(pub, dc, lim, false, true)
+	w := newWorker(pub, dc, lim, false, true, nil)
 
 	evt := baseEvent()
 	evt.DeliverAfter = time.Now().Add(-10 * time.Minute).UTC().Format(time.RFC3339)
@@ -167,7 +192,7 @@ func TestProcessOne_DeliverAfterPast(t *testing.T) {
 // Cancelled notification: ACKs immediately, no status published.
 func TestProcessOne_Cancelled(t *testing.T) {
 	pub := &fakePublisher{}
-	w := newWorker(pub, nil, nil, true, true)
+	w := newWorker(pub, nil, nil, true, true, nil)
 
 	result := newResult(baseEvent())
 	w.Run(context.Background(), &singleSource{result: result})
@@ -183,7 +208,7 @@ func TestProcessOne_Cancelled(t *testing.T) {
 // Lock miss: ACKs immediately, no status published.
 func TestProcessOne_LockMiss(t *testing.T) {
 	pub := &fakePublisher{}
-	w := newWorker(pub, nil, nil, false, false)
+	w := newWorker(pub, nil, nil, false, false, nil)
 
 	result := newResult(baseEvent())
 	w.Run(context.Background(), &singleSource{result: result})
@@ -201,7 +226,7 @@ func TestProcessOne_TerminalFailure(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: webhook.Result{Success: false, Retryable: false}}
 	lim := &fakeLimiter{allowed: true}
-	w := newWorker(pub, dc, lim, false, true)
+	w := newWorker(pub, dc, lim, false, true, nil)
 
 	result := newResult(baseEvent())
 	w.Run(context.Background(), &singleSource{result: result})
@@ -227,7 +252,7 @@ func TestWorker_delivered(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: webhook.Result{Success: true, StatusCode: 202, LatencyMS: 50}}
 	lim := &fakeLimiter{allowed: true}
-	w := newWorker(pub, dc, lim, false, true)
+	w := newWorker(pub, dc, lim, false, true, nil)
 
 	result := newResult(baseEvent())
 	w.Run(context.Background(), &singleSource{result: result})
@@ -253,7 +278,7 @@ func TestWorker_retryable_requeued(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: webhook.Result{Success: false, Retryable: true, StatusCode: 503}}
 	lim := &fakeLimiter{allowed: true}
-	w := newWorker(pub, dc, lim, false, true)
+	w := newWorker(pub, dc, lim, false, true, nil)
 
 	result := newResult(baseEvent()) // AttemptNumber=1, MaxAttempts=4
 	w.Run(context.Background(), &singleSource{result: result})
@@ -283,7 +308,7 @@ func TestWorker_exhausted_failed(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: webhook.Result{Success: false, Retryable: true, StatusCode: 503}}
 	lim := &fakeLimiter{allowed: true}
-	w := newWorker(pub, dc, lim, false, true)
+	w := newWorker(pub, dc, lim, false, true, nil)
 
 	evt := baseEvent()
 	evt.AttemptNumber = 4
@@ -312,7 +337,7 @@ func TestWorker_nonRetryable_failed(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: webhook.Result{Success: false, Retryable: false, StatusCode: 400}}
 	lim := &fakeLimiter{allowed: true}
-	w := newWorker(pub, dc, lim, false, true)
+	w := newWorker(pub, dc, lim, false, true, nil)
 
 	result := newResult(baseEvent())
 	w.Run(context.Background(), &singleSource{result: result})
@@ -333,7 +358,7 @@ func TestWorker_nonRetryable_failed(t *testing.T) {
 // Lock miss: ACKs, no publishes.
 func TestWorker_lockMiss(t *testing.T) {
 	pub := &fakePublisher{}
-	w := newWorker(pub, nil, nil, false, false)
+	w := newWorker(pub, nil, nil, false, false, nil)
 
 	result := newResult(baseEvent())
 	w.Run(context.Background(), &singleSource{result: result})
@@ -349,7 +374,7 @@ func TestWorker_lockMiss(t *testing.T) {
 // Future DeliverAfter: re-enqueue only, no status event.
 func TestWorker_deliverAfter_requeued(t *testing.T) {
 	pub := &fakePublisher{}
-	w := newWorker(pub, nil, nil, false, true)
+	w := newWorker(pub, nil, nil, false, true, nil)
 
 	evt := baseEvent()
 	evt.DeliverAfter = time.Now().Add(5 * time.Minute).UTC().Format(time.RFC3339)
@@ -376,7 +401,7 @@ func TestWorker_deliverAfter_requeued(t *testing.T) {
 func TestWorker_rateLimited_requeued(t *testing.T) {
 	pub := &fakePublisher{}
 	lim := &fakeLimiter{allowed: false}
-	w := newWorker(pub, nil, lim, false, true)
+	w := newWorker(pub, nil, lim, false, true, nil)
 
 	result := newResult(baseEvent())
 	w.Run(context.Background(), &singleSource{result: result})
@@ -403,7 +428,7 @@ func TestWorker_rateLimited_requeued(t *testing.T) {
 // Cancelled notification: ACKs immediately, no publishes.
 func TestWorker_cancelled(t *testing.T) {
 	pub := &fakePublisher{}
-	w := newWorker(pub, nil, nil, true, true)
+	w := newWorker(pub, nil, nil, true, true, nil)
 
 	result := newResult(baseEvent())
 	w.Run(context.Background(), &singleSource{result: result})
@@ -415,6 +440,99 @@ func TestWorker_cancelled(t *testing.T) {
 		t.Errorf("expected no publishes, got %d", len(pub.calls()))
 	}
 }
+
+// --- delivery attempt tests ---
+
+// baseEventWithID returns a baseEvent with a valid UUID notification ID.
+func baseEventWithID() stream.NotificationCreatedEvent {
+	evt := baseEvent()
+	evt.NotificationID = uuid.New().String()
+	return evt
+}
+
+// Success path: attempt written with status=delivered and correct AttemptNumber.
+func TestWorker_attempts_delivered(t *testing.T) {
+	pub := &fakePublisher{}
+	dc := &fakeDeliveryClient{result: webhook.Result{Success: true, StatusCode: 202, LatencyMS: 50}}
+	lim := &fakeLimiter{allowed: true}
+	aw := &mockAttemptWriter{}
+	w := newWorker(pub, dc, lim, false, true, aw)
+
+	evt := baseEventWithID()
+	evt.AttemptNumber = 2
+	w.Run(context.Background(), &singleSource{result: newResult(evt)})
+
+	attempts := aw.recorded()
+	if len(attempts) != 1 {
+		t.Fatalf("expected 1 attempt write, got %d", len(attempts))
+	}
+	if attempts[0].Status != model.StatusDelivered {
+		t.Errorf("attempt status = %q, want %q", attempts[0].Status, model.StatusDelivered)
+	}
+	if attempts[0].AttemptNumber != 2 {
+		t.Errorf("attempt number = %d, want 2", attempts[0].AttemptNumber)
+	}
+}
+
+// Retryable failure path: attempt written with status=failed before re-enqueue.
+func TestWorker_attempts_retryable(t *testing.T) {
+	pub := &fakePublisher{}
+	dc := &fakeDeliveryClient{result: webhook.Result{Success: false, Retryable: true, StatusCode: 503}}
+	lim := &fakeLimiter{allowed: true}
+	aw := &mockAttemptWriter{}
+	w := newWorker(pub, dc, lim, false, true, aw)
+
+	evt := baseEventWithID()
+	evt.AttemptNumber = 1
+	evt.MaxAttempts = 4
+	w.Run(context.Background(), &singleSource{result: newResult(evt)})
+
+	attempts := aw.recorded()
+	if len(attempts) != 1 {
+		t.Fatalf("expected 1 attempt write, got %d", len(attempts))
+	}
+	if attempts[0].Status != model.StatusFailed {
+		t.Errorf("attempt status = %q, want %q", attempts[0].Status, model.StatusFailed)
+	}
+}
+
+// Terminal failure path: attempt written with status=failed.
+func TestWorker_attempts_terminal(t *testing.T) {
+	pub := &fakePublisher{}
+	dc := &fakeDeliveryClient{result: webhook.Result{Success: false, Retryable: false, StatusCode: 400}}
+	lim := &fakeLimiter{allowed: true}
+	aw := &mockAttemptWriter{}
+	w := newWorker(pub, dc, lim, false, true, aw)
+
+	w.Run(context.Background(), &singleSource{result: newResult(baseEventWithID())})
+
+	attempts := aw.recorded()
+	if len(attempts) != 1 {
+		t.Fatalf("expected 1 attempt write, got %d", len(attempts))
+	}
+	if attempts[0].Status != model.StatusFailed {
+		t.Errorf("attempt status = %q, want %q", attempts[0].Status, model.StatusFailed)
+	}
+}
+
+// Write error: worker does not abort — publishStatus still fires.
+func TestWorker_attempts_writeError_doesNotAbort(t *testing.T) {
+	pub := &fakePublisher{}
+	dc := &fakeDeliveryClient{result: webhook.Result{Success: true, StatusCode: 202}}
+	lim := &fakeLimiter{allowed: true}
+	aw := &mockAttemptWriter{err: errTest}
+	w := newWorker(pub, dc, lim, false, true, aw)
+
+	w.Run(context.Background(), &singleSource{result: newResult(baseEventWithID())})
+
+	// publishStatus must still have fired
+	calls := pub.calls()
+	if len(calls) != 1 || calls[0].topic != stream.TopicStatus {
+		t.Errorf("expected status publish after write error, got %v", pub.topicsPublished())
+	}
+}
+
+var errTest = errors.New("simulated write error")
 
 // singleSource feeds exactly one message then returns false forever.
 type singleSource struct {

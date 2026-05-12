@@ -8,7 +8,7 @@
 - [ ] All struct fields match `DATA_MODEL.md` (field names, types, nullability)
 - [ ] All three migrations apply cleanly via `golang-migrate`; `down` migrations reverse cleanly
 - [ ] All PostgreSQL indexes from `DATA_MODEL.md` present in migration files
-- [ ] `NotificationRepository`, `DeliveryAttemptRepository` interfaces implemented
+- [ ] `NotificationRepository` interface implemented
 - [ ] `go test ./internal/shared/...` passes
 
 ---
@@ -35,7 +35,7 @@
 - [ ] `POST /notifications` → 201; body matches `API_CONTRACT.md` response shape
 - [ ] `POST /notifications/batch` → 207; rejected items include per-item error; accepted items have `id`
 - [ ] `POST /notifications/batch` > 1000 items → 400
-- [ ] `GET /notifications/:id` → 200 with `delivery_attempts` array
+- [ ] `GET /notifications/:id` → 200 with notification fields
 - [ ] `GET /notifications/:id` unknown ID → 404
 - [ ] `GET /notifications` pagination fields match `API_CONTRACT.md` (`page_size`, `total`, `next_cursor`)
 - [ ] `GET /notifications` filters (`status`, `channel`, `batch_id`, `date_from`, `date_to`) work correctly
@@ -50,8 +50,7 @@
 ## Status Event Consumer
 
 - [ ] Consumer reads from `notify:stream:status` via consumer group `notify:cg:api`
-- [ ] Inserts `delivery_attempts` row on each event (`ON CONFLICT DO NOTHING` on `notification_id + attempt_number`)
 - [ ] Updates `notifications.status` for `delivered` and `failed` events
-- [ ] Acknowledges message after DB writes complete
-- [ ] Re-processing a duplicate status event is safe (idempotent)
-- [ ] `go test ./internal/shared/stream/...` passes (consumer side)
+- [ ] Acknowledges message after DB write completes
+- [ ] Re-processing a duplicate status event is safe (idempotent via UpdateStatus)
+- [ ] `go test ./api/internal/consumer/...` passes

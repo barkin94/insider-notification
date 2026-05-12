@@ -50,7 +50,6 @@ func main() {
 	}
 	defer bundb.Close()
 	attemptRepo := processordb.NewDeliveryAttemptRepository(bundb)
-	_ = attemptRepo // wired into worker in processor-worker-attempts task
 
 	rdb, err := sharedredis.NewClient(ctx, cfg.RedisAddr)
 	if err != nil {
@@ -98,7 +97,7 @@ func main() {
 	locker := lock.NewRedisLocker(rdb)
 	canceller := worker.NewRedisCancellationStore(rdb)
 
-	w := worker.NewWorker(pub, deliveryClient, limiter, locker, canceller)
+	w := worker.NewWorker(pub, deliveryClient, limiter, locker, canceller, attemptRepo)
 
 	// --- start worker pool ---
 	var wg sync.WaitGroup

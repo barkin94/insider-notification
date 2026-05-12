@@ -24,7 +24,7 @@ The two chains (processor-db and scheduled) are otherwise independent.
 - [x] remove-processing-status
 - [x] processor-postgres
 - [x] processor-db-package
-- [ ] processor-worker-attempts
+- [x] processor-worker-attempts
 - [x] api-remove-attempts
 - [ ] scheduled-api
 - [ ] scheduled-worker
