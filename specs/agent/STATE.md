@@ -1,3 +1,3 @@
-STATUS: in progress
-LAST_COMPLETED: notification-processing
+STATUS: pending
+LAST_COMPLETED: 
 BLOCKED_REASON:

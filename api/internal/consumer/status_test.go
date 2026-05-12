@@ -109,17 +109,14 @@ func TestStatusConsumer_delivered(t *testing.T) {
 	seedNotification(t, notifID, model.StatusPending)
 
 	notifRepo := db.NewNotificationRepository(testDB)
-	attemptRepo := db.NewDeliveryAttemptRepository(testDB)
-	c := consumer.NewStatusConsumer(notifRepo, attemptRepo)
+	c := consumer.NewStatusConsumer(notifRepo)
 
-	latency := 120
-	code := 200
 	evt := stream.NotificationDeliveryResultEvent{
 		NotificationID: notifID.String(),
 		Status:         model.StatusDelivered,
 		AttemptNumber:  1,
-		HTTPStatusCode: code,
-		LatencyMS:      latency,
+		HTTPStatusCode: 200,
+		LatencyMS:      120,
 		UpdatedAt:      time.Now().UTC().Format(time.RFC3339),
 	}
 	runConsumer(c, makeResult(evt))
@@ -131,20 +128,6 @@ func TestStatusConsumer_delivered(t *testing.T) {
 	if got.Status != model.StatusDelivered {
 		t.Errorf("status = %q, want %q", got.Status, model.StatusDelivered)
 	}
-
-	attempts, err := attemptRepo.ListByNotificationID(context.Background(), notifID)
-	if err != nil {
-		t.Fatalf("ListAttempts: %v", err)
-	}
-	if len(attempts) != 1 {
-		t.Fatalf("attempts count = %d, want 1", len(attempts))
-	}
-	if attempts[0].AttemptNumber != 1 {
-		t.Errorf("attempt_number = %d, want 1", attempts[0].AttemptNumber)
-	}
-	if attempts[0].Status != model.StatusDelivered {
-		t.Errorf("attempt status = %q, want %q", attempts[0].Status, model.StatusDelivered)
-	}
 }
 
 func TestStatusConsumer_failed(t *testing.T) {
@@ -152,8 +135,7 @@ func TestStatusConsumer_failed(t *testing.T) {
 	seedNotification(t, notifID, model.StatusPending)
 
 	notifRepo := db.NewNotificationRepository(testDB)
-	attemptRepo := db.NewDeliveryAttemptRepository(testDB)
-	c := consumer.NewStatusConsumer(notifRepo, attemptRepo)
+	c := consumer.NewStatusConsumer(notifRepo)
 
 	evt := stream.NotificationDeliveryResultEvent{
 		NotificationID: notifID.String(),
@@ -179,8 +161,7 @@ func TestStatusConsumer_idempotent(t *testing.T) {
 	seedNotification(t, notifID, model.StatusPending)
 
 	notifRepo := db.NewNotificationRepository(testDB)
-	attemptRepo := db.NewDeliveryAttemptRepository(testDB)
-	c := consumer.NewStatusConsumer(notifRepo, attemptRepo)
+	c := consumer.NewStatusConsumer(notifRepo)
 
 	evt := stream.NotificationDeliveryResultEvent{
 		NotificationID: notifID.String(),
@@ -194,11 +175,11 @@ func TestStatusConsumer_idempotent(t *testing.T) {
 	runConsumer(c, makeResult(evt))
 	runConsumer(c, makeResult(evt))
 
-	attempts, err := attemptRepo.ListByNotificationID(context.Background(), notifID)
+	got, err := notifRepo.GetByID(context.Background(), notifID)
 	if err != nil {
-		t.Fatalf("ListAttempts: %v", err)
+		t.Fatalf("GetByID: %v", err)
 	}
-	if len(attempts) != 1 {
-		t.Errorf("attempts count = %d, want 1 (idempotent)", len(attempts))
+	if got.Status != model.StatusDelivered {
+		t.Errorf("status = %q, want %q", got.Status, model.StatusDelivered)
 	}
 }

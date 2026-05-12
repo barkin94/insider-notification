@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	apimodel "github.com/barkin/insider-notification/api/internal/model"
 	"github.com/barkin/insider-notification/api/internal/db"
 	"github.com/barkin/insider-notification/shared/model"
 	"github.com/barkin/insider-notification/shared/stream"
@@ -38,25 +39,23 @@ type BatchResult struct {
 
 // NotificationService defines the business operations for notifications.
 type NotificationService interface {
-	Create(ctx context.Context, req CreateRequest) (*model.Notification, error)
-	GetByID(ctx context.Context, id uuid.UUID) (*model.Notification, []*model.DeliveryAttempt, error)
-	List(ctx context.Context, filter db.ListFilter) ([]*model.Notification, int, *uuid.UUID, error)
-	Cancel(ctx context.Context, id uuid.UUID) (*model.Notification, error)
+	Create(ctx context.Context, req CreateRequest) (*apimodel.Notification, error)
+	GetByID(ctx context.Context, id uuid.UUID) (*apimodel.Notification, error)
+	List(ctx context.Context, filter db.ListFilter) ([]*apimodel.Notification, int, *uuid.UUID, error)
+	Cancel(ctx context.Context, id uuid.UUID) (*apimodel.Notification, error)
 	CreateBatch(ctx context.Context, reqs []CreateRequest) (uuid.UUID, []BatchResult, error)
 }
 
 type notificationService struct {
 	repo      db.NotificationRepository
-	attempts  db.DeliveryAttemptRepository
 	publisher StreamPublisher
 }
 
 func NewNotificationService(
 	repo db.NotificationRepository,
-	attempts db.DeliveryAttemptRepository,
 	publisher StreamPublisher,
 ) NotificationService {
-	return &notificationService{repo: repo, attempts: attempts, publisher: publisher}
+	return &notificationService{repo: repo, publisher: publisher}
 }
 
 var contentLimits = map[string]int{
@@ -112,7 +111,7 @@ func validate(req CreateRequest) error {
 	return nil
 }
 
-func (s *notificationService) Create(ctx context.Context, req CreateRequest) (*model.Notification, error) {
+func (s *notificationService) Create(ctx context.Context, req CreateRequest) (*apimodel.Notification, error) {
 	if err := validate(req); err != nil {
 		return nil, err
 	}
@@ -128,8 +127,7 @@ func (s *notificationService) Create(ctx context.Context, req CreateRequest) (*m
 	}
 
 	now := time.Now().UTC()
-	n := &model.Notification{
-		ID:           uuid.New(),
+	n := &apimodel.Notification{
 		Recipient:    req.Recipient,
 		Channel:      req.Channel,
 		Content:      req.Content,
@@ -138,9 +136,10 @@ func (s *notificationService) Create(ctx context.Context, req CreateRequest) (*m
 		MaxAttempts:  4,
 		Metadata:     metadata,
 		DeliverAfter: req.DeliverAfter,
-		CreatedAt:    now,
-		UpdatedAt:    now,
 	}
+	n.ID = uuid.New()
+	n.CreatedAt = now
+	n.UpdatedAt = now
 
 	if err := s.repo.Create(ctx, n); err != nil {
 		return nil, fmt.Errorf("create notification: %w", err)
@@ -171,23 +170,15 @@ func (s *notificationService) Create(ctx context.Context, req CreateRequest) (*m
 	return n, nil
 }
 
-func (s *notificationService) GetByID(ctx context.Context, id uuid.UUID) (*model.Notification, []*model.DeliveryAttempt, error) {
-	n, err := s.repo.GetByID(ctx, id)
-	if err != nil {
-		return nil, nil, err
-	}
-	attempts, err := s.attempts.ListByNotificationID(ctx, id)
-	if err != nil {
-		return nil, nil, fmt.Errorf("list attempts: %w", err)
-	}
-	return n, attempts, nil
+func (s *notificationService) GetByID(ctx context.Context, id uuid.UUID) (*apimodel.Notification, error) {
+	return s.repo.GetByID(ctx, id)
 }
 
-func (s *notificationService) List(ctx context.Context, filter db.ListFilter) ([]*model.Notification, int, *uuid.UUID, error) {
+func (s *notificationService) List(ctx context.Context, filter db.ListFilter) ([]*apimodel.Notification, int, *uuid.UUID, error) {
 	return s.repo.List(ctx, filter)
 }
 
-func (s *notificationService) Cancel(ctx context.Context, id uuid.UUID) (*model.Notification, error) {
+func (s *notificationService) Cancel(ctx context.Context, id uuid.UUID) (*apimodel.Notification, error) {
 	n, err := s.repo.Transition(ctx, id, model.StatusPending, model.StatusCancelled)
 	if err != nil {
 		return nil, err
@@ -220,7 +211,7 @@ func (s *notificationService) CreateBatch(ctx context.Context, reqs []CreateRequ
 	return batchID, results, nil
 }
 
-func (s *notificationService) createWithBatchID(ctx context.Context, req CreateRequest, batchID uuid.UUID) (*model.Notification, error) {
+func (s *notificationService) createWithBatchID(ctx context.Context, req CreateRequest, batchID uuid.UUID) (*apimodel.Notification, error) {
 	priority := req.Priority
 	if priority == "" {
 		priority = model.PriorityNormal
@@ -232,8 +223,7 @@ func (s *notificationService) createWithBatchID(ctx context.Context, req CreateR
 	}
 
 	now := time.Now().UTC()
-	n := &model.Notification{
-		ID:           uuid.New(),
+	n := &apimodel.Notification{
 		BatchID:      &batchID,
 		Recipient:    req.Recipient,
 		Channel:      req.Channel,
@@ -243,9 +233,10 @@ func (s *notificationService) createWithBatchID(ctx context.Context, req CreateR
 		MaxAttempts:  4,
 		Metadata:     metadata,
 		DeliverAfter: req.DeliverAfter,
-		CreatedAt:    now,
-		UpdatedAt:    now,
 	}
+	n.ID = uuid.New()
+	n.CreatedAt = now
+	n.UpdatedAt = now
 
 	if err := s.repo.Create(ctx, n); err != nil {
 		return nil, fmt.Errorf("create notification: %w", err)

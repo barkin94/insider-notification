@@ -23,6 +23,7 @@ import (
 	"github.com/barkin/insider-notification/api/internal/db"
 	"github.com/barkin/insider-notification/api/internal/handler"
 	"github.com/barkin/insider-notification/api/internal/service"
+	shareddb "github.com/barkin/insider-notification/shared/db"
 	sharedotel "github.com/barkin/insider-notification/shared/otel"
 	sharedredis "github.com/barkin/insider-notification/shared/redis"
 	"github.com/barkin/insider-notification/shared/stream"
@@ -47,7 +48,7 @@ func main() {
 	defer stop()
 
 	// --- infrastructure ---
-	bundb, err := db.Open(cfg.DatabaseURL)
+	bundb, err := shareddb.Open(cfg.DatabaseURL)
 	if err != nil {
 		slog.Error("connect to postgres", "error", err)
 		os.Exit(1)
@@ -62,7 +63,6 @@ func main() {
 
 	// --- repositories ---
 	notifRepo := db.NewNotificationRepository(bundb)
-	attemptRepo := db.NewDeliveryAttemptRepository(bundb)
 
 	// --- stream publisher & subscriber ---
 	pub, err := stream.NewRedisPublisher(rdb)
@@ -79,7 +79,7 @@ func main() {
 	defer sub.Close()
 
 	// --- service ---
-	svc := service.NewNotificationService(notifRepo, attemptRepo, pub)
+	svc := service.NewNotificationService(notifRepo, pub)
 
 	// --- status consumer: reads delivery results from processor and updates DB ---
 	statusMsgs, err := stream.Subscribe[stream.NotificationDeliveryResultEvent](ctx, sub, stream.TopicStatus)
@@ -92,7 +92,7 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		consumer.NewStatusConsumer(notifRepo, attemptRepo).Run(ctx, statusMsgs)
+		consumer.NewStatusConsumer(notifRepo).Run(ctx, statusMsgs)
 	}()
 
 	// --- HTTP server ---

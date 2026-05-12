@@ -6,14 +6,14 @@ import (
 	"time"
 
 	"github.com/barkin/insider-notification/api/internal/db"
+	apimodel "github.com/barkin/insider-notification/api/internal/model"
 	"github.com/barkin/insider-notification/shared/model"
 	"github.com/google/uuid"
 )
 
-func newNotification() *model.Notification {
+func newNotification() *apimodel.Notification {
 	now := time.Now().UTC().Truncate(time.Millisecond)
-	return &model.Notification{
-		ID:          mustV7(),
+	n := &apimodel.Notification{
 		Recipient:   "+905551234567",
 		Channel:     model.ChannelSMS,
 		Content:     "test content",
@@ -21,9 +21,11 @@ func newNotification() *model.Notification {
 		Status:      model.StatusPending,
 		Attempts:    0,
 		MaxAttempts: 4,
-		CreatedAt:   now,
-		UpdatedAt:   now,
 	}
+	n.ID = mustV7()
+	n.CreatedAt = now
+	n.UpdatedAt = now
+	return n
 }
 
 func mustV7() uuid.UUID {
@@ -170,7 +172,7 @@ func TestList_offset_filterByStatus(t *testing.T) {
 
 // seed5 inserts 5 notifications and returns them in id DESC order (the same
 // order cursor pagination uses), so tests can reliably pick split points.
-func seed5(t *testing.T, repo db.NotificationRepository, batchID uuid.UUID) []*model.Notification {
+func seed5(t *testing.T, repo db.NotificationRepository, batchID uuid.UUID) []*apimodel.Notification {
 	t.Helper()
 	ctx := context.Background()
 	for i := 0; i < 5; i++ {

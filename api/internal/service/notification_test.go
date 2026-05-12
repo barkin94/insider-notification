@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	apimodel "github.com/barkin/insider-notification/api/internal/model"
 	"github.com/barkin/insider-notification/api/internal/db"
 	"github.com/barkin/insider-notification/api/internal/service"
 	"github.com/barkin/insider-notification/shared/model"
@@ -15,24 +16,24 @@ import (
 // --- mock repo ---
 
 type mockNotifRepo struct {
-	createFn       func(ctx context.Context, n *model.Notification) error
-	getByIDFn      func(ctx context.Context, id uuid.UUID) (*model.Notification, error)
-	listFn         func(ctx context.Context, f db.ListFilter) ([]*model.Notification, int, *uuid.UUID, error)
-	transitionFn   func(ctx context.Context, id uuid.UUID, from, to string) (*model.Notification, error)
+	createFn       func(ctx context.Context, n *apimodel.Notification) error
+	getByIDFn      func(ctx context.Context, id uuid.UUID) (*apimodel.Notification, error)
+	listFn         func(ctx context.Context, f db.ListFilter) ([]*apimodel.Notification, int, *uuid.UUID, error)
+	transitionFn   func(ctx context.Context, id uuid.UUID, from, to string) (*apimodel.Notification, error)
 	incrFn         func(ctx context.Context, id uuid.UUID) error
 	updateStatusFn func(ctx context.Context, id uuid.UUID, status string) error
 }
 
-func (m *mockNotifRepo) Create(ctx context.Context, n *model.Notification) error {
+func (m *mockNotifRepo) Create(ctx context.Context, n *apimodel.Notification) error {
 	return m.createFn(ctx, n)
 }
-func (m *mockNotifRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.Notification, error) {
+func (m *mockNotifRepo) GetByID(ctx context.Context, id uuid.UUID) (*apimodel.Notification, error) {
 	return m.getByIDFn(ctx, id)
 }
-func (m *mockNotifRepo) List(ctx context.Context, f db.ListFilter) ([]*model.Notification, int, *uuid.UUID, error) {
+func (m *mockNotifRepo) List(ctx context.Context, f db.ListFilter) ([]*apimodel.Notification, int, *uuid.UUID, error) {
 	return m.listFn(ctx, f)
 }
-func (m *mockNotifRepo) Transition(ctx context.Context, id uuid.UUID, from, to string) (*model.Notification, error) {
+func (m *mockNotifRepo) Transition(ctx context.Context, id uuid.UUID, from, to string) (*apimodel.Notification, error) {
 	return m.transitionFn(ctx, id, from, to)
 }
 func (m *mockNotifRepo) IncrementAttempts(ctx context.Context, id uuid.UUID) error {
@@ -43,15 +44,6 @@ func (m *mockNotifRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status s
 		return m.updateStatusFn(ctx, id, status)
 	}
 	return nil
-}
-
-// --- mock delivery attempt repo ---
-
-type mockAttemptRepo struct{}
-
-func (m *mockAttemptRepo) Create(ctx context.Context, a *model.DeliveryAttempt) error { return nil }
-func (m *mockAttemptRepo) ListByNotificationID(ctx context.Context, id uuid.UUID) ([]*model.DeliveryAttempt, error) {
-	return nil, nil
 }
 
 // --- mock publisher ---
@@ -68,9 +60,11 @@ func (m *mockPublisher) Publish(ctx context.Context, topic string, payload any) 
 
 func okRepo() *mockNotifRepo {
 	return &mockNotifRepo{
-		createFn: func(_ context.Context, _ *model.Notification) error { return nil },
-		transitionFn: func(_ context.Context, id uuid.UUID, _, to string) (*model.Notification, error) {
-			return &model.Notification{ID: id, Status: to}, nil
+		createFn: func(_ context.Context, _ *apimodel.Notification) error { return nil },
+		transitionFn: func(_ context.Context, id uuid.UUID, _, to string) (*apimodel.Notification, error) {
+			n := &apimodel.Notification{Status: to}
+			n.ID = id
+			return n, nil
 		},
 	}
 }
@@ -87,7 +81,7 @@ func okPublisher(wantTopic *string) *mockPublisher {
 }
 
 func newSvc(repo db.NotificationRepository, pub service.StreamPublisher) service.NotificationService {
-	return service.NewNotificationService(repo, &mockAttemptRepo{}, pub)
+	return service.NewNotificationService(repo, pub)
 }
 
 // --- tests ---
@@ -173,7 +167,7 @@ func TestCancel_success(t *testing.T) {
 
 func TestCancel_transitionFailed(t *testing.T) {
 	repo := okRepo()
-	repo.transitionFn = func(_ context.Context, _ uuid.UUID, _, _ string) (*model.Notification, error) {
+	repo.transitionFn = func(_ context.Context, _ uuid.UUID, _, _ string) (*apimodel.Notification, error) {
 		return nil, db.ErrTransitionFailed
 	}
 	svc := newSvc(repo, okPublisher(nil))

@@ -6,7 +6,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/barkin/insider-notification/shared/model"
+	apimodel "github.com/barkin/insider-notification/api/internal/model"
 	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 )
@@ -17,13 +17,13 @@ func NewNotificationRepository(db *bun.DB) NotificationRepository {
 	return &bunNotificationRepo{db: db}
 }
 
-func (r *bunNotificationRepo) Create(ctx context.Context, n *model.Notification) error {
+func (r *bunNotificationRepo) Create(ctx context.Context, n *apimodel.Notification) error {
 	_, err := r.db.NewInsert().Model(n).Exec(ctx)
 	return err
 }
 
-func (r *bunNotificationRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.Notification, error) {
-	n := new(model.Notification)
+func (r *bunNotificationRepo) GetByID(ctx context.Context, id uuid.UUID) (*apimodel.Notification, error) {
+	n := new(apimodel.Notification)
 	err := r.db.NewSelect().Model(n).Where("id = ?", id).Scan(ctx)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -31,8 +31,8 @@ func (r *bunNotificationRepo) GetByID(ctx context.Context, id uuid.UUID) (*model
 	return n, err
 }
 
-func (r *bunNotificationRepo) Transition(ctx context.Context, id uuid.UUID, from, to string) (*model.Notification, error) {
-	n := new(model.Notification)
+func (r *bunNotificationRepo) Transition(ctx context.Context, id uuid.UUID, from, to string) (*apimodel.Notification, error) {
+	n := new(apimodel.Notification)
 	err := r.db.NewRaw(`
 		UPDATE notifications SET status = ?, updated_at = NOW()
 		WHERE id = ? AND status = ?
@@ -57,8 +57,6 @@ func (r *bunNotificationRepo) UpdateStatus(ctx context.Context, id uuid.UUID, st
 	return err
 }
 
-// applyFilters adds shared WHERE conditions to a notification select query.
-// Called by both the count and data queries inside List.
 func applyFilters(q *bun.SelectQuery, f ListFilter) *bun.SelectQuery {
 	if f.Status != "" {
 		q = q.Where("status = ?", f.Status)
@@ -78,18 +76,18 @@ func applyFilters(q *bun.SelectQuery, f ListFilter) *bun.SelectQuery {
 	return q
 }
 
-func (r *bunNotificationRepo) List(ctx context.Context, f ListFilter) ([]*model.Notification, int, *uuid.UUID, error) {
+func (r *bunNotificationRepo) List(ctx context.Context, f ListFilter) ([]*apimodel.Notification, int, *uuid.UUID, error) {
 	pageSize := f.PageSize
 	if pageSize < 1 {
 		pageSize = 20
 	}
 
-	total, err := applyFilters(r.db.NewSelect().Model((*model.Notification)(nil)), f).Count(ctx)
+	total, err := applyFilters(r.db.NewSelect().Model((*apimodel.Notification)(nil)), f).Count(ctx)
 	if err != nil {
 		return nil, 0, nil, err
 	}
 
-	var ns []*model.Notification
+	var ns []*apimodel.Notification
 	q := applyFilters(r.db.NewSelect().Model(&ns), f)
 
 	if f.CursorID != nil {

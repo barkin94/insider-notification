@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	apimodel "github.com/barkin/insider-notification/api/internal/model"
 	"github.com/barkin/insider-notification/api/internal/db"
 	"github.com/barkin/insider-notification/api/internal/handler"
 	"github.com/barkin/insider-notification/api/internal/service"
@@ -21,23 +22,23 @@ import (
 // --- mock service ---
 
 type mockService struct {
-	createFn      func(ctx context.Context, req service.CreateRequest) (*model.Notification, error)
-	getByIDFn     func(ctx context.Context, id uuid.UUID) (*model.Notification, []*model.DeliveryAttempt, error)
-	listFn        func(ctx context.Context, f db.ListFilter) ([]*model.Notification, int, *uuid.UUID, error)
-	cancelFn      func(ctx context.Context, id uuid.UUID) (*model.Notification, error)
+	createFn      func(ctx context.Context, req service.CreateRequest) (*apimodel.Notification, error)
+	getByIDFn     func(ctx context.Context, id uuid.UUID) (*apimodel.Notification, error)
+	listFn        func(ctx context.Context, f db.ListFilter) ([]*apimodel.Notification, int, *uuid.UUID, error)
+	cancelFn      func(ctx context.Context, id uuid.UUID) (*apimodel.Notification, error)
 	createBatchFn func(ctx context.Context, reqs []service.CreateRequest) (uuid.UUID, []service.BatchResult, error)
 }
 
-func (m *mockService) Create(ctx context.Context, req service.CreateRequest) (*model.Notification, error) {
+func (m *mockService) Create(ctx context.Context, req service.CreateRequest) (*apimodel.Notification, error) {
 	return m.createFn(ctx, req)
 }
-func (m *mockService) GetByID(ctx context.Context, id uuid.UUID) (*model.Notification, []*model.DeliveryAttempt, error) {
+func (m *mockService) GetByID(ctx context.Context, id uuid.UUID) (*apimodel.Notification, error) {
 	return m.getByIDFn(ctx, id)
 }
-func (m *mockService) List(ctx context.Context, f db.ListFilter) ([]*model.Notification, int, *uuid.UUID, error) {
+func (m *mockService) List(ctx context.Context, f db.ListFilter) ([]*apimodel.Notification, int, *uuid.UUID, error) {
 	return m.listFn(ctx, f)
 }
-func (m *mockService) Cancel(ctx context.Context, id uuid.UUID) (*model.Notification, error) {
+func (m *mockService) Cancel(ctx context.Context, id uuid.UUID) (*apimodel.Notification, error) {
 	return m.cancelFn(ctx, id)
 }
 func (m *mockService) CreateBatch(ctx context.Context, reqs []service.CreateRequest) (uuid.UUID, []service.BatchResult, error) {
@@ -47,31 +48,32 @@ func (m *mockService) CreateBatch(ctx context.Context, reqs []service.CreateRequ
 func newRouter(svc service.NotificationService) http.Handler {
 	return handler.NewRouter(handler.Deps{
 		Service: svc,
-		DB:      nil, // health check not tested here
+		DB:      nil,
 		Redis:   nil,
 	})
 }
 
-func newNotif() *model.Notification {
+func newNotif() *apimodel.Notification {
 	now := time.Now().UTC()
-	return &model.Notification{
-		ID:          uuid.New(),
+	n := &apimodel.Notification{
 		Recipient:   "+1",
 		Channel:     model.ChannelSMS,
 		Content:     "hi",
 		Priority:    model.PriorityNormal,
 		Status:      model.StatusPending,
 		MaxAttempts: 4,
-		CreatedAt:   now,
-		UpdatedAt:   now,
 	}
+	n.ID = uuid.New()
+	n.CreatedAt = now
+	n.UpdatedAt = now
+	return n
 }
 
 // --- POST /notifications ---
 
 func TestCreateNotification_201(t *testing.T) {
 	n := newNotif()
-	svc := &mockService{createFn: func(_ context.Context, _ service.CreateRequest) (*model.Notification, error) {
+	svc := &mockService{createFn: func(_ context.Context, _ service.CreateRequest) (*apimodel.Notification, error) {
 		return n, nil
 	}}
 
@@ -96,7 +98,7 @@ func TestCreateNotification_201(t *testing.T) {
 }
 
 func TestCreateNotification_400_missingContent(t *testing.T) {
-	svc := &mockService{createFn: func(_ context.Context, req service.CreateRequest) (*model.Notification, error) {
+	svc := &mockService{createFn: func(_ context.Context, req service.CreateRequest) (*apimodel.Notification, error) {
 		return nil, &service.ValidationError{Field: "content", Message: "required"}
 	}}
 
@@ -119,7 +121,7 @@ func TestCreateNotification_400_missingContent(t *testing.T) {
 }
 
 func TestCreateNotification_400_contentTooLong(t *testing.T) {
-	svc := &mockService{createFn: func(_ context.Context, req service.CreateRequest) (*model.Notification, error) {
+	svc := &mockService{createFn: func(_ context.Context, req service.CreateRequest) (*apimodel.Notification, error) {
 		return nil, &service.ValidationError{Field: "content", Message: "exceeds 1600 char limit for sms"}
 	}}
 
@@ -138,8 +140,8 @@ func TestCreateNotification_400_contentTooLong(t *testing.T) {
 // --- GET /notifications ---
 
 func TestListNotifications_pagination(t *testing.T) {
-	svc := &mockService{listFn: func(_ context.Context, f db.ListFilter) ([]*model.Notification, int, *uuid.UUID, error) {
-		return []*model.Notification{newNotif()}, 42, nil, nil
+	svc := &mockService{listFn: func(_ context.Context, f db.ListFilter) ([]*apimodel.Notification, int, *uuid.UUID, error) {
+		return []*apimodel.Notification{newNotif()}, 42, nil, nil
 	}}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/notifications?page_size=10", nil)
@@ -166,7 +168,7 @@ func TestListNotifications_pagination(t *testing.T) {
 
 func TestListNotifications_filterByStatus(t *testing.T) {
 	var gotFilter db.ListFilter
-	svc := &mockService{listFn: func(_ context.Context, f db.ListFilter) ([]*model.Notification, int, *uuid.UUID, error) {
+	svc := &mockService{listFn: func(_ context.Context, f db.ListFilter) ([]*apimodel.Notification, int, *uuid.UUID, error) {
 		gotFilter = f
 		return nil, 0, nil, nil
 	}}
@@ -185,16 +187,8 @@ func TestListNotifications_filterByStatus(t *testing.T) {
 
 func TestGetNotification_200(t *testing.T) {
 	n := newNotif()
-	latency := 100
-	attempts := []*model.DeliveryAttempt{{
-		ID:            uuid.New(),
-		AttemptNumber: 1,
-		Status:        "success",
-		LatencyMS:     &latency,
-		AttemptedAt:   time.Now().UTC(),
-	}}
-	svc := &mockService{getByIDFn: func(_ context.Context, _ uuid.UUID) (*model.Notification, []*model.DeliveryAttempt, error) {
-		return n, attempts, nil
+	svc := &mockService{getByIDFn: func(_ context.Context, _ uuid.UUID) (*apimodel.Notification, error) {
+		return n, nil
 	}}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/notifications/"+n.ID.String(), nil)
@@ -207,15 +201,14 @@ func TestGetNotification_200(t *testing.T) {
 	}
 	var resp map[string]any
 	json.NewDecoder(w.Body).Decode(&resp) //nolint:errcheck
-	da, _ := resp["delivery_attempts"].([]any)
-	if len(da) != 1 {
-		t.Errorf("delivery_attempts len = %d, want 1", len(da))
+	if resp["id"] != n.ID.String() {
+		t.Errorf("id = %v, want %v", resp["id"], n.ID.String())
 	}
 }
 
 func TestGetNotification_404(t *testing.T) {
-	svc := &mockService{getByIDFn: func(_ context.Context, _ uuid.UUID) (*model.Notification, []*model.DeliveryAttempt, error) {
-		return nil, nil, db.ErrNotFound
+	svc := &mockService{getByIDFn: func(_ context.Context, _ uuid.UUID) (*apimodel.Notification, error) {
+		return nil, db.ErrNotFound
 	}}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/notifications/"+uuid.New().String(), nil)
@@ -233,7 +226,7 @@ func TestGetNotification_404(t *testing.T) {
 func TestCancelNotification_200(t *testing.T) {
 	n := newNotif()
 	n.Status = model.StatusCancelled
-	svc := &mockService{cancelFn: func(_ context.Context, _ uuid.UUID) (*model.Notification, error) {
+	svc := &mockService{cancelFn: func(_ context.Context, _ uuid.UUID) (*apimodel.Notification, error) {
 		return n, nil
 	}}
 
@@ -253,7 +246,7 @@ func TestCancelNotification_200(t *testing.T) {
 }
 
 func TestCancelNotification_409(t *testing.T) {
-	svc := &mockService{cancelFn: func(_ context.Context, _ uuid.UUID) (*model.Notification, error) {
+	svc := &mockService{cancelFn: func(_ context.Context, _ uuid.UUID) (*apimodel.Notification, error) {
 		return nil, db.ErrTransitionFailed
 	}}
 
@@ -335,12 +328,11 @@ func encodeCursorForTest(id uuid.UUID) string {
 	return base64.RawURLEncoding.EncodeToString([]byte(id.String()))
 }
 
-// No cursor → offset path, next_cursor is null.
 func TestListNotifications_NoCursor(t *testing.T) {
 	n := newNotif()
 	svc := &mockService{
-		listFn: func(_ context.Context, _ db.ListFilter) ([]*model.Notification, int, *uuid.UUID, error) {
-			return []*model.Notification{n}, 1, nil, nil
+		listFn: func(_ context.Context, _ db.ListFilter) ([]*apimodel.Notification, int, *uuid.UUID, error) {
+			return []*apimodel.Notification{n}, 1, nil, nil
 		},
 	}
 
@@ -359,13 +351,12 @@ func TestListNotifications_NoCursor(t *testing.T) {
 	}
 }
 
-// Valid cursor → List called with CursorID set, next_cursor returned.
 func TestListNotifications_WithCursor_NextPageExists(t *testing.T) {
 	n := newNotif()
 	nextID, _ := uuid.NewV7()
 	svc := &mockService{
-		listFn: func(_ context.Context, f db.ListFilter) ([]*model.Notification, int, *uuid.UUID, error) {
-			return []*model.Notification{n}, 50, &nextID, nil
+		listFn: func(_ context.Context, f db.ListFilter) ([]*apimodel.Notification, int, *uuid.UUID, error) {
+			return []*apimodel.Notification{n}, 50, &nextID, nil
 		},
 	}
 
@@ -385,12 +376,11 @@ func TestListNotifications_WithCursor_NextPageExists(t *testing.T) {
 	}
 }
 
-// Last cursor page → next_cursor is null.
 func TestListNotifications_WithCursor_LastPage(t *testing.T) {
 	n := newNotif()
 	svc := &mockService{
-		listFn: func(_ context.Context, f db.ListFilter) ([]*model.Notification, int, *uuid.UUID, error) {
-			return []*model.Notification{n}, 10, nil, nil
+		listFn: func(_ context.Context, f db.ListFilter) ([]*apimodel.Notification, int, *uuid.UUID, error) {
+			return []*apimodel.Notification{n}, 10, nil, nil
 		},
 	}
 
@@ -410,7 +400,6 @@ func TestListNotifications_WithCursor_LastPage(t *testing.T) {
 	}
 }
 
-// Invalid cursor → 400.
 func TestListNotifications_InvalidCursor(t *testing.T) {
 	svc := &mockService{}
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/notifications?cursor=notvalidbase64!!!", nil)
@@ -422,11 +411,10 @@ func TestListNotifications_InvalidCursor(t *testing.T) {
 	}
 }
 
-// Filters are forwarded to List with CursorID set when cursor param is present.
 func TestListNotifications_FiltersPreservedWithCursor(t *testing.T) {
 	var capturedFilter db.ListFilter
 	svc := &mockService{
-		listFn: func(_ context.Context, f db.ListFilter) ([]*model.Notification, int, *uuid.UUID, error) {
+		listFn: func(_ context.Context, f db.ListFilter) ([]*apimodel.Notification, int, *uuid.UUID, error) {
 			capturedFilter = f
 			return nil, 0, nil, nil
 		},

@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/barkin/insider-notification/api/internal/db"
+	apimodel "github.com/barkin/insider-notification/api/internal/model"
 	"github.com/barkin/insider-notification/api/internal/middleware"
 	"github.com/barkin/insider-notification/api/internal/service"
-	"github.com/barkin/insider-notification/shared/model"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -39,20 +39,6 @@ type notificationResponse struct {
 	Metadata  any    `json:"metadata"`
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
-}
-
-type notificationWithAttemptsResponse struct {
-	notificationResponse
-	DeliveryAttempts []deliveryAttemptResponse `json:"delivery_attempts"`
-}
-
-type deliveryAttemptResponse struct {
-	ID             string  `json:"id"`
-	AttemptNumber  int     `json:"attempt_number"`
-	Status         string  `json:"status"`
-	HTTPStatusCode *int    `json:"http_status_code,omitempty"`
-	LatencyMS      *int    `json:"latency_ms,omitempty"`
-	AttemptedAt    string  `json:"attempted_at"`
 }
 
 type listResponse struct {
@@ -146,7 +132,7 @@ func getNotification(svc service.NotificationService) middleware.AppHandler {
 			return errBadRequest("VALIDATION_ERROR", "invalid notification id")
 		}
 
-		n, attempts, err := svc.GetByID(r.Context(), id)
+		n, err := svc.GetByID(r.Context(), id)
 		if err != nil {
 			if errors.Is(err, db.ErrNotFound) {
 				return errNotFound("notification not found")
@@ -154,10 +140,7 @@ func getNotification(svc service.NotificationService) middleware.AppHandler {
 			return errInternal()
 		}
 
-		middleware.WriteJSON(w, http.StatusOK, notificationWithAttemptsResponse{
-			notificationResponse: toNotificationResponse(n),
-			DeliveryAttempts:     toAttemptResponses(attempts),
-		})
+		middleware.WriteJSON(w, http.StatusOK, toNotificationResponse(n))
 		return nil
 	}
 }
@@ -260,7 +243,7 @@ func encodeCursor(id *uuid.UUID) *string {
 	return &s
 }
 
-func toNotificationResponses(ns []*model.Notification) []notificationResponse {
+func toNotificationResponses(ns []*apimodel.Notification) []notificationResponse {
 	data := make([]notificationResponse, len(ns))
 	for i, n := range ns {
 		data[i] = toNotificationResponse(n)
@@ -370,7 +353,7 @@ func createBatch(svc service.NotificationService) middleware.AppHandler {
 
 // --- mapping helpers ---
 
-func toNotificationResponse(n *model.Notification) notificationResponse {
+func toNotificationResponse(n *apimodel.Notification) notificationResponse {
 	var batchID any
 	if n.BatchID != nil {
 		batchID = n.BatchID.String()
@@ -391,23 +374,6 @@ func toNotificationResponse(n *model.Notification) notificationResponse {
 	}
 }
 
-func toAttemptResponses(attempts []*model.DeliveryAttempt) []deliveryAttemptResponse {
-	if attempts == nil {
-		return []deliveryAttemptResponse{}
-	}
-	out := make([]deliveryAttemptResponse, len(attempts))
-	for i, a := range attempts {
-		out[i] = deliveryAttemptResponse{
-			ID:             a.ID.String(),
-			AttemptNumber:  a.AttemptNumber,
-			Status:         a.Status,
-			HTTPStatusCode: a.HTTPStatusCode,
-			LatencyMS:      a.LatencyMS,
-			AttemptedAt:    a.AttemptedAt.Format(time.RFC3339),
-		}
-	}
-	return out
-}
 
 func intParam(s string, def int) int {
 	if v, err := strconv.Atoi(s); err == nil && v > 0 {

@@ -10,10 +10,12 @@ import (
 	"time"
 
 	"github.com/barkin/insider-notification/processor/internal/config"
+	processordb "github.com/barkin/insider-notification/processor/internal/db"
 	"github.com/barkin/insider-notification/processor/internal/priorityrouter"
 	"github.com/barkin/insider-notification/processor/internal/worker"
-	"github.com/barkin/insider-notification/processor/internal/worker/webhook"
 	"github.com/barkin/insider-notification/processor/internal/worker/ratelimit"
+	"github.com/barkin/insider-notification/processor/internal/worker/webhook"
+	"github.com/barkin/insider-notification/shared/db"
 	"github.com/barkin/insider-notification/shared/lock"
 	sharedotel "github.com/barkin/insider-notification/shared/otel"
 	sharedredis "github.com/barkin/insider-notification/shared/redis"
@@ -41,6 +43,15 @@ func main() {
 	defer stop()
 
 	// --- infrastructure ---
+	bundb, err := db.Open(cfg.DatabaseURL)
+	if err != nil {
+		slog.Error("connect to postgres", "error", err)
+		os.Exit(1)
+	}
+	defer bundb.Close()
+	attemptRepo := processordb.NewDeliveryAttemptRepository(bundb)
+	_ = attemptRepo // wired into worker in processor-worker-attempts task
+
 	rdb, err := sharedredis.NewClient(ctx, cfg.RedisAddr)
 	if err != nil {
 		slog.Error("connect to redis", "error", err)

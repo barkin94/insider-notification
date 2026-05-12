@@ -84,6 +84,17 @@ services:
       postgres:
         condition: service_healthy
 
+  migrate-processor:
+    image: migrate/migrate
+    volumes:
+      - ./processor/migrations:/migrations:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["migrate -path=/migrations -database $$DATABASE_URL up"]
+    env_file: processor/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   api:
     build:
       context: .
@@ -107,8 +118,8 @@ services:
     ports:
       - "8081:8081"
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate-processor:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
       otel-collector:

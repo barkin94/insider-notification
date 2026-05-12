@@ -3,10 +3,8 @@ package consumer
 import (
 	"context"
 	"log/slog"
-	"time"
 
 	"github.com/barkin/insider-notification/api/internal/db"
-	"github.com/barkin/insider-notification/shared/model"
 	"github.com/barkin/insider-notification/shared/stream"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
@@ -14,12 +12,11 @@ import (
 
 // StatusConsumer processes NotificationDeliveryResultEvent messages from the status stream.
 type StatusConsumer struct {
-	notifRepo   db.NotificationRepository
-	attemptRepo db.DeliveryAttemptRepository
+	notifRepo db.NotificationRepository
 }
 
-func NewStatusConsumer(notifRepo db.NotificationRepository, attemptRepo db.DeliveryAttemptRepository) *StatusConsumer {
-	return &StatusConsumer{notifRepo: notifRepo, attemptRepo: attemptRepo}
+func NewStatusConsumer(notifRepo db.NotificationRepository) *StatusConsumer {
+	return &StatusConsumer{notifRepo: notifRepo}
 }
 
 // Run reads from msgs until the channel is closed or ctx is cancelled.
@@ -55,33 +52,6 @@ func (c *StatusConsumer) processOne(ctx context.Context, result stream.Result[st
 		return
 	}
 
-	updatedAt := time.Now().UTC()
-	if t, err := time.Parse(time.RFC3339, evt.UpdatedAt); err == nil {
-		updatedAt = t
-	}
-
-	attempt := &model.DeliveryAttempt{
-		ID:            mustV7(),
-		NotificationID: notifID,
-		AttemptNumber: evt.AttemptNumber,
-		Status:        evt.Status,
-		LatencyMS:     &evt.LatencyMS,
-		AttemptedAt:   updatedAt,
-	}
-	if evt.HTTPStatusCode != 0 {
-		code := evt.HTTPStatusCode
-		attempt.HTTPStatusCode = &code
-	}
-	if evt.ErrorMessage != "" {
-		attempt.ErrorMessage = &evt.ErrorMessage
-	}
-
-	if err := c.attemptRepo.Create(ctx, attempt); err != nil {
-		slog.ErrorContext(ctx, "create delivery attempt failed", "notification_id", notifID, "error", err)
-		msg.Nack()
-		return
-	}
-
 	if err := c.notifRepo.UpdateStatus(ctx, notifID, evt.Status); err != nil {
 		slog.ErrorContext(ctx, "update notification status failed", "notification_id", notifID, "error", err)
 		msg.Nack()
@@ -94,12 +64,4 @@ func (c *StatusConsumer) processOne(ctx context.Context, result stream.Result[st
 		"attempt", evt.AttemptNumber,
 	)
 	msg.Ack()
-}
-
-func mustV7() uuid.UUID {
-	id, err := uuid.NewV7()
-	if err != nil {
-		return uuid.New()
-	}
-	return id
 }
