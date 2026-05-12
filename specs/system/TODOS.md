@@ -8,29 +8,28 @@ context to write a spec and implement when prioritized.
 ## Processor Database
 
 **What:** Give the Notification Processor its own PostgreSQL database so it can write
-`delivery_attempts` rows directly instead of publishing to `notify:stream:status` and
-relying on the API service's status consumer.
+`delivery_attempts` rows directly. The API service's status consumer retains its role
+of updating notification status via `notify:stream:status` but is relieved of
+`delivery_attempts` persistence entirely.
 
 **Motivation:**
-- Removes coupling between Processor and API for delivery persistence
-- Simplifies status updates (direct DB write vs. stream publish + consume)
+- `delivery_attempts` is a Processor concern; the current design leaks it into the API service
 - Required if the two services scale independently into separate infrastructure
 
 **Design notes:**
-- Processor would own `delivery_attempts` table; API service would read it via a shared
-  read replica or a dedicated query API (not direct cross-DB joins)
-- Alternatively: Processor owns its own PostgreSQL instance entirely, and the API service
-  calls a Processor query endpoint for `delivery_attempts` on `GET /notifications/:id`
-- The `notify:stream:status` stream and `notify:cg:api` consumer group would be removed
-- Requires deciding on a cross-service data access pattern (read replica vs. gRPC query)
+- Processor owns `delivery_attempts` in its own PostgreSQL instance and writes rows directly after each attempt
+- `notify:stream:status` and `notify:cg:api` are retained — the API's status consumer still reads them to update notification status on the `notifications` table
+- The API's `delivery_attempt_repo.go`, `DeliveryAttemptRepository` interface, and `delivery_attempts` table are removed
+- `GET /notifications/:id` no longer includes a `delivery_attempts` field
 
 **Spec files to update when prioritized:**
 - Add Processor PostgreSQL instance to diagram in `ARCHITECTURE.md`
-- Add ADR for cross-service data access to `ARCHITECTURE.md`
+- Add ADR for Processor-owned delivery attempts to `ARCHITECTURE.md`
 - Add `delivery_attempts` table to a new `specs/processor-service/DATA_MODEL.md`
-- Remove `notify:stream:status` and `notify:cg:api` from `QUEUE_DESIGN.md`
-- Remove status event consumer section from `QUEUE_DESIGN.md`
-- Update `VERIFICATION.md` to add Processor DB checks
+- Remove `delivery_attempts` table from `specs/api-service/DATA_MODEL.md`
+- Remove `delivery_attempts` field from `GET /notifications/:id` in `API_CONTRACT.md`
+- Update status event consumer section in `QUEUE_DESIGN.md` to reflect it no longer writes `delivery_attempts`
+- Update `VERIFICATION.md` to add Processor DB checks and remove delivery attempt repo checks
 
 ---
 
@@ -77,23 +76,24 @@ changes for a specific notification.
 worker polls for due notifications and enqueues them at the right time.
 
 **Behavior:**
-- `POST /notifications` accepts an optional `scheduled_at` ISO8601 field (must be at least 1 minute in future)
-- Notifications with `scheduled_at` are stored with status `scheduled` instead of `pending`
-- A dedicated goroutine polls for notifications where `scheduled_at <= NOW()` every 5 seconds,
+- `POST /notifications` accepts `deliver_after` (already exists) with a value at least 1 minute in the future to trigger scheduled mode
+- Notifications with a future `deliver_after` are stored with status `scheduled` instead of `pending` in the existing `notifications` table
+- A dedicated goroutine polls for notifications where `deliver_after <= NOW()` AND `status = 'scheduled'` every 5 seconds,
   enqueues them into the priority queue, and transitions status to `pending`
 
 **Design notes:**
-- Adds `scheduled` as a new status value, cancellable via the cancel API
-- Adds `scheduled_at` field to Notification struct and a sparse index
+- Adds `scheduled` as a new status value and transition (`scheduled → pending`), cancellable via the cancel API
+- Reuses the existing `deliver_after` field and `idx_notifications_deliver_after_status` index — no schema changes beyond the new status value
+- Current worker-side re-enqueue logic for `deliver_after` remains unchanged for retry backoff; scheduled notifications never reach the worker until enqueued by the scheduler
 - Scheduler is a simple polling worker — no cron dependency; 5s granularity is acceptable
 - Up to 5 second delivery delay is an accepted tradeoff
 
 **Spec files to update when prioritized:**
-- Add `scheduled_at` field and `scheduled` status to `DATA_MODEL.md`
-- Add Scheduler Service and Scheduler Worker to diagram in `ARCHITECTURE.md`
+- Add `scheduled` status and `scheduled → pending` transition to `DATA_MODEL.md`; note `deliver_after` is reused (no new field)
+- Add Scheduler Worker to diagram in `ARCHITECTURE.md`
 - Add ADR for scheduler polling approach to `ARCHITECTURE.md`
 - Add `internal/scheduler/` to project layout in `ARCHITECTURE.md`
-- Add `scheduled_at` to `POST /notifications` and `GET /notifications` filter in `API_CONTRACT.md`
+- Document `deliver_after` scheduling semantics in `POST /notifications` and `GET /notifications` filter in `API_CONTRACT.md`
 - Add `scheduled` to cancellable statuses in `API_CONTRACT.md`
 - Add scheduler worker to "Called by" in `QUEUE_DESIGN.md`
 - Add Scheduler & Templates section to `VERIFICATION.md`
