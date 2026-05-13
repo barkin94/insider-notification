@@ -35,7 +35,7 @@ func main() {
 
 	// --- OTel SDK: traces + metrics + logs via OTLP gRPC ---
 	// InitLogger must come after Init so the global LoggerProvider is set.
-	otelShutdown, err := sharedotel.Init(context.Background(), "api", cfg.OTelEndpoint)
+	otelShutdown, err := sharedotel.Init(context.Background(), cfg.OTelServiceName, cfg.OTelEndpoint)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "init otel: %v\n", err)
 		os.Exit(1)
@@ -82,7 +82,7 @@ func main() {
 	svc := service.NewNotificationService(notifRepo, pub)
 
 	// --- status consumer: reads delivery results from processor and updates DB ---
-	statusMsgs, err := stream.Subscribe[stream.NotificationDeliveryResultEvent](ctx, sub, stream.TopicStatus)
+	statusMsgs, err := stream.Subscribe[stream.NotificationDeliveryResultEvent](ctx, sub, stream.TopicStatus, cfg.OTelServiceName)
 	if err != nil {
 		slog.Error("subscribe to status stream", "error", err)
 		os.Exit(1)

@@ -7,25 +7,48 @@
 
 ## Context
 
-The scheduler goroutine lives in the **processor** service — delivery timing is a processor
-concern. The processor's `DATABASE_URL` already points to the `notifications` database with
-`search_path=processor,public`, so it can query the `notifications` table (public schema)
-directly via the same connection used for `delivery_attempts`.
+The worker receives all notifications as `pending` events (API always publishes immediately).
+When `deliver_after` is in the future on attempt 1, the worker ACKs and drops the event —
+the notification stays `pending` in the DB. A scheduler goroutine polls the DB every 5
+seconds for due notifications and publishes them to the priority queue.
 
-Every 5 seconds the scheduler finds `status = scheduled AND deliver_after <= NOW()`,
-transitions each to `pending`, and publishes to the priority queue. From there the worker
-handles them identically to any other `pending` notification.
+Retry re-enqueue (attempt > 1) is unchanged — retries bounce in the Redis stream until
+their backoff `deliver_after` passes. See `retry-requeue` task for future improvement.
 
-`idx_notifications_deliver_after_status` already covers the query — no new index needed.
+The per-notification Redis lock prevents duplicate delivery if two scheduler ticks overlap.
 
 ## What to build
+
+### `processor/internal/worker/worker.go`
+
+Change the deliver_after branch to ACK-and-drop only on the first attempt:
+
+```go
+if evt.DeliverAfter != "" {
+    if t, err := time.Parse(time.RFC3339, evt.DeliverAfter); err == nil && time.Now().Before(t) {
+        if evt.AttemptNumber <= 1 {
+            // initial scheduled delivery — DB-polling scheduler handles it
+            msg.Ack()
+            return
+        }
+        // retry backoff — bounce in stream until due
+        if err := w.pub.Publish(ctx, topicByPriority[evt.Priority], evt); err != nil {
+            slog.ErrorContext(ctx, "re-enqueue retry failed", "id", evt.NotificationID, "error", err)
+            msg.Nack()
+            return
+        }
+        msg.Ack()
+        return
+    }
+}
+```
 
 ### `processor/internal/scheduler/scheduler.go`
 
 ```go
 type Scheduler struct {
     db        *bun.DB
-    publisher StreamPublisher  // same interface used by Worker
+    publisher StreamPublisher
     interval  time.Duration
 }
 
@@ -48,53 +71,46 @@ func (s *Scheduler) Run(ctx context.Context) {
 ```
 
 `tick` logic:
-1. Query: `SELECT * FROM notifications WHERE status = 'scheduled' AND deliver_after <= NOW() ORDER BY deliver_after ASC LIMIT 500`
-2. For each row, in a loop:
-   - `UPDATE notifications SET status = 'pending', updated_at = NOW() WHERE id = ? AND status = 'scheduled'` — skip silently if 0 rows updated (race with a cancel)
-   - Build `NotificationCreatedEvent` from the row and publish to `topicByPriority[n.Priority]`
-   - Log publish errors but continue processing the remaining rows
 
-`StreamPublisher` is the same interface already defined in `processor/internal/worker/worker.go`
-— reference it from there rather than redefining.
+1. Query: `SELECT * FROM notifications WHERE deliver_after IS NOT NULL AND deliver_after <= NOW() AND status = 'pending' ORDER BY deliver_after ASC LIMIT 500`
+2. For each row: build `NotificationCreatedEvent` (AttemptNumber = 1, DeliverAfter = "") and publish to `topicByPriority[n.Priority]`
+3. Log publish errors but continue processing remaining rows
+
+`StreamPublisher` is the same interface defined in `processor/internal/worker/worker.go`.
+Move it to a shared internal package (e.g. `processor/internal/pub`) to avoid importing
+worker from scheduler, or re-declare it in the scheduler package (interfaces are structural).
 
 ### `processor/cmd/main.go`
 
-Start the scheduler as a goroutine alongside the worker pool, tied to the same context:
+Start the scheduler as a goroutine tied to the same context:
+
 ```go
 sched := scheduler.New(bundb, pub)
 go sched.Run(ctx)
 ```
 
-## Spec files to update
-
-### `specs/system/ARCHITECTURE.md`
-- Add Scheduler as a component inside the Processor service box in the diagram
-- Add ADR: scheduler in processor (delivery timing is a processor concern; processor DB
-  connection already covers the notifications table via search_path)
-- Add `processor/internal/scheduler/` to the project layout
-- Add ADR for polling approach: no cron dependency; 5s granularity; up to 5s delivery
-  delay is an accepted tradeoff
-
-### `specs/processor-service/QUEUE_DESIGN.md`
-- Add scheduler as a second producer for the priority streams alongside the API
-
-### `specs/processor-service/VERIFICATION.md`
-- Add: `scheduled` notification enqueued and delivered within ~5s of `deliver_after`
-- Add: cancelling a `scheduled` notification before `deliver_after` prevents delivery
-
 ## Tests
 
-`processor/internal/scheduler/scheduler_test.go` using testcontainers-go (real postgres + redis):
+### `processor/internal/worker/worker_test.go`
 
-- `TestTick_enqueuesWhenDue` — insert a `scheduled` notification with `deliver_after = now-1s`;
-  run one `tick`; assert status transitioned to `pending` and event published to stream
-- `TestTick_skipsNotYetDue` — `deliver_after = now+1h`; run one `tick`; assert no change
-- `TestTick_skipsCancelledRace` — notification cancelled between SELECT and UPDATE;
-  UPDATE affects 0 rows; assert no publish and no error
+Update deliver_after tests to match the new behaviour:
+
+- `TestWorker_deliverAfter_future_attempt1` — `deliver_after` = now+1h, attempt 1:
+  no publish, Ack called, webhook not called.
+- `TestWorker_deliverAfter_future_retryAttempt` — `deliver_after` = now+1h, attempt 2:
+  re-enqueue publish called, Ack called, webhook not called.
+- `TestWorker_deliverAfter_past` — `deliver_after` = now-1s: falls through to delivery.
+- `TestWorker_deliverAfter_empty` — empty `DeliverAfter`: falls through to delivery.
+
+### `processor/internal/scheduler/scheduler_test.go` — testcontainers-go (real postgres + redis)
+
+- `TestTick_enqueuesWhenDue` — `pending` notification with `deliver_after = now-1s`;
+  run one `tick`; assert event published to the correct priority stream.
+- `TestTick_skipsNotYetDue` — `deliver_after = now+1h`; run one `tick`; assert no publish.
+- `TestTick_skipsNilDeliverAfter` — `deliver_after IS NULL`; run one `tick`; assert no publish.
 
 ## Verification
 
-- `go test ./processor/internal/scheduler/...` passes
-- `POST /notifications` with `deliver_after` = now+65s; wait ~70s; notification reaches `delivered`
-- `POST /notifications` with `deliver_after` = now+65s; immediately cancel; notification
-  stays `cancelled` after `deliver_after` passes
+- `go test ./processor/internal/worker/... ./processor/internal/scheduler/...` passes
+- `POST /notifications` with `deliver_after` = now+30s; wait 35s; notification reaches `delivered`
+- `POST /notifications` with `deliver_after` = now+30s; cancel immediately; stays `cancelled`

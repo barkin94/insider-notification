@@ -3,6 +3,7 @@ package middleware
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 )
 
@@ -33,6 +34,10 @@ type AppHandler func(w http.ResponseWriter, r *http.Request) error
 func ErrorHandler(h AppHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := h(w, r); err != nil {
+			// trace_id injected automatically when otelslog bridge is set via slog.SetDefault (observability task)
+			slog.ErrorContext(r.Context(), "error",
+				"error", err.Error(),
+			)
 			var appErr *AppError
 			if errors.As(err, &appErr) {
 				writeError(w, appErr.Status, appErr.Code, appErr.Message, nil)

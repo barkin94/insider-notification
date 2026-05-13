@@ -19,26 +19,28 @@ import (
 // --- request/response types ---
 
 type createRequest struct {
-	Recipient string          `json:"recipient"`
-	Channel   string          `json:"channel"`
-	Content   string          `json:"content"`
-	Priority  string          `json:"priority"`
-	Metadata  json.RawMessage `json:"metadata" swaggertype:"object"`
+	Recipient    string          `json:"recipient"`
+	Channel      string          `json:"channel"`
+	Content      string          `json:"content"`
+	Priority     string          `json:"priority"`
+	Metadata     json.RawMessage `json:"metadata" swaggertype:"object"`
+	DeliverAfter *string         `json:"deliver_after"`
 }
 
 type notificationResponse struct {
-	ID        string `json:"id"`
-	BatchID   any    `json:"batch_id"`
-	Recipient string `json:"recipient"`
-	Channel   string `json:"channel"`
-	Content   string `json:"content"`
-	Priority  string `json:"priority"`
-	Status    string `json:"status"`
-	Attempts  int    `json:"attempts"`
-	MaxAttempts int  `json:"max_attempts"`
-	Metadata  any    `json:"metadata"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
+	ID           string  `json:"id"`
+	BatchID      any     `json:"batch_id"`
+	Recipient    string  `json:"recipient"`
+	Channel      string  `json:"channel"`
+	Content      string  `json:"content"`
+	Priority     string  `json:"priority"`
+	Status       string  `json:"status"`
+	Attempts     int     `json:"attempts"`
+	MaxAttempts  int     `json:"max_attempts"`
+	DeliverAfter *string `json:"deliver_after"`
+	Metadata     any     `json:"metadata"`
+	CreatedAt    string  `json:"created_at"`
+	UpdatedAt    string  `json:"updated_at"`
 }
 
 type listResponse struct {
@@ -96,12 +98,22 @@ func createNotification(svc service.NotificationService) middleware.AppHandler {
 			return errBadRequest("VALIDATION_ERROR", "invalid JSON body")
 		}
 
+		var deliverAfter *time.Time
+		if req.DeliverAfter != nil {
+			t, err := time.Parse(time.RFC3339, *req.DeliverAfter)
+			if err != nil {
+				return errBadRequest("VALIDATION_ERROR", "deliver_after must be RFC3339")
+			}
+			deliverAfter = &t
+		}
+
 		n, err := svc.Create(r.Context(), service.CreateRequest{
-			Recipient: req.Recipient,
-			Channel:   req.Channel,
-			Content:   req.Content,
-			Priority:  req.Priority,
-			Metadata:  req.Metadata,
+			Recipient:    req.Recipient,
+			Channel:      req.Channel,
+			Content:      req.Content,
+			Priority:     req.Priority,
+			Metadata:     req.Metadata,
+			DeliverAfter: deliverAfter,
 		})
 		if err != nil {
 			if service.IsValidationError(err) {
@@ -311,12 +323,21 @@ func createBatch(svc service.NotificationService) middleware.AppHandler {
 
 		svcReqs := make([]service.CreateRequest, len(req.Notifications))
 		for i, item := range req.Notifications {
+			var deliverAfter *time.Time
+			if item.DeliverAfter != nil {
+				t, err := time.Parse(time.RFC3339, *item.DeliverAfter)
+				if err != nil {
+					return errBadRequest("VALIDATION_ERROR", "deliver_after must be RFC3339")
+				}
+				deliverAfter = &t
+			}
 			svcReqs[i] = service.CreateRequest{
-				Recipient: item.Recipient,
-				Channel:   item.Channel,
-				Content:   item.Content,
-				Priority:  item.Priority,
-				Metadata:  item.Metadata,
+				Recipient:    item.Recipient,
+				Channel:      item.Channel,
+				Content:      item.Content,
+				Priority:     item.Priority,
+				Metadata:     item.Metadata,
+				DeliverAfter: deliverAfter,
 			}
 		}
 
@@ -358,19 +379,25 @@ func toNotificationResponse(n *apimodel.Notification) notificationResponse {
 	if n.BatchID != nil {
 		batchID = n.BatchID.String()
 	}
+	var deliverAfter *string
+	if n.DeliverAfter != nil {
+		s := n.DeliverAfter.Format(time.RFC3339)
+		deliverAfter = &s
+	}
 	return notificationResponse{
-		ID:          n.ID.String(),
-		BatchID:     batchID,
-		Recipient:   n.Recipient,
-		Channel:     n.Channel,
-		Content:     n.Content,
-		Priority:    n.Priority,
-		Status:      n.Status,
-		Attempts:    n.Attempts,
-		MaxAttempts: n.MaxAttempts,
-		Metadata:    n.Metadata,
-		CreatedAt:   n.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:   n.UpdatedAt.Format(time.RFC3339),
+		ID:           n.ID.String(),
+		BatchID:      batchID,
+		Recipient:    n.Recipient,
+		Channel:      n.Channel,
+		Content:      n.Content,
+		Priority:     n.Priority,
+		Status:       n.Status,
+		Attempts:     n.Attempts,
+		MaxAttempts:  n.MaxAttempts,
+		DeliverAfter: deliverAfter,
+		Metadata:     n.Metadata,
+		CreatedAt:    n.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:    n.UpdatedAt.Format(time.RFC3339),
 	}
 }
 

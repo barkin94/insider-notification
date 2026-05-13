@@ -8,10 +8,11 @@ import (
 
 // Base holds config fields shared by both services.
 type Base struct {
-	DatabaseURL  string
-	RedisAddr    string
-	LogLevel     string
-	OTelEndpoint string
+	DatabaseURL     string
+	RedisAddr       string
+	LogLevel        string
+	OTelServiceName string
+	OTelEndpoint    string
 }
 
 // NewViper returns a viper instance with AutomaticEnv and a default log level.
@@ -35,9 +36,10 @@ func LoadBase(v *viper.Viper) (Base, string) {
 		return Base{}, "REDIS_ADDR"
 	}
 	return Base{
-		DatabaseURL:  dbURL,
-		RedisAddr:    redisAddr,
-		LogLevel:     v.GetString("LOG_LEVEL"),
-		OTelEndpoint: v.GetString("OTEL_ENDPOINT"),
+		DatabaseURL:     dbURL,
+		RedisAddr:       redisAddr,
+		LogLevel:        v.GetString("LOG_LEVEL"),
+		OTelEndpoint:    v.GetString("OTEL_ENDPOINT"),
+		OTelServiceName: v.GetString("OTEL_SERVICE_NAME"),
 	}, ""
 }

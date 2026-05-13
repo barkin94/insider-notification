@@ -83,7 +83,7 @@ func TestPublisher_routesToCorrectTopic(t *testing.T) {
 		pub := newPublisher(t)
 		sub := newSubscriber(t, "test-cg-"+tc.priority)
 
-		msgs, err := stream.Subscribe[stream.NotificationCreatedEvent](ctx, sub, tc.topic)
+		msgs, err := stream.Subscribe[stream.NotificationCreatedEvent](ctx, sub, tc.topic, "test")
 		if err != nil {
 			t.Fatalf("subscribe: %v", err)
 		}
@@ -120,7 +120,7 @@ func TestPublisher_deliveryResult(t *testing.T) {
 	pub := newPublisher(t)
 	sub := newSubscriber(t, "test-status-cg")
 
-	msgs, err := stream.Subscribe[stream.NotificationDeliveryResultEvent](ctx, sub, stream.TopicStatus)
+	msgs, err := stream.Subscribe[stream.NotificationDeliveryResultEvent](ctx, sub, stream.TopicStatus, "test")
 	if err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}

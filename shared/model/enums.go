@@ -11,6 +11,6 @@ const (
 
 	StatusPending   = "pending"
 	StatusDelivered = "delivered"
-	StatusFailed     = "failed"
-	StatusCancelled  = "cancelled"
+	StatusFailed    = "failed"
+	StatusCancelled = "cancelled"
 )

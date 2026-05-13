@@ -1,0 +1,17 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Processor",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}/processor/cmd/main.go",
+            "envFile": "${workspaceFolder}/processor/.env",
+                      "args": [],
+          "cwd": "${workspaceFolder}",
+            "showLog": true
+        },
+    ],
+
+}

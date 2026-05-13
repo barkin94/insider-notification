@@ -42,7 +42,7 @@ func TestMain(m *testing.M) {
 		}
 	}()
 
-	connStr, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
+	connStr, err := pgContainer.ConnectionString(ctx, "sslmode=disable", "search_path=processor,public")
 	if err != nil {
 		log.Fatalf("get connection string: %v", err)
 	}
@@ -54,9 +54,7 @@ func TestMain(m *testing.M) {
 	if err := mig.Up(); err != nil && err != migrate.ErrNoChange {
 		log.Fatalf("run migrations: %v", err)
 	}
-
-	dsn := connStr + "&search_path=processor,public"
-	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(dsn)))
+	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(connStr)))
 	testDB = bun.NewDB(sqldb, pgdialect.New())
 	defer testDB.Close()
 

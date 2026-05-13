@@ -23,7 +23,8 @@ Observability data (HTTP status code, latency) is emitted as OTel spans — see 
 | `notification_id` | UUID | NOT NULL |
 | `attempt_number` | INT | NOT NULL, 1-indexed |
 | `status` | VARCHAR(20) | NOT NULL, enum: `delivered \| failed` |
-| `attempted_at` | TIMESTAMPTZ | NOT NULL, default now |
+| `created_at` | TIMESTAMPTZ | NOT NULL, default now |
+| `updated_at` | TIMESTAMPTZ | NOT NULL, default now |
 
 **No FK to `public.notifications`** — cross-schema foreign keys would couple the two services
 at the database level.
@@ -36,7 +37,7 @@ at the database level.
 **Indexes:**
 ```sql
 CREATE INDEX idx_delivery_attempts_notification_id ON delivery_attempts(notification_id);
-CREATE INDEX idx_delivery_attempts_attempted_at    ON delivery_attempts(attempted_at DESC);
+CREATE INDEX idx_delivery_attempts_created_at ON delivery_attempts(created_at DESC);
 ```
 
 ---
@@ -48,7 +49,7 @@ accessible via `search_path`.
 
 | Operation | Query |
 |-----------|-------|
-| Scheduler poll | `SELECT … WHERE status = 'scheduled' AND deliver_after <= NOW()` |
+| Scheduler poll | `SELECT … WHERE deliver_after IS NOT NULL AND deliver_after <= NOW() AND status = 'pending'` |
 
 Write operations: none. Status updates flow back through the `notify:stream:status` Redis
 stream, consumed by the API service's status consumer.

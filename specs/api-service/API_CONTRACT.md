@@ -44,13 +44,15 @@ Create a single notification.
   "channel": "sms",                   // required, enum: sms | email | push
   "content": "Your OTP is 123456",    // required, string
   "priority": "high",                 // optional, enum: high | normal | low, default: normal
-  "metadata": {}                      // optional, arbitrary JSON object
+  "metadata": {},                     // optional, arbitrary JSON object
+  "deliver_after": "2024-06-01T10:00:00Z" // optional, RFC3339; notification is enqueued immediately but worker skips until this time passes
 }
 ```
 
 **Rules:**
 - `content` is required
 - Content length validated per channel (see DATA_MODEL.md)
+- `deliver_after` must be a valid RFC3339 timestamp if provided
 
 **Response: 201 Created**
 ```json
@@ -60,6 +62,7 @@ Create a single notification.
   "channel": "sms",
   "recipient": "+905551234567",
   "priority": "normal",
+  "deliver_after": "2024-06-01T10:00:00Z",
   "created_at": "2024-06-01T09:00:00Z"
 }
 ```
@@ -121,9 +124,9 @@ Get a single notification by ID.
   "content": "Your OTP is 123456",
   "priority": "normal",
   "status": "delivered",
-  "provider_message_id": "uuid-from-provider",
   "attempts": 1,
   "max_attempts": 4,
+  "deliver_after": "ISO8601 | null",
   "metadata": null,
   "created_at": "ISO8601",
   "updated_at": "ISO8601"
@@ -151,7 +154,7 @@ Results are always ordered by `id DESC` (newest first). `cursor` and offset `pag
 **Response: 200 OK**
 ```json
 {
-  "data": [ /* array of notification objects (same shape as GET /notifications/:id, without delivery_attempts) */ ],
+  "data": [ /* array of notification objects (same shape as GET /notifications/:id) */ ],
   "pagination": {
     "page_size": 20,
     "total": 4821,
@@ -165,7 +168,7 @@ Results are always ordered by `id DESC` (newest first). `cursor` and offset `pag
 ---
 
 ### POST /notifications/:id/cancel
-Cancel a pending or scheduled notification.
+Cancel a pending notification.
 
 **Rules:**
 - Only `pending` notifications can be cancelled

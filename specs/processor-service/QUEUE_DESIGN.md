@@ -51,7 +51,7 @@ Both groups are created on startup if they do not already exist.
 10 workers run concurrently (configurable via `WORKER_CONCURRENCY`). Each worker loops:
 
 1. Poll for next message via `PriorityRouter.Next()` (see `PRIORITY_ROUTER.md`)
-2. If `deliver_after` is set and `now < deliver_after` — re-enqueue to same priority topic, ACK, and skip
+2. If `deliver_after` is set and `now < deliver_after` — ACK and skip (scheduler delivers when due)
 3. Check cancellation store — if cancelled, ACK and skip
 4. Acquire a processing lock on the notification ID (TTL 60s) — if already held, ACK and skip
 5. Check rate limiter — if denied, re-enqueue to same priority topic, ACK, and skip
@@ -100,7 +100,7 @@ yet acknowledged. On Processor startup, any message idle in the PEL for more tha
 is reclaimed and re-processed. Re-processing is safe because:
 - A `cancelled:{id}` Redis key is checked before delivery
 - The processing lock prevents two workers from delivering the same message concurrently
-- The API's status consumer uses `ON CONFLICT DO NOTHING` on delivery_attempts rows
+- The `delivery_attempts` insert uses `ON CONFLICT DO NOTHING` so a re-delivered message produces no duplicate row
 
 ---
 

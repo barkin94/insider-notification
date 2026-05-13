@@ -8,12 +8,14 @@ import (
 
 	"github.com/ThreeDotsLabs/watermill/message"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Subscribe returns a channel of decoded NotificationCreatedEvents for the
 // given topic (TopicHigh, TopicNormal, or TopicLow). The caller is responsible
 // for calling msg.Ack() or msg.Nack() on each received message.
-func Subscribe[T any](ctx context.Context, sub message.Subscriber, topic string) (<-chan Result[T], error) {
+func Subscribe[T any](ctx context.Context, sub message.Subscriber, topic, tracerName string) (<-chan Result[T], error) {
 	msgs, err := sub.Subscribe(ctx, topic)
 	if err != nil {
 		return nil, fmt.Errorf("subscribe to %s: %w", topic, err)
@@ -25,6 +27,16 @@ func Subscribe[T any](ctx context.Context, sub message.Subscriber, topic string)
 		for msg := range msgs {
 			// Extract the W3C trace context the publisher injected into metadata.
 			msgCtx := otel.GetTextMapPropagator().Extract(ctx, NewStreamCarrier(msg.Metadata))
+			// Start a consumer span that continues the distributed trace.
+			msgCtx, span := otel.Tracer(tracerName).Start(
+				msgCtx,
+				fmt.Sprintf("consume %s", topic),
+				trace.WithSpanKind(trace.SpanKindConsumer),
+			)
+
+			span.SetAttributes(
+				attribute.String("messaging.src", topic),
+			)
 			slog.InfoContext(msgCtx, "message received", "topic", topic)
 			var e T
 			if err := json.Unmarshal(msg.Payload, &e); err != nil {
@@ -39,6 +51,7 @@ func Subscribe[T any](ctx context.Context, sub message.Subscriber, topic string)
 			select {
 			case out <- Result[T]{Ctx: msgCtx, Event: e, Msg: msg}:
 			case <-ctx.Done():
+				span.End()
 				return
 			}
 		}

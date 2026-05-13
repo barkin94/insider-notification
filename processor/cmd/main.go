@@ -30,7 +30,7 @@ func main() {
 
 	// --- OTel SDK: traces + metrics + logs via OTLP gRPC ---
 	// InitLogger must come after Init so the global LoggerProvider is set.
-	otelShutdown, err := sharedotel.Init(context.Background(), "processor", cfg.OTelEndpoint)
+	otelShutdown, err := sharedotel.Init(context.Background(), cfg.OTelServiceName, cfg.OTelEndpoint)
 	if err != nil {
 		slog.Error("init otel", "error", err)
 		os.Exit(1)
@@ -74,17 +74,17 @@ func main() {
 	// TODO: PEL reclaim before workers start (priority-router task)
 
 	// --- subscribe to all three priority topics ---
-	highMsgs, err := stream.Subscribe[stream.NotificationCreatedEvent](ctx, sub, stream.TopicHigh)
+	highMsgs, err := stream.Subscribe[stream.NotificationCreatedEvent](ctx, sub, stream.TopicHigh, cfg.OTelServiceName)
 	if err != nil {
 		slog.Error("subscribe high", "error", err)
 		os.Exit(1)
 	}
-	normalMsgs, err := stream.Subscribe[stream.NotificationCreatedEvent](ctx, sub, stream.TopicNormal)
+	normalMsgs, err := stream.Subscribe[stream.NotificationCreatedEvent](ctx, sub, stream.TopicNormal, cfg.OTelServiceName)
 	if err != nil {
 		slog.Error("subscribe normal", "error", err)
 		os.Exit(1)
 	}
-	lowMsgs, err := stream.Subscribe[stream.NotificationCreatedEvent](ctx, sub, stream.TopicLow)
+	lowMsgs, err := stream.Subscribe[stream.NotificationCreatedEvent](ctx, sub, stream.TopicLow, cfg.OTelServiceName)
 	if err != nil {
 		slog.Error("subscribe low", "error", err)
 		os.Exit(1)
@@ -116,4 +116,3 @@ func main() {
 	wg.Wait()
 	slog.Info("all workers stopped")
 }
-

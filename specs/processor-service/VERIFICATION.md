@@ -51,5 +51,5 @@
 - [ ] Successful delivery → status event `delivered` published to `notify:stream:status`
 - [ ] Retryable failure with attempts < max → re-enqueued with `deliver_after` = backoff timestamp; no status event published
 - [ ] Non-retryable failure OR attempts == max → status event `failed` published; no re-enqueue
-- [ ] `deliver_after` in the future → message re-enqueued immediately without consuming retry budget
+- [ ] `deliver_after` in the future → message ACKed and dropped; scheduler delivers when due
 - [ ] `go test ./processor/internal/worker/...` passes

@@ -1,105 +1,90 @@
 # scheduled-api
 
-**Specs:** `api-service/DATA_MODEL.md`, `api-service/API_CONTRACT.md`, `system/TODOS.md` § Scheduled Notifications
+**Specs:** `api-service/DATA_MODEL.md`, `api-service/API_CONTRACT.md`
 **Verification:** `api-service/VERIFICATION.md`
 **Status:** pending
 
 ## Context
 
-Notifications created with a `deliver_after` at least 1 minute in the future are stored
-with status `scheduled` and are not published to the queue at creation time. The scheduler
-worker (next task) owns the `scheduled → pending` transition and enqueue.
+Notifications may carry a `deliver_after` timestamp. The API has no scheduling concern:
+it always stores the notification as `pending` and publishes to the queue immediately,
+including `deliver_after` in the event payload. The processor scheduler handles timing.
 
-No new DB column — `deliver_after` already exists and `idx_notifications_deliver_after_status`
-already covers the scheduler's query. The only schema change is adding `scheduled` to the
-status enum.
+There is no `scheduled` status. Notifications with a future `deliver_after` stay `pending`
+until the processor delivers them. Cancel always transitions `pending → cancelled`.
 
 ## What to build
 
-### `shared/model/enums.go`
+### Revert stale scheduled-status changes
 
-Add:
+**`shared/model/enums.go` / `enums_test.go`**
+- Remove `StatusScheduled = "scheduled"` and its test cases.
+
+**`api/internal/db/repos.go`**
+- Remove `TransitionFromAny` from `NotificationRepository`.
+
+**`api/internal/db/notification_repo.go`**
+- Remove the `TransitionFromAny` implementation.
+
+**`api/internal/db/notification_repo_test.go`**
+- Remove `TestTransitionFromAny_pending`, `TestTransitionFromAny_scheduled`,
+  `TestTransitionFromAny_noMatch`.
+
+**`api/internal/service/notification.go`**
+- Remove the deliver_after validation check from `validate()`.
+- In `Create` and `createWithBatchID`: always use `StatusPending`; always publish;
+  remove the `StatusScheduled` early-return branch.
+- In `Cancel`: revert to `s.repo.Transition(ctx, id, model.StatusPending, model.StatusCancelled)`.
+
+**`api/internal/service/notification_test.go`**
+- Remove `transitionFromAnyFn` field and `TransitionFromAny` method from `mockNotifRepo`.
+- Remove `TestCreate_futureDeliverAfter`, `TestCreate_deliverAfterTooSoon`,
+  `TestCancel_fromScheduled`.
+- Update `TestCancel_transitionFailed`: override `transitionFn` (not `transitionFromAnyFn`).
+
+### `api/internal/handler/notification.go`
+
+Add `deliver_after` to `createRequest`:
+
 ```go
-StatusScheduled = "scheduled"
-```
-
-### `shared/model/enums_test.go`
-
-Add test cases for `StatusScheduled` / `"scheduled"` alongside existing ones.
-
-### `api/internal/db/repos.go`
-
-Add to `NotificationRepository`:
-```go
-TransitionFromAny(ctx context.Context, id uuid.UUID, from []string, to string) (*model.Notification, error)
-```
-
-Needed by `Cancel` to cancel from either `pending` or `scheduled` in one round-trip.
-
-### `api/internal/db/notification_repo.go`
-
-Implement `TransitionFromAny`:
-```sql
-UPDATE notifications
-SET status = ?, updated_at = NOW()
-WHERE id = ? AND status = ANY(?)
-RETURNING *
-```
-Returns `db.ErrTransitionFailed` (same sentinel as `Transition`) when no row is updated.
-
-### `api/internal/service/notification.go`
-
-**`validate`:** if `req.DeliverAfter` is non-nil and not at least 1 minute in the future,
-return `&ValidationError{Field: "deliver_after", Message: "must be at least 1 minute in the future"}`.
-
-**`Create` and `createWithBatchID`:** determine status before persisting:
-```go
-status := model.StatusPending
-if req.DeliverAfter != nil && req.DeliverAfter.After(time.Now().Add(time.Minute)) {
-    status = model.StatusScheduled
+type createRequest struct {
+    Recipient    string          `json:"recipient"`
+    Channel      string          `json:"channel"`
+    Content      string          `json:"content"`
+    Priority     string          `json:"priority"`
+    Metadata     json.RawMessage `json:"metadata" swaggertype:"object"`
+    DeliverAfter *string         `json:"deliver_after"` // RFC3339; omit for immediate delivery
 }
-n.Status = status
-
-if err := s.repo.Create(ctx, n); err != nil { ... }
-
-if status == model.StatusScheduled {
-    return n, nil  // do not publish; scheduler will enqueue when due
-}
-// existing publish logic unchanged
 ```
 
-**`Cancel`:** replace `Transition(id, StatusPending, StatusCancelled)` with:
+In `createNotification`, parse before calling `svc.Create`:
+
 ```go
-s.repo.TransitionFromAny(ctx, id, []string{model.StatusPending, model.StatusScheduled}, model.StatusCancelled)
+var deliverAfter *time.Time
+if req.DeliverAfter != nil {
+    t, err := time.Parse(time.RFC3339, *req.DeliverAfter)
+    if err != nil {
+        return errBadRequest("VALIDATION_ERROR", "deliver_after must be RFC3339")
+    }
+    deliverAfter = &t
+}
 ```
 
-## Spec files to update
+Apply the same mapping in `createBatch`.
 
-### `specs/api-service/DATA_MODEL.md`
-- Add `scheduled` to the status enum
-- Add `scheduled → pending` and `scheduled → cancelled` to the status transition diagram
+Add `deliver_after` to `notificationResponse` and populate it in `toNotificationResponse`:
 
-### `specs/api-service/API_CONTRACT.md`
-- Add `deliver_after` validation rule to `POST /notifications`: must be ≥ 1 minute in the future if provided
-- Add `scheduled` to the `status` filter values on `GET /notifications`
-- Add `scheduled` to the cancellable statuses on `DELETE /notifications/:id/cancel`
+```go
+DeliverAfter *string `json:"deliver_after"`
+```
 
 ## Tests
 
-`api/internal/service/notification_test.go`:
-- `TestCreate_futureDeliverAfter` — `deliver_after` = now+2min → `status = scheduled`, publisher not called
-- `TestCreate_deliverAfterTooSoon` — `deliver_after` = now+30s → 422 validation error
-- `TestCreate_noDeliverAfter` — existing behaviour unchanged: `status = pending`, publisher called
-- `TestCancel_fromScheduled` — cancels a `scheduled` notification successfully
-
-`api/internal/db/notification_repo_test.go`:
-- `TestTransitionFromAny_pending` — row in `pending` → transitions to `cancelled`
-- `TestTransitionFromAny_scheduled` — row in `scheduled` → transitions to `cancelled`
-- `TestTransitionFromAny_noMatch` — row in `delivered` → returns `ErrTransitionFailed`
+No new service or repo tests. Existing tests continue to pass unchanged.
 
 ## Verification
 
 - `go test ./shared/model/... ./api/internal/...` passes
-- `POST /notifications` with `deliver_after` = now+2min → 201, `"status": "scheduled"`, nothing published to stream
-- `POST /notifications` with `deliver_after` = now+30s → 422
-- `DELETE /notifications/:id/cancel` on a `scheduled` notification → 200
+- `POST /notifications` with `deliver_after` → 201, `"status": "pending"`, event published with deliver_after in payload
+- `POST /notifications` without `deliver_after` → 201, `"status": "pending"`, event published
+- `DELETE /notifications/:id/cancel` → 200

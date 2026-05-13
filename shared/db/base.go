@@ -12,6 +12,6 @@ import (
 type BaseModel struct {
 	bun.BaseModel
 	ID        uuid.UUID `bun:",pk,type:uuid"`
-	CreatedAt time.Time `bun:",nullzero,noinsert,default:current_timestamp"`
+	CreatedAt time.Time `bun:",nullzero,default:current_timestamp"`
 	UpdatedAt time.Time `bun:",nullzero,default:current_timestamp"`
 }
