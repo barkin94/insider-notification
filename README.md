@@ -122,9 +122,9 @@ Change `REDIS_ADDR` and `DATABASE_URL` in the `.env` files to `localhost` for lo
 ### Processing Engine
 
 - [x] Process notifications asynchronously via queue workers
-- [ ] Implement rate limiting: maximum 100 messages per second per channel
+- [x] Implement rate limiting: maximum 100 messages per second per channel
 - [x] Priority queue support (high, normal, low)
-- [ ] Content validation (character limits, required fields)
+- [x] Content validation (character limits, required fields)
 - [x] Idempotency support to prevent duplicate sends
 
 ### Delivery & Retry Logic
@@ -139,8 +139,8 @@ Change `REDIS_ADDR` and `DATABASE_URL` in the `.env` files to `localhost` for lo
 
 ### Bonus Features
 
-- [ ] Failure Handling
-- [ ] Scheduled Notifications: Allow scheduling notifications for future delivery
+- [x] Failure Handling
+- [x] Scheduled Notifications: Allow scheduling notifications for future delivery
 - [ ] Template System: Support message templates with variable substitution
 - [ ] WebSocket Updates: Real-time status updates via WebSocket
 - [x] Distributed Tracing
