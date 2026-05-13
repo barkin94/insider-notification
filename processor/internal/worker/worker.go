@@ -92,14 +92,9 @@ func (w *Worker) processOne(ctx context.Context, result stream.Result[stream.Not
 	evt := result.Event
 	msg := result.Msg
 
-	// deliver_after: re-enqueue and skip if not yet due
+	// deliver_after: drop if not yet due — scheduler re-publishes when ready
 	if evt.DeliverAfter != "" {
 		if t, err := time.Parse(time.RFC3339, evt.DeliverAfter); err == nil && time.Now().Before(t) {
-			if err := w.pub.Publish(ctx, topicByPriority[evt.Priority], evt); err != nil {
-				slog.ErrorContext(ctx, "re-enqueue deliver_after failed", "id", evt.NotificationID, "error", err)
-				msg.Nack()
-				return
-			}
 			msg.Ack()
 			return
 		}
@@ -160,7 +155,7 @@ func (w *Worker) processOne(ctx context.Context, result stream.Result[stream.Not
 	now := time.Now().UTC().Format(time.RFC3339)
 	switch {
 	case dr.Success:
-		w.writeAttempt(ctx, evt.NotificationID, evt.AttemptNumber, model.StatusDelivered)
+		w.writeAttempt(ctx, evt.NotificationID, evt.AttemptNumber, model.StatusDelivered, nil, evt.Priority)
 		w.publishStatus(ctx, stream.NotificationDeliveryResultEvent{
 			NotificationID:    evt.NotificationID,
 			Status:            model.StatusDelivered,
@@ -172,16 +167,10 @@ func (w *Worker) processOne(ctx context.Context, result stream.Result[stream.Not
 		})
 
 	case dr.Retryable && evt.AttemptNumber < evt.MaxAttempts:
-		w.writeAttempt(ctx, evt.NotificationID, evt.AttemptNumber, model.StatusFailed)
-		nextAttempt := evt.AttemptNumber + 1
-		retryEvt := evt
-		retryEvt.AttemptNumber = nextAttempt
-		retryEvt.DeliverAfter = time.Now().Add(retry.Delay(nextAttempt)).UTC().Format(time.RFC3339)
-		if err := w.pub.Publish(ctx, topicByPriority[evt.Priority], retryEvt); err != nil {
-			slog.ErrorContext(ctx, "publish retry failed", "id", evt.NotificationID, "error", err)
-		}
+		retryAfter := time.Now().Add(retry.Delay(evt.AttemptNumber + 1)).UTC()
+		w.writeAttempt(ctx, evt.NotificationID, evt.AttemptNumber, model.StatusFailed, &retryAfter, evt.Priority)
 	default:
-		w.writeAttempt(ctx, evt.NotificationID, evt.AttemptNumber, model.StatusFailed)
+		w.writeAttempt(ctx, evt.NotificationID, evt.AttemptNumber, model.StatusFailed, nil, evt.Priority)
 		w.publishStatus(ctx, stream.NotificationDeliveryResultEvent{
 			NotificationID: evt.NotificationID,
 			Status:         model.StatusFailed,
@@ -202,7 +191,7 @@ func (w *Worker) publishStatus(ctx context.Context, evt stream.NotificationDeliv
 	}
 }
 
-func (w *Worker) writeAttempt(ctx context.Context, notifIDStr string, attemptNumber int, status string) {
+func (w *Worker) writeAttempt(ctx context.Context, notifIDStr string, attemptNumber int, status string, retryAfter *time.Time, priority string) {
 	if w.attempts == nil {
 		return
 	}
@@ -221,6 +210,8 @@ func (w *Worker) writeAttempt(ctx context.Context, notifIDStr string, attemptNum
 		NotificationID: notifID,
 		AttemptNumber:  attemptNumber,
 		Status:         status,
+		Priority:       priority,
+		RetryAfter:     retryAfter,
 	}
 	a.ID = id
 	a.CreatedAt = now

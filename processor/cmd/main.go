@@ -12,6 +12,7 @@ import (
 	"github.com/barkin/insider-notification/processor/internal/config"
 	processordb "github.com/barkin/insider-notification/processor/internal/db"
 	"github.com/barkin/insider-notification/processor/internal/priorityrouter"
+	"github.com/barkin/insider-notification/processor/internal/scheduler"
 	"github.com/barkin/insider-notification/processor/internal/worker"
 	"github.com/barkin/insider-notification/processor/internal/worker/ratelimit"
 	"github.com/barkin/insider-notification/processor/internal/worker/webhook"
@@ -98,6 +99,11 @@ func main() {
 	canceller := worker.NewRedisCancellationStore(rdb)
 
 	w := worker.NewWorker(pub, deliveryClient, limiter, locker, canceller, attemptRepo)
+
+	// --- start scheduler ---
+	notifReader := scheduler.NewNotificationReader(bundb)
+	sched := scheduler.New(notifReader, attemptRepo, pub)
+	go sched.Run(ctx)
 
 	// --- start worker pool ---
 	var wg sync.WaitGroup

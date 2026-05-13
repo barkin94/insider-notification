@@ -18,3 +18,16 @@ func (r *bunDeliveryAttemptRepo) Create(ctx context.Context, a *DeliveryAttempt)
 		Exec(ctx)
 	return err
 }
+
+func (r *bunDeliveryAttemptRepo) FindDueRetries(ctx context.Context) ([]*DeliveryAttempt, error) {
+	var rows []*DeliveryAttempt
+	err := r.db.NewSelect().
+		Model(&rows).
+		DistinctOn("(notification_id)").
+		Where("status = ?", "failed").
+		Where("retry_after IS NOT NULL").
+		Where("retry_after <= NOW()").
+		OrderExpr("notification_id, attempt_number DESC").
+		Scan(ctx)
+	return rows, err
+}

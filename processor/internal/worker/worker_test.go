@@ -146,7 +146,7 @@ func isAcked(msg *message.Message) bool {
 
 // --- tests ---
 
-// deliver_after in the future: re-enqueues to same topic and ACKs; no status published.
+// deliver_after in the future: ACKs and drops; scheduler handles it.
 func TestProcessOne_DeliverAfterFuture(t *testing.T) {
 	pub := &fakePublisher{}
 	w := newWorker(pub, nil, nil, false, true, nil)
@@ -160,9 +160,8 @@ func TestProcessOne_DeliverAfterFuture(t *testing.T) {
 	if !isAcked(result.Msg) {
 		t.Error("expected ACK")
 	}
-	topics := pub.topicsPublished()
-	if len(topics) != 1 || topics[0] != stream.TopicHigh {
-		t.Errorf("expected re-enqueue to %s, got %v", stream.TopicHigh, topics)
+	if len(pub.calls()) != 0 {
+		t.Errorf("expected no publishes, got %v", pub.topicsPublished())
 	}
 }
 
@@ -273,33 +272,37 @@ func TestWorker_delivered(t *testing.T) {
 	}
 }
 
-// Retryable failure with attempts remaining: status event + re-enqueue with incremented AttemptNumber and DeliverAfter.
-func TestWorker_retryable_requeued(t *testing.T) {
+// Retryable failure with attempts remaining: attempt written to DB with retry_after set; no stream publish.
+func TestWorker_retryable_writesRetryAfter(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: webhook.Result{Success: false, Retryable: true, StatusCode: 503}}
 	lim := &fakeLimiter{allowed: true}
-	w := newWorker(pub, dc, lim, false, true, nil)
+	aw := &mockAttemptWriter{}
+	w := newWorker(pub, dc, lim, false, true, aw)
 
-	result := newResult(baseEvent()) // AttemptNumber=1, MaxAttempts=4
+	evt := baseEventWithID() // AttemptNumber=1, MaxAttempts=4
+	result := newResult(evt)
 	w.Run(context.Background(), &singleSource{result: result})
 
 	if !isAcked(result.Msg) {
 		t.Error("expected ACK")
 	}
-	calls := pub.calls()
-	// re-enqueue to priority topic only; no status events on retryable failure
-	if len(calls) != 1 {
-		t.Fatalf("expected 1 publish (re-enqueue), got %d: %v", len(calls), calls)
+	if len(pub.calls()) != 0 {
+		t.Errorf("expected no stream publishes, got %v", pub.topicsPublished())
 	}
-	if calls[0].topic != stream.TopicHigh {
-		t.Errorf("publish should be re-enqueue to %s, got %s", stream.TopicHigh, calls[0].topic)
+	attempts := aw.recorded()
+	if len(attempts) != 1 {
+		t.Fatalf("expected 1 attempt write, got %d", len(attempts))
 	}
-	retryEvt := calls[0].payload.(stream.NotificationCreatedEvent)
-	if retryEvt.AttemptNumber != 2 {
-		t.Errorf("re-enqueued AttemptNumber: expected 2, got %d", retryEvt.AttemptNumber)
+	a := attempts[0]
+	if a.Status != model.StatusFailed {
+		t.Errorf("attempt status = %q, want failed", a.Status)
 	}
-	if retryEvt.DeliverAfter == "" {
-		t.Error("re-enqueued event should have DeliverAfter set")
+	if a.RetryAfter == nil {
+		t.Error("expected retry_after to be set")
+	}
+	if a.Priority != model.PriorityHigh {
+		t.Errorf("priority = %q, want high", a.Priority)
 	}
 }
 
@@ -371,8 +374,8 @@ func TestWorker_lockMiss(t *testing.T) {
 	}
 }
 
-// Future DeliverAfter: re-enqueue only, no status event.
-func TestWorker_deliverAfter_requeued(t *testing.T) {
+// Future DeliverAfter: ACK and drop; scheduler handles it.
+func TestWorker_deliverAfter_dropped(t *testing.T) {
 	pub := &fakePublisher{}
 	w := newWorker(pub, nil, nil, false, true, nil)
 
@@ -384,16 +387,8 @@ func TestWorker_deliverAfter_requeued(t *testing.T) {
 	if !isAcked(result.Msg) {
 		t.Error("expected ACK")
 	}
-	calls := pub.calls()
-	if len(calls) != 1 {
-		t.Fatalf("expected 1 publish (re-enqueue), got %d", len(calls))
-	}
-	if calls[0].topic != stream.TopicHigh {
-		t.Errorf("expected re-enqueue to %s, got %s", stream.TopicHigh, calls[0].topic)
-	}
-	_, isStatus := calls[0].payload.(stream.NotificationDeliveryResultEvent)
-	if isStatus {
-		t.Error("expected re-enqueue payload, not status event")
+	if len(pub.calls()) != 0 {
+		t.Errorf("expected no publishes, got %v", pub.topicsPublished())
 	}
 }
 

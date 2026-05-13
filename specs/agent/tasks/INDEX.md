@@ -27,4 +27,4 @@ The two chains (processor-db and scheduled) are otherwise independent.
 - [x] processor-worker-attempts
 - [x] api-remove-attempts
 - [x] scheduled-api
-- [ ] scheduled-worker
+- [x] scheduled-worker
