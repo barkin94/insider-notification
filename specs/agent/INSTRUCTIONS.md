@@ -6,48 +6,55 @@
 
 ## Session Start
 
-1. Read `STATE.md`, `DECISIONS.md`, `CODEINDEX.md` (all under `specs/agent/`)
-2. If `specs/agent/tasks/INDEX.md` exists: read it and any in-progress task files, report remaining tasks, ask to resume or restart
-3. Read the spec diff (first session: full spec content; subsequent: diff of `specs/` since last build commit)
-4. Derive a task list — what to build, dependency order, which specs each task references
-5. **Gate 1 — wait for explicit approval** before continuing
-6. Write approved tasks to `specs/agent/tasks/`:
-   - `INDEX.md`: ordered sequence, dependency map, status checklist, date, diff source
-   - One file per task: specs referenced, what to build, tests to write, verification, status
-7. Present the build plan: files/packages, key interfaces and types, open decisions
-8. **Gate 2 — wait for explicit approval** before writing any code
+1. Read `STATE.md` (pointer file, minimal)
+2. Read `STANDARDS.md` (coding rules, cached from previous sessions)
+3. Read only the spec file(s) relevant to the current task — not the whole corpus
+4. Verify the spec is current: grep the code packages for key symbols mentioned in the spec; if reality diverges, note it in STATE.md divergences section
 
 ---
 
-## Implementation
+## Implementation: Spec-First Approach
 
-- Implement exactly what the spec says, nothing more
-- Grep for existing code before writing anything new
-- If the spec doesn't cover a needed decision, stop and ask
-- If spec files conflict, stop and report it
+1. Read and understand the task spec (see STATE.md TODO)
+2. **Update the spec** if needed to reflect the decision you're about to make
+3. Write the code to implement the spec
+4. Write tests (TDD: red → green → refactor for Go packages; infra files verified by running the stack)
+5. Run `go build ./...`, `go vet ./...`, `go test ./...`
+6. Commit both spec and code together in one commit
 
-**TDD (mandatory for every Go package):** red → green → refactor. Infrastructure files (docker-compose, Dockerfiles, SQL, config) have no tests; verify by running the stack.
+**Example commit message:**
+```
+spec: api/repo.notification → api/internal/db: add FindByStatus method
 
-**Git:** commit to the working branch after each task passes all checks; include updated task files in every commit.
-
-After writing code: run build and lint. After writing a component: run its tests. On failure: set `BLOCKED_REASON` in `STATE.md` and `Status: blocked` in the task file; fix before continuing.
-
----
-
-## After Each Task
-
-1. Run the relevant `VERIFICATION.md` checklist
-2. On pass: mark complete in `INDEX.md` and task file; commit; update `DECISIONS.md` and `STATE.md`
-3. Move to the next approved task
-4. When all tasks are done: delete `specs/agent/tasks/` and commit
+Updates repo.notification.md interface and implements the method with testcontainers test.
+```
 
 ---
 
-## Hard Rules
+## Verification: What Passes
 
-- Never pass Gate 1 or Gate 2 without explicit human approval
-- Never skip a verification checklist item
-- Never add code not in the specs
-- Never silently resolve a spec conflict — surface it
-- Never assume previous session's work is correct — verify build and tests pass
-- Never write implementation code without a failing test first
+- Build passes: `go build ./...`, `go vet ./...` succeed
+- Tests pass: `go test ./...` (testcontainers tests must run; never skip)
+- Lint passes: `golangci-lint run`
+- Code matches spec: spec file shows the actual interface, table schema, rules that the code implements
+- No type errors or runtime panics
+
+If any fail: fix before committing. Update STATE.md `BLOCKED_REASON` if stuck.
+
+---
+
+## After Each Commit
+
+1. Verify build, tests, and lint passed
+2. Update STATE.md: TODO item marked complete, next item started
+3. Push to branch (human reviews the diff: spec + code together)
+
+---
+
+## Hard Rules (Never Violate)
+
+1. Never add code that is not in the spec
+2. Never skip a verification checklist item
+3. Never assume a previous session's work is correct — verify build and tests pass before proceeding
+4. Never commit without spec and code together
+5. Always read STANDARDS.md at session start (coding rules are binding)
