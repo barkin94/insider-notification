@@ -58,30 +58,10 @@ Read this at the start of every session. These rules are binding for all impleme
 
 ---
 
-## Package Naming
-
-- Repository interfaces: `XRepository` (e.g., `NotificationRepository`)
-- Repository implementations: `xRepo` or `xRepositoryImpl` (e.g., `notificationRepo`)
-- Service interfaces: `XService` (e.g., `NotificationService`)
-- Handlers: `func (s *Server) handleX(w http.ResponseWriter, r *http.Request)`
-- Packages with one responsibility have one file; only split when a file exceeds ~400 lines
-
----
-
 ## Transactions & Locks
 
 - All PostgreSQL writes use explicit transactions via `pgx/v5` or `bun` transaction APIs
 - For idempotent operations: use `SELECT FOR UPDATE` or table-level locks, never application-level mutexes for database concerns
-- Redis keys: use namespaced keys (`notify:stream:{priority}`, `ratelimit:{channel}`, `cancelled:{id}`)
-
----
-
-## HTTP
-
-- All handlers return `(w http.ResponseWriter, r *http.Request)`, no custom signatures
-- Error responses use the standard format (defined in API_CONTRACT spec)
-- No middleware that modifies request/response after the handler completes
-- All handlers accept `context.Context` as the first parameter to inner functions
 
 ---
 
