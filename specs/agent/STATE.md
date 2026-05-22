@@ -1,14 +1,15 @@
 ---
 status: in_progress
-last_passing_commit: bbf923b
-branch: master
+last_completed: Phase 0 (d52541d)
+current_phase: Phase 1
+branch: spec-restructure
 ---
 
 # STATE
 
 ## current session
 
-Migrating spec structure from topic-based (ARCHITECTURE.md, OBSERVABILITY.md, etc.) to component-based (one file per code unit). Phase 0 in progress: new INSTRUCTIONS.md, STANDARDS.md, STATE.md. Next: create shared specs in Phase 1.
+Migrating spec structure from topic-based to component-based (one file per code unit). Phase 0 complete: INSTRUCTIONS.md, STANDARDS.md, STATE.md rewritten. Starting Phase 1: create shared specs (shared/model.md, shared/stream.md, shared/observability.md).
 
 ## divergences (spec vs code)
 
