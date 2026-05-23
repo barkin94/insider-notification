@@ -52,12 +52,12 @@ type Scheduler struct {
 	interval  time.Duration
 }
 
-func New(notifs NotificationReader, retries RetryReader, publisher StreamPublisher) *Scheduler {
+func New(notifs NotificationReader, retries RetryReader, publisher StreamPublisher, interval time.Duration) *Scheduler {
 	return &Scheduler{
 		notifs:    notifs,
 		retries:   retries,
 		publisher: publisher,
-		interval:  5 * time.Second,
+		interval:  interval,
 	}
 }
 

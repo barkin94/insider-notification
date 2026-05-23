@@ -3,6 +3,7 @@ package config
 import (
 	"log/slog"
 	"os"
+	"time"
 
 	shared "github.com/barkin/insider-notification/shared/config"
 )
@@ -11,11 +12,21 @@ type Config struct {
 	shared.Base
 	WorkerConcurrency int
 	WebhookURL        string
+	WebhookTimeout    time.Duration
+	SchedulerInterval time.Duration
+	HighWeight        int // HIGH_WEIGHT env var
+	NormalWeight      int // NORMAL_WEIGHT env var
+	LowWeight         int // LOW_WEIGHT env var
 }
 
 func Load() *Config {
 	v := shared.NewViper()
 	v.SetDefault("WORKER_CONCURRENCY", 10)
+	v.SetDefault("WEBHOOK_TIMEOUT", "10s")
+	v.SetDefault("SCHEDULER_INTERVAL", "5s")
+	v.SetDefault("HIGH_WEIGHT", 3)
+	v.SetDefault("NORMAL_WEIGHT", 2)
+	v.SetDefault("LOW_WEIGHT", 1)
 
 	base, missing := shared.LoadBase(v)
 	if missing != "" {
@@ -33,5 +44,10 @@ func Load() *Config {
 		Base:              base,
 		WorkerConcurrency: v.GetInt("WORKER_CONCURRENCY"),
 		WebhookURL:        webhookURL,
+		WebhookTimeout:    v.GetDuration("WEBHOOK_TIMEOUT"),
+		SchedulerInterval: v.GetDuration("SCHEDULER_INTERVAL"),
+		HighWeight:        v.GetInt("HIGH_WEIGHT"),
+		NormalWeight:      v.GetInt("NORMAL_WEIGHT"),
+		LowWeight:         v.GetInt("LOW_WEIGHT"),
 	}
 }

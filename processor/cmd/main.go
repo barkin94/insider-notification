@@ -23,8 +23,6 @@ import (
 	"github.com/barkin/insider-notification/shared/stream"
 )
 
-var defaultWeights = [3]int{3, 2, 1} // high ~50%, normal ~33%, low ~17%
-
 func main() {
 	// --- config ---
 	cfg := config.Load()
@@ -90,7 +88,11 @@ func main() {
 		slog.Error("subscribe low", "error", err)
 		os.Exit(1)
 	}
-	pRouter := priorityrouter.NewPriorityRouter(ctx, highMsgs, normalMsgs, lowMsgs, defaultWeights)
+	pRouter := priorityrouter.NewPriorityRouter([]priorityrouter.WeightedSource[stream.Result[stream.NotificationCreatedEvent]]{
+		{Ch: highMsgs, Weight: cfg.HighWeight},
+		{Ch: normalMsgs, Weight: cfg.NormalWeight},
+		{Ch: lowMsgs, Weight: cfg.LowWeight},
+	})
 
 	// --- worker dependencies ---
 	limiter := ratelimit.NewLimiter(rdb)
@@ -102,7 +104,7 @@ func main() {
 
 	// --- start scheduler ---
 	notifReader := scheduler.NewNotificationReader(bundb)
-	sched := scheduler.New(notifReader, attemptRepo, pub)
+	sched := scheduler.New(notifReader, attemptRepo, pub, cfg.SchedulerInterval)
 	go sched.Run(ctx)
 
 	// --- start worker pool ---

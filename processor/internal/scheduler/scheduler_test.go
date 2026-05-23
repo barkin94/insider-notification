@@ -78,7 +78,7 @@ func TestTick_initialScheduled_enqueues(t *testing.T) {
 	}}
 	retryRepo := &fakeRetryRepo{}
 
-	sched := scheduler.New(notifReader, retryRepo, pub)
+	sched := scheduler.New(notifReader, retryRepo, pub, time.Second)
 	sched.Tick(context.Background())
 
 	msgs := pub.published()
@@ -102,7 +102,7 @@ func TestTick_initialScheduled_enqueues(t *testing.T) {
 
 func TestTick_initialScheduled_noRows(t *testing.T) {
 	pub := &fakePublisher{}
-	sched := scheduler.New(&fakeNotifReader{}, &fakeRetryRepo{}, pub)
+	sched := scheduler.New(&fakeNotifReader{}, &fakeRetryRepo{}, pub, time.Second)
 	sched.Tick(context.Background())
 
 	if len(pub.published()) != 0 {
@@ -123,7 +123,7 @@ func TestTick_retry_enqueuesWithNextAttempt(t *testing.T) {
 			Recipient: "+1", Content: "retry me", MaxAttempts: 4},
 	}}
 
-	sched := scheduler.New(notifReader, retryRepo, pub)
+	sched := scheduler.New(notifReader, retryRepo, pub, time.Second)
 	sched.Tick(context.Background())
 
 	msgs := pub.published()
@@ -150,7 +150,7 @@ func TestTick_retry_enqueuesWithNextAttempt(t *testing.T) {
 
 func TestTick_retry_noRows(t *testing.T) {
 	pub := &fakePublisher{}
-	sched := scheduler.New(&fakeNotifReader{}, &fakeRetryRepo{}, pub)
+	sched := scheduler.New(&fakeNotifReader{}, &fakeRetryRepo{}, pub, time.Second)
 	sched.Tick(context.Background())
 
 	if len(pub.published()) != 0 {
