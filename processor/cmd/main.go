@@ -5,27 +5,16 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
-	"sync"
 	"syscall"
 
+	"github.com/barkin/insider-notification/processor/internal/app"
 	"github.com/barkin/insider-notification/processor/internal/config"
-	processordb "github.com/barkin/insider-notification/processor/internal/db"
-	"github.com/barkin/insider-notification/processor/internal/priorityrouter"
-	"github.com/barkin/insider-notification/processor/internal/scheduler"
-	"github.com/barkin/insider-notification/processor/internal/worker"
-	"github.com/barkin/insider-notification/shared/db"
-	"github.com/barkin/insider-notification/shared/lock"
 	sharedotel "github.com/barkin/insider-notification/shared/otel"
-	sharedredis "github.com/barkin/insider-notification/shared/redis"
-	"github.com/barkin/insider-notification/shared/stream"
 )
 
 func main() {
-	// --- config ---
 	cfg := config.Load()
 
-	// --- OTel SDK: traces + metrics + logs via OTLP gRPC ---
-	// InitLogger must come after Init so the global LoggerProvider is set.
 	otelShutdown, err := sharedotel.Init(context.Background(), cfg.OTelServiceName, cfg.OTelEndpoint)
 	if err != nil {
 		slog.Error("init otel", "error", err)
@@ -34,90 +23,15 @@ func main() {
 	defer otelShutdown(context.Background())
 	sharedotel.InitLogger(cfg.LogLevel)
 
-	// cancelled on SIGINT / SIGTERM; propagates to all goroutines
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// --- infrastructure ---
-	bundb, err := db.Open(cfg.DatabaseURL)
+	a, cleanup, err := app.New(ctx, cfg)
 	if err != nil {
-		slog.Error("connect to postgres", "error", err)
+		slog.Error("init app", "error", err)
 		os.Exit(1)
 	}
-	defer bundb.Close()
-	attemptRepo := processordb.NewDeliveryAttemptRepository(bundb)
+	defer cleanup()
 
-	rdb, err := sharedredis.NewClient(ctx, cfg.RedisAddr)
-	if err != nil {
-		slog.Error("connect to redis", "error", err)
-		os.Exit(1)
-	}
-
-	// --- stream publisher & subscriber ---
-	pub, err := stream.NewRedisPublisher(rdb)
-	if err != nil {
-		slog.Error("create stream publisher", "error", err)
-		os.Exit(1)
-	}
-
-	sub, err := stream.NewRedisSubscriber(rdb, "notify:cg:processor")
-	if err != nil {
-		slog.Error("create stream subscriber", "error", err)
-		os.Exit(1)
-	}
-	defer sub.Close()
-
-	// TODO: PEL reclaim before workers start (priority-router task)
-
-	// --- subscribe to all three priority topics ---
-	highMsgs, err := stream.Subscribe[stream.NotificationCreatedEvent](ctx, sub, stream.TopicHigh, cfg.OTelServiceName)
-	if err != nil {
-		slog.Error("subscribe high", "error", err)
-		os.Exit(1)
-	}
-	normalMsgs, err := stream.Subscribe[stream.NotificationCreatedEvent](ctx, sub, stream.TopicNormal, cfg.OTelServiceName)
-	if err != nil {
-		slog.Error("subscribe normal", "error", err)
-		os.Exit(1)
-	}
-	lowMsgs, err := stream.Subscribe[stream.NotificationCreatedEvent](ctx, sub, stream.TopicLow, cfg.OTelServiceName)
-	if err != nil {
-		slog.Error("subscribe low", "error", err)
-		os.Exit(1)
-	}
-	pRouter := priorityrouter.NewPriorityRouter([]priorityrouter.WeightedSource[stream.Result[stream.NotificationCreatedEvent]]{
-		{Ch: highMsgs, Weight: cfg.HighWeight},
-		{Ch: normalMsgs, Weight: cfg.NormalWeight},
-		{Ch: lowMsgs, Weight: cfg.LowWeight},
-	})
-
-	// --- worker dependencies ---
-	limiter := worker.NewLimiter(rdb)
-	deliveryClient := worker.NewDeliveryClient(cfg.WebhookURL, cfg.WebhookTimeout)
-	locker := lock.NewRedisLocker(rdb)
-	canceller := worker.NewRedisCancellationStore(rdb)
-
-	w := worker.NewWorker(pub, deliveryClient, limiter, locker, canceller, attemptRepo)
-
-	// --- start scheduler ---
-	notifReader := processordb.NewNotificationReader(bundb)
-	sched := scheduler.New(notifReader, attemptRepo, pub, cfg.SchedulerInterval)
-	go sched.Run(ctx)
-
-	// --- start worker pool ---
-	var wg sync.WaitGroup
-	for range cfg.WorkerConcurrency {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			w.Run(ctx, pRouter)
-		}()
-	}
-	slog.Info("processor started", "workers", cfg.WorkerConcurrency)
-
-	// --- graceful shutdown: wait for all workers to finish current message ---
-	<-ctx.Done()
-	slog.Info("shutting down, waiting for workers")
-	wg.Wait()
-	slog.Info("all workers stopped")
+	a.Run(ctx)
 }
