@@ -49,16 +49,16 @@ func (f *fakeRetryRepo) FindDueRetries(_ context.Context) ([]*processordb.Delive
 }
 
 type fakeNotifReader struct {
-	rows   []scheduler.NotificationRow
-	byID   map[string]scheduler.NotificationRow
+	rows []processordb.NotificationRow
+	byID map[string]processordb.NotificationRow
 }
 
-func (f *fakeNotifReader) FindScheduledDue(_ context.Context) ([]scheduler.NotificationRow, error) {
+func (f *fakeNotifReader) FindScheduledDue(_ context.Context) ([]processordb.NotificationRow, error) {
 	return f.rows, nil
 }
 
-func (f *fakeNotifReader) FindByIDs(_ context.Context, ids []uuid.UUID) ([]scheduler.NotificationRow, error) {
-	var out []scheduler.NotificationRow
+func (f *fakeNotifReader) FindByIDs(_ context.Context, ids []uuid.UUID) ([]processordb.NotificationRow, error) {
+	var out []processordb.NotificationRow
 	for _, id := range ids {
 		if row, ok := f.byID[id.String()]; ok {
 			out = append(out, row)
@@ -72,7 +72,7 @@ func (f *fakeNotifReader) FindByIDs(_ context.Context, ids []uuid.UUID) ([]sched
 func TestTick_initialScheduled_enqueues(t *testing.T) {
 	pub := &fakePublisher{}
 	id := uuid.New()
-	notifReader := &fakeNotifReader{rows: []scheduler.NotificationRow{
+	notifReader := &fakeNotifReader{rows: []processordb.NotificationRow{
 		{ID: id, Priority: model.PriorityHigh, Channel: model.ChannelSMS,
 			Recipient: "+1", Content: "hello", MaxAttempts: 4},
 	}}
@@ -118,7 +118,7 @@ func TestTick_retry_enqueuesWithNextAttempt(t *testing.T) {
 		{NotificationID: id, AttemptNumber: 2, Status: "failed",
 			Priority: model.PriorityNormal, RetryAfter: &past},
 	}}
-	notifReader := &fakeNotifReader{byID: map[string]scheduler.NotificationRow{
+	notifReader := &fakeNotifReader{byID: map[string]processordb.NotificationRow{
 		id.String(): {ID: id, Priority: model.PriorityNormal, Channel: model.ChannelEmail,
 			Recipient: "+1", Content: "retry me", MaxAttempts: 4},
 	}}

@@ -1,4 +1,4 @@
-package ratelimit
+package worker
 
 import (
 	"context"
@@ -9,14 +9,14 @@ import (
 )
 
 const (
-	capacity   = 100
-	refillRate = 100 // tokens per second
-	burst      = 120
+	rlCapacity   = 100
+	rlRefillRate = 100 // tokens per second
+	rlBurst      = 120
 )
 
 // Lua atomic token bucket.
 // Hash fields: tokens (float), last_refill (unix seconds float).
-var luaScript = redis.NewScript(`
+var rlLuaScript = redis.NewScript(`
 local key        = KEYS[1]
 local now        = tonumber(ARGV[1])
 local capacity   = tonumber(ARGV[2])
@@ -65,8 +65,8 @@ func (l *redisLimiter) Allow(ctx context.Context, channel string) (bool, error) 
 	key := fmt.Sprintf("ratelimit:{%s}", channel)
 	now := float64(time.Now().UnixNano()) / 1e9 // fractional seconds
 
-	result, err := luaScript.Run(ctx, l.client, []string{key},
-		now, capacity, refillRate, burst,
+	result, err := rlLuaScript.Run(ctx, l.client, []string{key},
+		now, rlCapacity, rlRefillRate, rlBurst,
 	).Int()
 	if err != nil {
 		return false, fmt.Errorf("rate limiter script: %w", err)

@@ -1,6 +1,10 @@
 package db
 
-import "context"
+import (
+	"context"
+
+	"github.com/google/uuid"
+)
 
 // DeliveryAttemptRepository is the port for delivery attempt persistence.
 type DeliveryAttemptRepository interface {
@@ -8,4 +12,10 @@ type DeliveryAttemptRepository interface {
 	// FindDueRetries returns the latest failed attempt per notification whose
 	// retry_after has passed. Results are ready to be re-dispatched.
 	FindDueRetries(ctx context.Context) ([]*DeliveryAttempt, error)
+}
+
+// NotificationReader is the read-only port for the public.notifications table.
+type NotificationReader interface {
+	FindScheduledDue(ctx context.Context) ([]NotificationRow, error)
+	FindByIDs(ctx context.Context, ids []uuid.UUID) ([]NotificationRow, error)
 }

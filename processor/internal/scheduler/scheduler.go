@@ -9,26 +9,9 @@ import (
 	"github.com/barkin/insider-notification/shared/model"
 	"github.com/barkin/insider-notification/shared/stream"
 	"github.com/google/uuid"
-	"github.com/uptrace/bun"
 )
 
-// NotificationRow holds the fields the scheduler needs from public.notifications.
-type NotificationRow struct {
-	ID           uuid.UUID `bun:"id"`
-	Priority     string    `bun:"priority"`
-	Channel      string    `bun:"channel"`
-	Recipient    string    `bun:"recipient"`
-	Content      string    `bun:"content"`
-	MaxAttempts  int       `bun:"max_attempts"`
-}
-
-// NotificationReader reads notifications from public.notifications.
-type NotificationReader interface {
-	FindScheduledDue(ctx context.Context) ([]NotificationRow, error)
-	FindByIDs(ctx context.Context, ids []uuid.UUID) ([]NotificationRow, error)
-}
-
-// RetryReader reads failed delivery attempts that are due for retry.
+// RetryReader is a narrow read port for due retry attempts.
 type RetryReader interface {
 	FindDueRetries(ctx context.Context) ([]*processordb.DeliveryAttempt, error)
 }
@@ -46,13 +29,13 @@ var topicByPriority = map[string]string{
 
 // Scheduler polls for due notifications and retries and publishes them.
 type Scheduler struct {
-	notifs    NotificationReader
+	notifs    processordb.NotificationReader
 	retries   RetryReader
 	publisher StreamPublisher
 	interval  time.Duration
 }
 
-func New(notifs NotificationReader, retries RetryReader, publisher StreamPublisher, interval time.Duration) *Scheduler {
+func New(notifs processordb.NotificationReader, retries RetryReader, publisher StreamPublisher, interval time.Duration) *Scheduler {
 	return &Scheduler{
 		notifs:    notifs,
 		retries:   retries,
@@ -121,7 +104,7 @@ func (s *Scheduler) dispatchRetries(ctx context.Context) {
 		slog.ErrorContext(ctx, "scheduler: fetch notifications for retries", "error", err)
 		return
 	}
-	notifByID := make(map[uuid.UUID]NotificationRow, len(notifs))
+	notifByID := make(map[uuid.UUID]processordb.NotificationRow, len(notifs))
 	for _, n := range notifs {
 		notifByID[n.ID] = n
 	}
@@ -146,38 +129,4 @@ func (s *Scheduler) dispatchRetries(ctx context.Context) {
 			slog.ErrorContext(ctx, "scheduler: publish retry", "id", a.NotificationID, "error", err)
 		}
 	}
-}
-
-// bunNotificationReader implements NotificationReader against public.notifications.
-type bunNotificationReader struct{ db *bun.DB }
-
-func NewNotificationReader(db *bun.DB) NotificationReader {
-	return &bunNotificationReader{db: db}
-}
-
-func (r *bunNotificationReader) FindScheduledDue(ctx context.Context) ([]NotificationRow, error) {
-	var rows []NotificationRow
-	err := r.db.NewSelect().
-		TableExpr("notifications").
-		ColumnExpr("id, priority, channel, recipient, content, max_attempts").
-		Where("deliver_after IS NOT NULL").
-		Where("deliver_after <= NOW()").
-		Where("status = ?", model.StatusPending).
-		OrderExpr("deliver_after ASC").
-		Limit(500).
-		Scan(ctx, &rows)
-	return rows, err
-}
-
-func (r *bunNotificationReader) FindByIDs(ctx context.Context, ids []uuid.UUID) ([]NotificationRow, error) {
-	if len(ids) == 0 {
-		return nil, nil
-	}
-	var rows []NotificationRow
-	err := r.db.NewSelect().
-		TableExpr("notifications").
-		ColumnExpr("id, priority, channel, recipient, content, max_attempts").
-		Where("id IN (?)", bun.List(ids)).
-		Scan(ctx, &rows)
-	return rows, err
 }

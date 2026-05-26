@@ -1,4 +1,4 @@
-package webhook_test
+package worker_test
 
 import (
 	"context"
@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/barkin/insider-notification/processor/internal/worker/webhook"
+	"github.com/barkin/insider-notification/processor/internal/worker"
 )
 
-func newClient(serverURL string) webhook.Client {
-	return webhook.NewClient(serverURL, 5*time.Second)
+func newTestDeliveryClient(serverURL string) worker.DeliveryClient {
+	return worker.NewDeliveryClient(serverURL, 5*time.Second)
 }
 
 func TestSend_202_success(t *testing.T) {
@@ -20,7 +20,7 @@ func TestSend_202_success(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	result, err := newClient(srv.URL).Send(context.Background(), "+1", "sms", "test")
+	result, err := newTestDeliveryClient(srv.URL).Send(context.Background(), "+1", "sms", "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +38,7 @@ func TestSend_400_nonRetryable(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	result, err := newClient(srv.URL).Send(context.Background(), "+1", "sms", "test")
+	result, err := newTestDeliveryClient(srv.URL).Send(context.Background(), "+1", "sms", "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestSend_401_nonRetryable(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	result, err := newClient(srv.URL).Send(context.Background(), "+1", "sms", "test")
+	result, err := newTestDeliveryClient(srv.URL).Send(context.Background(), "+1", "sms", "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +71,7 @@ func TestSend_403_nonRetryable(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	result, err := newClient(srv.URL).Send(context.Background(), "+1", "sms", "test")
+	result, err := newTestDeliveryClient(srv.URL).Send(context.Background(), "+1", "sms", "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestSend_503_retryable(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	result, err := newClient(srv.URL).Send(context.Background(), "+1", "sms", "test")
+	result, err := newTestDeliveryClient(srv.URL).Send(context.Background(), "+1", "sms", "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +101,7 @@ func TestSend_429_retryable(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	result, err := newClient(srv.URL).Send(context.Background(), "+1", "sms", "test")
+	result, err := newTestDeliveryClient(srv.URL).Send(context.Background(), "+1", "sms", "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +116,7 @@ func TestSend_timeout_retryable(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := webhook.NewClient(srv.URL, 50*time.Millisecond)
+	client := worker.NewDeliveryClient(srv.URL, 50*time.Millisecond)
 	result, err := client.Send(context.Background(), "+1", "sms", "test")
 	if err != nil {
 		t.Fatal(err)
@@ -133,7 +133,7 @@ func TestSend_latency_measured(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	result, err := newClient(srv.URL).Send(context.Background(), "+1", "sms", "test")
+	result, err := newTestDeliveryClient(srv.URL).Send(context.Background(), "+1", "sms", "test")
 	if err != nil {
 		t.Fatal(err)
 	}

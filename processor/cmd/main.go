@@ -7,15 +7,12 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
-	"time"
 
 	"github.com/barkin/insider-notification/processor/internal/config"
 	processordb "github.com/barkin/insider-notification/processor/internal/db"
 	"github.com/barkin/insider-notification/processor/internal/priorityrouter"
 	"github.com/barkin/insider-notification/processor/internal/scheduler"
 	"github.com/barkin/insider-notification/processor/internal/worker"
-	"github.com/barkin/insider-notification/processor/internal/worker/ratelimit"
-	"github.com/barkin/insider-notification/processor/internal/worker/webhook"
 	"github.com/barkin/insider-notification/shared/db"
 	"github.com/barkin/insider-notification/shared/lock"
 	sharedotel "github.com/barkin/insider-notification/shared/otel"
@@ -95,15 +92,15 @@ func main() {
 	})
 
 	// --- worker dependencies ---
-	limiter := ratelimit.NewLimiter(rdb)
-	deliveryClient := webhook.NewClient(cfg.WebhookURL, 10*time.Second)
+	limiter := worker.NewLimiter(rdb)
+	deliveryClient := worker.NewDeliveryClient(cfg.WebhookURL, cfg.WebhookTimeout)
 	locker := lock.NewRedisLocker(rdb)
 	canceller := worker.NewRedisCancellationStore(rdb)
 
 	w := worker.NewWorker(pub, deliveryClient, limiter, locker, canceller, attemptRepo)
 
 	// --- start scheduler ---
-	notifReader := scheduler.NewNotificationReader(bundb)
+	notifReader := processordb.NewNotificationReader(bundb)
 	sched := scheduler.New(notifReader, attemptRepo, pub, cfg.SchedulerInterval)
 	go sched.Run(ctx)
 

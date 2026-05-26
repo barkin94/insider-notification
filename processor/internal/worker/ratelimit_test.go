@@ -1,4 +1,4 @@
-package ratelimit_test
+package worker_test
 
 import (
 	"context"
@@ -9,13 +9,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/barkin/insider-notification/processor/internal/worker/ratelimit"
+	"github.com/barkin/insider-notification/processor/internal/worker"
 	"github.com/redis/go-redis/v9"
 	"github.com/testcontainers/testcontainers-go"
 	tcredis "github.com/testcontainers/testcontainers-go/modules/redis"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
+// redisAddr is set by TestMain when Docker is available; empty otherwise.
 var redisAddr string
 
 func TestMain(m *testing.M) {
@@ -28,7 +29,10 @@ func TestMain(m *testing.M) {
 		),
 	)
 	if err != nil {
-		log.Fatalf("start redis container: %v", err)
+		// Docker unavailable — ratelimit integration tests will be skipped;
+		// all other worker unit tests run normally.
+		log.Printf("Redis container unavailable, skipping ratelimit integration tests: %v", err)
+		os.Exit(m.Run())
 	}
 	defer container.Terminate(ctx) //nolint:errcheck
 
@@ -40,13 +44,22 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func newClient() *redis.Client {
+// requireRedis skips the calling test when Docker/Redis is not available.
+func requireRedis(t *testing.T) {
+	t.Helper()
+	if redisAddr == "" {
+		t.Skip("Redis not available (Docker not running)")
+	}
+}
+
+func newRedisClient() *redis.Client {
 	return redis.NewClient(&redis.Options{Addr: redisAddr})
 }
 
 func TestLimiter_allows(t *testing.T) {
+	requireRedis(t)
 	ctx := context.Background()
-	limiter := ratelimit.NewLimiter(newClient())
+	limiter := worker.NewLimiter(newRedisClient())
 
 	for i := 0; i < 100; i++ {
 		ok, err := limiter.Allow(ctx, "sms")
@@ -60,8 +73,9 @@ func TestLimiter_allows(t *testing.T) {
 }
 
 func TestLimiter_throttles(t *testing.T) {
+	requireRedis(t)
 	ctx := context.Background()
-	limiter := ratelimit.NewLimiter(newClient())
+	limiter := worker.NewLimiter(newRedisClient())
 
 	denied := 0
 	for i := 0; i < 500; i++ {
@@ -79,8 +93,9 @@ func TestLimiter_throttles(t *testing.T) {
 }
 
 func TestLimiter_refills(t *testing.T) {
+	requireRedis(t)
 	ctx := context.Background()
-	limiter := ratelimit.NewLimiter(newClient())
+	limiter := worker.NewLimiter(newRedisClient())
 
 	for i := 0; i < 500; i++ {
 		limiter.Allow(ctx, "push") //nolint:errcheck
@@ -106,8 +121,9 @@ func TestLimiter_refills(t *testing.T) {
 }
 
 func TestLimiter_atomic(t *testing.T) {
+	requireRedis(t)
 	ctx := context.Background()
-	limiter := ratelimit.NewLimiter(newClient())
+	limiter := worker.NewLimiter(newRedisClient())
 
 	var allowed atomic.Int64
 	var wg sync.WaitGroup

@@ -6,9 +6,6 @@ import (
 	"time"
 
 	processordb "github.com/barkin/insider-notification/processor/internal/db"
-	"github.com/barkin/insider-notification/processor/internal/worker/ratelimit"
-	"github.com/barkin/insider-notification/processor/internal/worker/retry"
-	"github.com/barkin/insider-notification/processor/internal/worker/webhook"
 	"github.com/barkin/insider-notification/shared/lock"
 	"github.com/barkin/insider-notification/shared/model"
 	"github.com/barkin/insider-notification/shared/stream"
@@ -40,28 +37,28 @@ var topicByPriority = map[string]string{
 // Worker processes notification delivery events from a stream.
 type Worker struct {
 	pub           StreamPublisher
-	webhookClient webhook.Client
-	limiter       ratelimit.Limiter
-	locker        lock.Locker
-	cancel        CancellationStore
-	attempts      DeliveryAttemptWriter
+	deliveryClient DeliveryClient
+	limiter        Limiter
+	locker         lock.Locker
+	cancel         CancellationStore
+	attempts       DeliveryAttemptWriter
 }
 
 func NewWorker(
 	pub StreamPublisher,
-	webhookClient webhook.Client,
-	limiter ratelimit.Limiter,
+	deliveryClient DeliveryClient,
+	limiter Limiter,
 	locker lock.Locker,
 	cancel CancellationStore,
 	attempts DeliveryAttemptWriter,
 ) *Worker {
 	return &Worker{
-		pub:           pub,
-		webhookClient: webhookClient,
-		limiter:       limiter,
-		locker:        locker,
-		cancel:        cancel,
-		attempts:      attempts,
+		pub:            pub,
+		deliveryClient: deliveryClient,
+		limiter:        limiter,
+		locker:         locker,
+		cancel:         cancel,
+		attempts:       attempts,
 	}
 }
 
@@ -145,7 +142,7 @@ func (w *Worker) processOne(ctx context.Context, result stream.Result[stream.Not
 		return
 	}
 
-	dr, err := w.webhookClient.Send(ctx, evt.Recipient, evt.Channel, evt.Content)
+	dr, err := w.deliveryClient.Send(ctx, evt.Recipient, evt.Channel, evt.Content)
 	if err != nil {
 		slog.ErrorContext(ctx, "delivery transport error", "id", evt.NotificationID, "error", err)
 		msg.Nack()
@@ -167,7 +164,7 @@ func (w *Worker) processOne(ctx context.Context, result stream.Result[stream.Not
 		})
 
 	case dr.Retryable && evt.AttemptNumber < evt.MaxAttempts:
-		retryAfter := time.Now().Add(retry.Delay(evt.AttemptNumber + 1)).UTC()
+		retryAfter := time.Now().Add(RetryDelay(evt.AttemptNumber + 1)).UTC()
 		w.writeAttempt(ctx, evt.NotificationID, evt.AttemptNumber, model.StatusFailed, &retryAfter, evt.Priority)
 	default:
 		w.writeAttempt(ctx, evt.NotificationID, evt.AttemptNumber, model.StatusFailed, nil, evt.Priority)

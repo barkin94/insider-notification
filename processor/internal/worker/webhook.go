@@ -1,4 +1,4 @@
-package webhook
+package worker
 
 import (
 	"context"
@@ -10,8 +10,8 @@ import (
 	"github.com/barkin/insider-notification/shared/httpclient"
 )
 
-// Result holds the outcome of a single delivery attempt.
-type Result struct {
+// DeliveryResult holds the outcome of a single delivery attempt.
+type DeliveryResult struct {
 	Success       bool
 	Retryable     bool
 	StatusCode    int
@@ -20,31 +20,31 @@ type Result struct {
 	ErrorMessage  string
 }
 
-// Client delivers a notification to the webhook provider.
-type Client interface {
-	Send(ctx context.Context, to, channel, content string) (Result, error)
+// DeliveryClient delivers a notification to the webhook provider.
+type DeliveryClient interface {
+	Send(ctx context.Context, to, channel, content string) (DeliveryResult, error)
 }
 
 type webhookClient struct {
 	http *httpclient.Client
 }
 
-// NewClient returns a delivery Client that POSTs to webhookURL with the given timeout.
-func NewClient(webhookURL string, timeout time.Duration) Client {
+// NewDeliveryClient returns a DeliveryClient that POSTs to webhookURL with the given timeout.
+func NewDeliveryClient(webhookURL string, timeout time.Duration) DeliveryClient {
 	return &webhookClient{
 		http: httpclient.New(webhookURL, httpclient.WithTimeout(timeout)),
 	}
 }
 
-type requestBody struct {
+type deliveryRequestBody struct {
 	To      string `json:"to"`
 	Channel string `json:"channel"`
 	Content string `json:"content"`
 }
 
-func (c *webhookClient) Send(ctx context.Context, to, channel, content string) (Result, error) {
+func (c *webhookClient) Send(ctx context.Context, to, channel, content string) (DeliveryResult, error) {
 	start := time.Now()
-	resp, err := c.http.Request(ctx, http.MethodPost, "", requestBody{
+	resp, err := c.http.Request(ctx, http.MethodPost, "", deliveryRequestBody{
 		To:      to,
 		Channel: channel,
 		Content: content,
@@ -52,12 +52,12 @@ func (c *webhookClient) Send(ctx context.Context, to, channel, content string) (
 	latency := time.Since(start).Milliseconds()
 
 	if err != nil {
-		return Result{Retryable: true, LatencyMS: latency, ErrorMessage: err.Error()}, nil
+		return DeliveryResult{Retryable: true, LatencyMS: latency, ErrorMessage: err.Error()}, nil
 	}
 	defer resp.Body.Close()
 
 	code := resp.StatusCode
-	result := Result{StatusCode: code, LatencyMS: latency}
+	result := DeliveryResult{StatusCode: code, LatencyMS: latency}
 
 	switch {
 	case code == http.StatusAccepted:
