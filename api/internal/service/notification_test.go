@@ -80,7 +80,7 @@ func okPublisher(wantTopic *string) *mockPublisher {
 	}
 }
 
-func newSvc(repo db.NotificationRepository, pub service.StreamPublisher) service.NotificationService {
+func newSvc(repo db.NotificationRepository, pub stream.Publisher) service.NotificationService {
 	return service.NewNotificationService(repo, pub)
 }
 

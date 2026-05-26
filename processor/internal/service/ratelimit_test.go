@@ -1,4 +1,4 @@
-package worker_test
+package service_test
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/barkin/insider-notification/processor/internal/worker"
+	"github.com/barkin/insider-notification/processor/internal/service"
 	"github.com/redis/go-redis/v9"
 	"github.com/testcontainers/testcontainers-go"
 	tcredis "github.com/testcontainers/testcontainers-go/modules/redis"
@@ -30,7 +30,7 @@ func TestMain(m *testing.M) {
 	)
 	if err != nil {
 		// Docker unavailable — ratelimit integration tests will be skipped;
-		// all other worker unit tests run normally.
+		// all other service unit tests run normally.
 		log.Printf("Redis container unavailable, skipping ratelimit integration tests: %v", err)
 		os.Exit(m.Run())
 	}
@@ -59,7 +59,7 @@ func newRedisClient() *redis.Client {
 func TestLimiter_allows(t *testing.T) {
 	requireRedis(t)
 	ctx := context.Background()
-	limiter := worker.NewLimiter(newRedisClient())
+	limiter := service.NewLimiter(newRedisClient())
 
 	for i := 0; i < 100; i++ {
 		ok, err := limiter.Allow(ctx, "sms")
@@ -75,7 +75,7 @@ func TestLimiter_allows(t *testing.T) {
 func TestLimiter_throttles(t *testing.T) {
 	requireRedis(t)
 	ctx := context.Background()
-	limiter := worker.NewLimiter(newRedisClient())
+	limiter := service.NewLimiter(newRedisClient())
 
 	denied := 0
 	for i := 0; i < 500; i++ {
@@ -95,7 +95,7 @@ func TestLimiter_throttles(t *testing.T) {
 func TestLimiter_refills(t *testing.T) {
 	requireRedis(t)
 	ctx := context.Background()
-	limiter := worker.NewLimiter(newRedisClient())
+	limiter := service.NewLimiter(newRedisClient())
 
 	for i := 0; i < 500; i++ {
 		limiter.Allow(ctx, "push") //nolint:errcheck
@@ -123,7 +123,7 @@ func TestLimiter_refills(t *testing.T) {
 func TestLimiter_atomic(t *testing.T) {
 	requireRedis(t)
 	ctx := context.Background()
-	limiter := worker.NewLimiter(newRedisClient())
+	limiter := service.NewLimiter(newRedisClient())
 
 	var allowed atomic.Int64
 	var wg sync.WaitGroup

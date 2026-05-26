@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/barkin/insider-notification/api/internal/middleware"
 	"github.com/redis/go-redis/v9"
 	"github.com/uptrace/bun"
 )
@@ -48,13 +47,13 @@ func healthCheck(db *bun.DB, rdb *redis.Client) http.HandlerFunc {
 		}
 
 		if degraded {
-			middleware.WriteJSON(w, http.StatusServiceUnavailable, healthResponse{
+			WriteJSON(w, http.StatusServiceUnavailable, healthResponse{
 				Status: "degraded",
 				Checks: checks,
 			})
 			return
 		}
-		middleware.WriteJSON(w, http.StatusOK, healthResponse{
+		WriteJSON(w, http.StatusOK, healthResponse{
 			Status:  "ok",
 			Checks:  checks,
 			Version: "1.0.0",

@@ -10,7 +10,7 @@ import (
 )
 
 // NewRedisPublisher constructs a Publisher backed by a Redis Stream.
-func NewRedisPublisher(client *redis.Client) (*Publisher, error) {
+func NewRedisPublisher(client *redis.Client) (Publisher, error) {
 	logger := NewSlogAdapter(slog.Default())
 	wPub, err := redisstream.NewPublisher(redisstream.PublisherConfig{Client: client}, logger)
 	if err != nil {

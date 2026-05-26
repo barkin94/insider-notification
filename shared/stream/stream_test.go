@@ -43,7 +43,7 @@ func TestMain(m *testing.M) {
 
 var discardLogger = stream.NewSlogAdapter(slog.New(slog.NewTextHandler(io.Discard, nil)))
 
-func newPublisher(t *testing.T) *stream.Publisher {
+func newPublisher(t *testing.T) stream.Publisher {
 	t.Helper()
 	pub, err := redisstream.NewPublisher(redisstream.PublisherConfig{
 		Client: redis.NewClient(&redis.Options{Addr: redisAddr}),

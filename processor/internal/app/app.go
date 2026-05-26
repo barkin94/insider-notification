@@ -7,10 +7,11 @@ import (
 	"sync"
 
 	"github.com/barkin/insider-notification/processor/internal/config"
+	"github.com/barkin/insider-notification/processor/internal/consumer"
 	processordb "github.com/barkin/insider-notification/processor/internal/db"
 	"github.com/barkin/insider-notification/processor/internal/priorityrouter"
 	"github.com/barkin/insider-notification/processor/internal/scheduler"
-	"github.com/barkin/insider-notification/processor/internal/worker"
+	"github.com/barkin/insider-notification/processor/internal/service"
 	shareddb "github.com/barkin/insider-notification/shared/db"
 	"github.com/barkin/insider-notification/shared/lock"
 	sharedredis "github.com/barkin/insider-notification/shared/redis"
@@ -20,7 +21,7 @@ import (
 // App wires and runs the processor service.
 type App struct {
 	scheduler   *scheduler.Scheduler
-	worker      *worker.Worker
+	consumer    *consumer.Consumer
 	router      *priorityrouter.PriorityRouter[stream.Result[stream.NotificationCreatedEvent]]
 	concurrency int
 }
@@ -80,11 +81,12 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 		{Ch: lowMsgs, Weight: cfg.LowWeight},
 	})
 
-	limiter := worker.NewLimiter(rdb)
-	deliveryClient := worker.NewDeliveryClient(cfg.WebhookURL, cfg.WebhookTimeout)
+	limiter := service.NewLimiter(rdb)
+	deliveryClient := service.NewDeliveryClient(cfg.WebhookURL, cfg.WebhookTimeout)
 	locker := lock.NewRedisLocker(rdb)
-	canceller := worker.NewRedisCancellationStore(rdb)
-	w := worker.NewWorker(pub, deliveryClient, limiter, locker, canceller, attemptRepo)
+	canceller := service.NewRedisCancellationStore(rdb)
+	svc := service.NewDeliveryService(pub, deliveryClient, limiter, locker, canceller, attemptRepo)
+	c := consumer.NewConsumer(svc)
 
 	notifReader := processordb.NewNotificationReader(bundb)
 	sched := scheduler.New(notifReader, attemptRepo, pub, cfg.SchedulerInterval)
@@ -96,14 +98,14 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 
 	return &App{
 		scheduler:   sched,
-		worker:      w,
+		consumer:    c,
 		router:      router,
 		concurrency: cfg.WorkerConcurrency,
 	}, cleanup, nil
 }
 
-// Run starts the scheduler and worker pool, blocks until ctx is cancelled,
-// then waits for all workers to finish their current message.
+// Run starts the scheduler and consumer pool, blocks until ctx is cancelled,
+// then waits for all consumers to finish their current message.
 func (a *App) Run(ctx context.Context) {
 	go a.scheduler.Run(ctx)
 
@@ -112,7 +114,7 @@ func (a *App) Run(ctx context.Context) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			a.worker.Run(ctx, a.router)
+			a.consumer.Run(ctx, a.router)
 		}()
 	}
 	slog.Info("processor started", "workers", a.concurrency)

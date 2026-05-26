@@ -14,11 +14,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// StreamPublisher is the port for publishing events to the message stream.
-type StreamPublisher interface {
-	Publish(ctx context.Context, topic string, payload any) error
-}
-
 // CreateRequest carries validated input for creating a notification.
 type CreateRequest struct {
 	Recipient    string
@@ -48,12 +43,12 @@ type NotificationService interface {
 
 type notificationService struct {
 	repo      db.NotificationRepository
-	publisher StreamPublisher
+	publisher stream.Publisher
 }
 
 func NewNotificationService(
 	repo db.NotificationRepository,
-	publisher StreamPublisher,
+	publisher stream.Publisher,
 ) NotificationService {
 	return &notificationService{repo: repo, publisher: publisher}
 }

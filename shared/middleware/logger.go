@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+// Logger returns an HTTP middleware that logs method, path, status, and latency
+// for every request via slog.
 func Logger() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -1,4 +1,4 @@
-package worker_test
+package service_test
 
 import (
 	"context"
@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/barkin/insider-notification/processor/internal/worker"
+	"github.com/barkin/insider-notification/processor/internal/service"
 )
 
-func newTestDeliveryClient(serverURL string) worker.DeliveryClient {
-	return worker.NewDeliveryClient(serverURL, 5*time.Second)
+func newTestDeliveryClient(serverURL string) service.DeliveryClient {
+	return service.NewDeliveryClient(serverURL, 5*time.Second)
 }
 
 func TestSend_202_success(t *testing.T) {
@@ -116,7 +116,7 @@ func TestSend_timeout_retryable(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := worker.NewDeliveryClient(srv.URL, 50*time.Millisecond)
+	client := service.NewDeliveryClient(srv.URL, 50*time.Millisecond)
 	result, err := client.Send(context.Background(), "+1", "sms", "test")
 	if err != nil {
 		t.Fatal(err)

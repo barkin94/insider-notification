@@ -16,11 +16,6 @@ type RetryReader interface {
 	FindDueRetries(ctx context.Context) ([]*processordb.DeliveryAttempt, error)
 }
 
-// StreamPublisher publishes events to a stream topic.
-type StreamPublisher interface {
-	Publish(ctx context.Context, topic string, payload any) error
-}
-
 var topicByPriority = map[string]string{
 	model.PriorityHigh:   stream.TopicHigh,
 	model.PriorityNormal: stream.TopicNormal,
@@ -31,11 +26,11 @@ var topicByPriority = map[string]string{
 type Scheduler struct {
 	notifs    processordb.NotificationReader
 	retries   RetryReader
-	publisher StreamPublisher
+	publisher stream.Publisher
 	interval  time.Duration
 }
 
-func New(notifs processordb.NotificationReader, retries RetryReader, publisher StreamPublisher, interval time.Duration) *Scheduler {
+func New(notifs processordb.NotificationReader, retries RetryReader, publisher stream.Publisher, interval time.Duration) *Scheduler {
 	return &Scheduler{
 		notifs:    notifs,
 		retries:   retries,

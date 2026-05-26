@@ -1,4 +1,4 @@
-package worker
+package service
 
 import (
 	"context"
@@ -12,11 +12,6 @@ import (
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 )
-
-// StreamPublisher publishes events to a stream topic.
-type StreamPublisher interface {
-	Publish(ctx context.Context, topic string, payload any) error
-}
 
 // CancellationStore checks whether a notification has been cancelled by the API.
 type CancellationStore interface {
@@ -34,9 +29,9 @@ var topicByPriority = map[string]string{
 	model.PriorityLow:    stream.TopicLow,
 }
 
-// Worker processes notification delivery events from a stream.
-type Worker struct {
-	pub           StreamPublisher
+// DeliveryService processes notification delivery events.
+type DeliveryService struct {
+	pub            stream.Publisher
 	deliveryClient DeliveryClient
 	limiter        Limiter
 	locker         lock.Locker
@@ -44,15 +39,15 @@ type Worker struct {
 	attempts       DeliveryAttemptWriter
 }
 
-func NewWorker(
-	pub StreamPublisher,
+func NewDeliveryService(
+	pub stream.Publisher,
 	deliveryClient DeliveryClient,
 	limiter Limiter,
 	locker lock.Locker,
 	cancel CancellationStore,
 	attempts DeliveryAttemptWriter,
-) *Worker {
-	return &Worker{
+) *DeliveryService {
+	return &DeliveryService{
 		pub:            pub,
 		deliveryClient: deliveryClient,
 		limiter:        limiter,
@@ -62,28 +57,10 @@ func NewWorker(
 	}
 }
 
-// MessageSource is implemented by PriorityRouter.
-type MessageSource interface {
-	Next(ctx context.Context) (stream.Result[stream.NotificationCreatedEvent], bool)
-}
-
-// Run calls src.Next in a tight loop until ctx is cancelled or Next returns false.
-func (w *Worker) Run(ctx context.Context, src MessageSource) {
-	for {
-		result, ok := src.Next(ctx)
-		if !ok {
-			return
-		}
-		if result.Err != nil {
-			slog.ErrorContext(result.Ctx, "stream read error", "error", result.Err)
-			continue
-		}
-		w.processOne(result.Ctx, result)
-	}
-}
-
-func (w *Worker) processOne(ctx context.Context, result stream.Result[stream.NotificationCreatedEvent]) {
-	ctx, span := otel.Tracer("processor").Start(ctx, "processOne")
+// Process handles a single notification delivery event.
+// It calls result.Msg.Ack() or result.Msg.Nack() before returning.
+func (s *DeliveryService) Process(ctx context.Context, result stream.Result[stream.NotificationCreatedEvent]) {
+	ctx, span := otel.Tracer("processor").Start(ctx, "Process")
 	defer span.End()
 
 	evt := result.Event
@@ -98,7 +75,7 @@ func (w *Worker) processOne(ctx context.Context, result stream.Result[stream.Not
 	}
 
 	// cancellation check
-	cancelled, err := w.cancel.IsCancelled(ctx, evt.NotificationID)
+	cancelled, err := s.cancel.IsCancelled(ctx, evt.NotificationID)
 	if err != nil {
 		slog.ErrorContext(ctx, "cancellation check error", "id", evt.NotificationID, "error", err)
 		msg.Nack()
@@ -111,7 +88,7 @@ func (w *Worker) processOne(ctx context.Context, result stream.Result[stream.Not
 	}
 
 	// processing lock
-	locked, err := w.locker.TryLock(ctx, evt.NotificationID)
+	locked, err := s.locker.TryLock(ctx, evt.NotificationID)
 	if err != nil {
 		slog.ErrorContext(ctx, "lock error", "id", evt.NotificationID, "error", err)
 		msg.Nack()
@@ -122,10 +99,10 @@ func (w *Worker) processOne(ctx context.Context, result stream.Result[stream.Not
 		msg.Ack()
 		return
 	}
-	defer w.locker.Unlock(ctx, evt.NotificationID) //nolint:errcheck
+	defer s.locker.Unlock(ctx, evt.NotificationID) //nolint:errcheck
 
 	// rate limit
-	allowed, err := w.limiter.Allow(ctx, evt.Channel)
+	allowed, err := s.limiter.Allow(ctx, evt.Channel)
 	if err != nil {
 		slog.ErrorContext(ctx, "rate limit error", "id", evt.NotificationID, "error", err)
 		msg.Nack()
@@ -133,7 +110,7 @@ func (w *Worker) processOne(ctx context.Context, result stream.Result[stream.Not
 	}
 	if !allowed {
 		slog.InfoContext(ctx, "rate limited, re-enqueuing", "id", evt.NotificationID, "channel", evt.Channel)
-		if err := w.pub.Publish(ctx, topicByPriority[evt.Priority], evt); err != nil {
+		if err := s.pub.Publish(ctx, topicByPriority[evt.Priority], evt); err != nil {
 			slog.ErrorContext(ctx, "re-enqueue rate-limited failed", "id", evt.NotificationID, "error", err)
 			msg.Nack()
 			return
@@ -142,7 +119,7 @@ func (w *Worker) processOne(ctx context.Context, result stream.Result[stream.Not
 		return
 	}
 
-	dr, err := w.deliveryClient.Send(ctx, evt.Recipient, evt.Channel, evt.Content)
+	dr, err := s.deliveryClient.Send(ctx, evt.Recipient, evt.Channel, evt.Content)
 	if err != nil {
 		slog.ErrorContext(ctx, "delivery transport error", "id", evt.NotificationID, "error", err)
 		msg.Nack()
@@ -152,8 +129,8 @@ func (w *Worker) processOne(ctx context.Context, result stream.Result[stream.Not
 	now := time.Now().UTC().Format(time.RFC3339)
 	switch {
 	case dr.Success:
-		w.writeAttempt(ctx, evt.NotificationID, evt.AttemptNumber, model.StatusDelivered, nil, evt.Priority)
-		w.publishStatus(ctx, stream.NotificationDeliveryResultEvent{
+		s.writeAttempt(ctx, evt.NotificationID, evt.AttemptNumber, model.StatusDelivered, nil, evt.Priority)
+		s.publishStatus(ctx, stream.NotificationDeliveryResultEvent{
 			NotificationID:    evt.NotificationID,
 			Status:            model.StatusDelivered,
 			AttemptNumber:     evt.AttemptNumber,
@@ -165,10 +142,10 @@ func (w *Worker) processOne(ctx context.Context, result stream.Result[stream.Not
 
 	case dr.Retryable && evt.AttemptNumber < evt.MaxAttempts:
 		retryAfter := time.Now().Add(RetryDelay(evt.AttemptNumber + 1)).UTC()
-		w.writeAttempt(ctx, evt.NotificationID, evt.AttemptNumber, model.StatusFailed, &retryAfter, evt.Priority)
+		s.writeAttempt(ctx, evt.NotificationID, evt.AttemptNumber, model.StatusFailed, &retryAfter, evt.Priority)
 	default:
-		w.writeAttempt(ctx, evt.NotificationID, evt.AttemptNumber, model.StatusFailed, nil, evt.Priority)
-		w.publishStatus(ctx, stream.NotificationDeliveryResultEvent{
+		s.writeAttempt(ctx, evt.NotificationID, evt.AttemptNumber, model.StatusFailed, nil, evt.Priority)
+		s.publishStatus(ctx, stream.NotificationDeliveryResultEvent{
 			NotificationID: evt.NotificationID,
 			Status:         model.StatusFailed,
 			AttemptNumber:  evt.AttemptNumber,
@@ -182,14 +159,14 @@ func (w *Worker) processOne(ctx context.Context, result stream.Result[stream.Not
 	msg.Ack()
 }
 
-func (w *Worker) publishStatus(ctx context.Context, evt stream.NotificationDeliveryResultEvent) {
-	if err := w.pub.Publish(ctx, stream.TopicStatus, evt); err != nil {
+func (s *DeliveryService) publishStatus(ctx context.Context, evt stream.NotificationDeliveryResultEvent) {
+	if err := s.pub.Publish(ctx, stream.TopicStatus, evt); err != nil {
 		slog.ErrorContext(ctx, "publish status failed", "id", evt.NotificationID, "error", err)
 	}
 }
 
-func (w *Worker) writeAttempt(ctx context.Context, notifIDStr string, attemptNumber int, status string, retryAfter *time.Time, priority string) {
-	if w.attempts == nil {
+func (s *DeliveryService) writeAttempt(ctx context.Context, notifIDStr string, attemptNumber int, status string, retryAfter *time.Time, priority string) {
+	if s.attempts == nil {
 		return
 	}
 	notifID, err := uuid.Parse(notifIDStr)
@@ -213,7 +190,7 @@ func (w *Worker) writeAttempt(ctx context.Context, notifIDStr string, attemptNum
 	a.ID = id
 	a.CreatedAt = now
 	a.UpdatedAt = now
-	if err := w.attempts.Create(ctx, a); err != nil {
+	if err := s.attempts.Create(ctx, a); err != nil {
 		slog.ErrorContext(ctx, "write delivery attempt failed", "id", notifIDStr, "error", err)
 	}
 }

@@ -10,7 +10,6 @@ import (
 
 	"github.com/barkin/insider-notification/api/internal/db"
 	apimodel "github.com/barkin/insider-notification/api/internal/model"
-	"github.com/barkin/insider-notification/api/internal/middleware"
 	"github.com/barkin/insider-notification/api/internal/service"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -91,7 +90,7 @@ type batchResponse struct {
 // @Failure     400 {object} errorBody
 // @Failure     500 {object} errorBody
 // @Router      /notifications [post]
-func createNotification(svc service.NotificationService) middleware.AppHandler {
+func createNotification(svc service.NotificationService) AppHandler {
 	return func(w http.ResponseWriter, r *http.Request) error {
 		var req createRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -122,7 +121,7 @@ func createNotification(svc service.NotificationService) middleware.AppHandler {
 			return errInternal()
 		}
 
-		middleware.WriteJSON(w, http.StatusCreated, toNotificationResponse(n))
+		WriteJSON(w, http.StatusCreated, toNotificationResponse(n))
 		return nil
 	}
 }
@@ -137,7 +136,7 @@ func createNotification(svc service.NotificationService) middleware.AppHandler {
 // @Failure     404 {object} errorBody
 // @Failure     500 {object} errorBody
 // @Router      /notifications/{id} [get]
-func getNotification(svc service.NotificationService) middleware.AppHandler {
+func getNotification(svc service.NotificationService) AppHandler {
 	return func(w http.ResponseWriter, r *http.Request) error {
 		id, err := uuid.Parse(chi.URLParam(r, "id"))
 		if err != nil {
@@ -152,7 +151,7 @@ func getNotification(svc service.NotificationService) middleware.AppHandler {
 			return errInternal()
 		}
 
-		middleware.WriteJSON(w, http.StatusOK, toNotificationResponse(n))
+		WriteJSON(w, http.StatusOK, toNotificationResponse(n))
 		return nil
 	}
 }
@@ -172,7 +171,7 @@ func getNotification(svc service.NotificationService) middleware.AppHandler {
 // @Failure     400 {object} errorBody
 // @Failure     500 {object} errorBody
 // @Router      /notifications [get]
-func listNotifications(svc service.NotificationService) middleware.AppHandler {
+func listNotifications(svc service.NotificationService) AppHandler {
 	return func(w http.ResponseWriter, r *http.Request) error {
 		q := r.URL.Query()
 
@@ -223,7 +222,7 @@ func listNotifications(svc service.NotificationService) middleware.AppHandler {
 		if err != nil {
 			return errInternal()
 		}
-		middleware.WriteJSON(w, http.StatusOK, listResponse{
+		WriteJSON(w, http.StatusOK, listResponse{
 			Data: toNotificationResponses(ns),
 			Pagination: paginationMeta{
 				PageSize:   pageSize,
@@ -274,7 +273,7 @@ func toNotificationResponses(ns []*apimodel.Notification) []notificationResponse
 // @Failure     409 {object} errorBody
 // @Failure     500 {object} errorBody
 // @Router      /notifications/{id}/cancel [post]
-func cancelNotification(svc service.NotificationService) middleware.AppHandler {
+func cancelNotification(svc service.NotificationService) AppHandler {
 	return func(w http.ResponseWriter, r *http.Request) error {
 		id, err := uuid.Parse(chi.URLParam(r, "id"))
 		if err != nil {
@@ -292,7 +291,7 @@ func cancelNotification(svc service.NotificationService) middleware.AppHandler {
 			return errInternal()
 		}
 
-		middleware.WriteJSON(w, http.StatusOK, cancelResponse{
+		WriteJSON(w, http.StatusOK, cancelResponse{
 			ID:        n.ID.String(),
 			Status:    n.Status,
 			UpdatedAt: n.UpdatedAt.Format(time.RFC3339),
@@ -311,7 +310,7 @@ func cancelNotification(svc service.NotificationService) middleware.AppHandler {
 // @Failure     400 {object} errorBody
 // @Failure     500 {object} errorBody
 // @Router      /notifications/batch [post]
-func createBatch(svc service.NotificationService) middleware.AppHandler {
+func createBatch(svc service.NotificationService) AppHandler {
 	return func(w http.ResponseWriter, r *http.Request) error {
 		var req batchRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -361,7 +360,7 @@ func createBatch(svc service.NotificationService) middleware.AppHandler {
 			itemResults = append(itemResults, item)
 		}
 
-		middleware.WriteJSON(w, http.StatusMultiStatus, batchResponse{
+		WriteJSON(w, http.StatusMultiStatus, batchResponse{
 			BatchID:  batchID.String(),
 			Total:    len(req.Notifications),
 			Accepted: accepted,

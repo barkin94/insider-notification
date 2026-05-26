@@ -8,21 +8,21 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/barkin/insider-notification/api/internal/middleware"
+	"github.com/barkin/insider-notification/shared/middleware"
 )
 
 func TestLogger_fields(t *testing.T) {
 	var buf bytes.Buffer
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
 
-	handler := middleware.Logger()(
+	h := middleware.Logger()(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}),
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "/test", nil)
-	handler.ServeHTTP(httptest.NewRecorder(), req)
+	h.ServeHTTP(httptest.NewRecorder(), req)
 
 	var entry map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &entry); err != nil {

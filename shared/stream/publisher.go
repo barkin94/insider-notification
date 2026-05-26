@@ -11,15 +11,20 @@ import (
 	"go.opentelemetry.io/otel"
 )
 
-type Publisher struct {
+// Publisher is the port for publishing events to a message stream.
+type Publisher interface {
+	Publish(ctx context.Context, topic string, payload any) error
+}
+
+type redisPublisher struct {
 	pub message.Publisher
 }
 
-func NewPublisher(pub message.Publisher) *Publisher {
-	return &Publisher{pub: pub}
+func NewPublisher(pub message.Publisher) Publisher {
+	return &redisPublisher{pub: pub}
 }
 
-func (p *Publisher) Publish(ctx context.Context, topic string, payload any) error {
+func (p *redisPublisher) Publish(ctx context.Context, topic string, payload any) error {
 	b, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("marshal payload: %w", err)
