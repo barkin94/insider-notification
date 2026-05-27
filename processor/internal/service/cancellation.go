@@ -11,7 +11,7 @@ import (
 
 type redisCancellationStore struct{ client *redis.Client }
 
-func NewRedisCancellationStore(client *redis.Client) CancellationStore {
+func NewRedisCancellationStore(client *redis.Client) *redisCancellationStore {
 	return &redisCancellationStore{client: client}
 }
 

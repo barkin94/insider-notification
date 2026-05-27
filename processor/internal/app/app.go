@@ -7,7 +7,7 @@ import (
 	"sync"
 
 	"github.com/barkin/insider-notification/processor/internal/config"
-	"github.com/barkin/insider-notification/processor/internal/consumer"
+	"github.com/barkin/insider-notification/processor/internal/delivery"
 	processordb "github.com/barkin/insider-notification/processor/internal/db"
 	"github.com/barkin/insider-notification/processor/internal/priorityrouter"
 	"github.com/barkin/insider-notification/processor/internal/scheduler"
@@ -21,7 +21,7 @@ import (
 // App wires and runs the processor service.
 type App struct {
 	scheduler   *scheduler.Scheduler
-	consumer    *consumer.Consumer
+	worker      *delivery.Worker
 	router      *priorityrouter.PriorityRouter[stream.Result[stream.NotificationCreatedEvent]]
 	concurrency int
 }
@@ -81,12 +81,14 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 		{Ch: lowMsgs, Weight: cfg.LowWeight},
 	})
 
-	limiter := service.NewLimiter(rdb)
-	deliveryClient := service.NewDeliveryClient(cfg.WebhookURL, cfg.WebhookTimeout)
-	locker := lock.NewRedisLocker(rdb)
-	canceller := service.NewRedisCancellationStore(rdb)
-	svc := service.NewDeliveryService(pub, deliveryClient, limiter, locker, canceller, attemptRepo)
-	c := consumer.NewConsumer(svc)
+	c := delivery.NewWorker(
+		pub,
+		service.NewDeliveryClient(cfg.WebhookURL, cfg.WebhookTimeout),
+		service.NewLimiter(rdb),
+		lock.NewRedisLocker(rdb),
+		service.NewRedisCancellationStore(rdb),
+		attemptRepo,
+	)
 
 	notifReader := processordb.NewNotificationReader(bundb)
 	sched := scheduler.New(notifReader, attemptRepo, pub, cfg.SchedulerInterval)
@@ -98,7 +100,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 
 	return &App{
 		scheduler:   sched,
-		consumer:    c,
+		worker:      c,
 		router:      router,
 		concurrency: cfg.WorkerConcurrency,
 	}, cleanup, nil
@@ -114,7 +116,7 @@ func (a *App) Run(ctx context.Context) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			a.consumer.Run(ctx, a.router)
+			a.worker.Run(ctx, a.router)
 		}()
 	}
 	slog.Info("processor started", "workers", a.concurrency)

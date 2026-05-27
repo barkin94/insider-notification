@@ -1,4 +1,4 @@
-package service_test
+package delivery_test
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
 	processordb "github.com/barkin/insider-notification/processor/internal/db"
+	"github.com/barkin/insider-notification/processor/internal/delivery"
 	"github.com/barkin/insider-notification/processor/internal/service"
 	"github.com/barkin/insider-notification/shared/model"
 	"github.com/barkin/insider-notification/shared/stream"
@@ -99,6 +100,20 @@ func (m *mockAttemptWriter) recorded() []*processordb.DeliveryAttempt {
 	return out
 }
 
+// singleSource feeds exactly one message then returns false forever.
+type singleSource struct {
+	result stream.Result[stream.NotificationCreatedEvent]
+	done   bool
+}
+
+func (s *singleSource) Next(_ context.Context) (stream.Result[stream.NotificationCreatedEvent], bool) {
+	if s.done {
+		return stream.Result[stream.NotificationCreatedEvent]{}, false
+	}
+	s.done = true
+	return s.result, true
+}
+
 // --- helpers ---
 
 func newResult(evt stream.NotificationCreatedEvent) stream.Result[stream.NotificationCreatedEvent] {
@@ -122,8 +137,8 @@ func baseEvent() stream.NotificationCreatedEvent {
 	}
 }
 
-func newSvc(pub *fakePublisher, dc service.DeliveryClient, lim service.Limiter, cancelled bool, lockGranted bool, attempts service.DeliveryAttemptWriter) *service.DeliveryService {
-	return service.NewDeliveryService(
+func newConsumer(pub *fakePublisher, dc service.DeliveryClient, lim service.Limiter, cancelled bool, lockGranted bool, attempts delivery.DeliveryAttemptWriter) *delivery.Worker {
+	return delivery.NewWorker(
 		pub,
 		dc,
 		lim,
@@ -147,13 +162,13 @@ func isAcked(msg *message.Message) bool {
 // deliver_after in the future: ACKs and drops; scheduler handles it.
 func TestProcessOne_DeliverAfterFuture(t *testing.T) {
 	pub := &fakePublisher{}
-	svc := newSvc(pub, nil, nil, false, true, nil)
+	c := newConsumer(pub, nil, nil, false, true, nil)
 
 	evt := baseEvent()
 	evt.DeliverAfter = time.Now().Add(10 * time.Minute).UTC().Format(time.RFC3339)
 	result := newResult(evt)
 
-	svc.Process(context.Background(), result)
+	c.Run(context.Background(), &singleSource{result: result})
 
 	if !isAcked(result.Msg) {
 		t.Error("expected ACK")
@@ -168,19 +183,18 @@ func TestProcessOne_DeliverAfterPast(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: false}}
 	lim := &fakeLimiter{allowed: true}
-	svc := newSvc(pub, dc, lim, false, true, nil)
+	c := newConsumer(pub, dc, lim, false, true, nil)
 
 	evt := baseEvent()
 	evt.DeliverAfter = time.Now().Add(-10 * time.Minute).UTC().Format(time.RFC3339)
 	result := newResult(evt)
 
-	svc.Process(context.Background(), result)
+	c.Run(context.Background(), &singleSource{result: result})
 
 	if !isAcked(result.Msg) {
 		t.Error("expected ACK")
 	}
 	topics := pub.topicsPublished()
-	// failed only
 	if len(topics) != 1 {
 		t.Errorf("expected 1 status publish, got %d: %v", len(topics), topics)
 	}
@@ -189,10 +203,10 @@ func TestProcessOne_DeliverAfterPast(t *testing.T) {
 // Cancelled notification: ACKs immediately, no status published.
 func TestProcessOne_Cancelled(t *testing.T) {
 	pub := &fakePublisher{}
-	svc := newSvc(pub, nil, nil, true, true, nil)
+	c := newConsumer(pub, nil, nil, true, true, nil)
 
 	result := newResult(baseEvent())
-	svc.Process(context.Background(), result)
+	c.Run(context.Background(), &singleSource{result: result})
 
 	if !isAcked(result.Msg) {
 		t.Error("expected ACK")
@@ -205,10 +219,10 @@ func TestProcessOne_Cancelled(t *testing.T) {
 // Lock miss: ACKs immediately, no status published.
 func TestProcessOne_LockMiss(t *testing.T) {
 	pub := &fakePublisher{}
-	svc := newSvc(pub, nil, nil, false, false, nil)
+	c := newConsumer(pub, nil, nil, false, false, nil)
 
 	result := newResult(baseEvent())
-	svc.Process(context.Background(), result)
+	c.Run(context.Background(), &singleSource{result: result})
 
 	if !isAcked(result.Msg) {
 		t.Error("expected ACK")
@@ -223,10 +237,10 @@ func TestProcessOne_TerminalFailure(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: false}}
 	lim := &fakeLimiter{allowed: true}
-	svc := newSvc(pub, dc, lim, false, true, nil)
+	c := newConsumer(pub, dc, lim, false, true, nil)
 
 	result := newResult(baseEvent())
-	svc.Process(context.Background(), result)
+	c.Run(context.Background(), &singleSource{result: result})
 
 	if !isAcked(result.Msg) {
 		t.Error("expected ACK")
@@ -249,10 +263,10 @@ func TestDelivery_delivered(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: true, StatusCode: 202, LatencyMS: 50}}
 	lim := &fakeLimiter{allowed: true}
-	svc := newSvc(pub, dc, lim, false, true, nil)
+	c := newConsumer(pub, dc, lim, false, true, nil)
 
 	result := newResult(baseEvent())
-	svc.Process(context.Background(), result)
+	c.Run(context.Background(), &singleSource{result: result})
 
 	if !isAcked(result.Msg) {
 		t.Error("expected ACK")
@@ -276,11 +290,11 @@ func TestDelivery_retryable_writesRetryAfter(t *testing.T) {
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: true, StatusCode: 503}}
 	lim := &fakeLimiter{allowed: true}
 	aw := &mockAttemptWriter{}
-	svc := newSvc(pub, dc, lim, false, true, aw)
+	c := newConsumer(pub, dc, lim, false, true, aw)
 
-	evt := baseEventWithID() // AttemptNumber=1, MaxAttempts=4
+	evt := baseEventWithID()
 	result := newResult(evt)
-	svc.Process(context.Background(), result)
+	c.Run(context.Background(), &singleSource{result: result})
 
 	if !isAcked(result.Msg) {
 		t.Error("expected ACK")
@@ -309,13 +323,13 @@ func TestDelivery_exhausted_failed(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: true, StatusCode: 503}}
 	lim := &fakeLimiter{allowed: true}
-	svc := newSvc(pub, dc, lim, false, true, nil)
+	c := newConsumer(pub, dc, lim, false, true, nil)
 
 	evt := baseEvent()
 	evt.AttemptNumber = 4
 	evt.MaxAttempts = 4
 	result := newResult(evt)
-	svc.Process(context.Background(), result)
+	c.Run(context.Background(), &singleSource{result: result})
 
 	if !isAcked(result.Msg) {
 		t.Error("expected ACK")
@@ -338,10 +352,10 @@ func TestDelivery_nonRetryable_failed(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: false, StatusCode: 400}}
 	lim := &fakeLimiter{allowed: true}
-	svc := newSvc(pub, dc, lim, false, true, nil)
+	c := newConsumer(pub, dc, lim, false, true, nil)
 
 	result := newResult(baseEvent())
-	svc.Process(context.Background(), result)
+	c.Run(context.Background(), &singleSource{result: result})
 
 	if !isAcked(result.Msg) {
 		t.Error("expected ACK")
@@ -359,10 +373,10 @@ func TestDelivery_nonRetryable_failed(t *testing.T) {
 // Lock miss: ACKs, no publishes.
 func TestDelivery_lockMiss(t *testing.T) {
 	pub := &fakePublisher{}
-	svc := newSvc(pub, nil, nil, false, false, nil)
+	c := newConsumer(pub, nil, nil, false, false, nil)
 
 	result := newResult(baseEvent())
-	svc.Process(context.Background(), result)
+	c.Run(context.Background(), &singleSource{result: result})
 
 	if !isAcked(result.Msg) {
 		t.Error("expected ACK")
@@ -375,12 +389,12 @@ func TestDelivery_lockMiss(t *testing.T) {
 // Future DeliverAfter: ACK and drop; scheduler handles it.
 func TestDelivery_deliverAfter_dropped(t *testing.T) {
 	pub := &fakePublisher{}
-	svc := newSvc(pub, nil, nil, false, true, nil)
+	c := newConsumer(pub, nil, nil, false, true, nil)
 
 	evt := baseEvent()
 	evt.DeliverAfter = time.Now().Add(5 * time.Minute).UTC().Format(time.RFC3339)
 	result := newResult(evt)
-	svc.Process(context.Background(), result)
+	c.Run(context.Background(), &singleSource{result: result})
 
 	if !isAcked(result.Msg) {
 		t.Error("expected ACK")
@@ -394,10 +408,10 @@ func TestDelivery_deliverAfter_dropped(t *testing.T) {
 func TestDelivery_rateLimited_requeued(t *testing.T) {
 	pub := &fakePublisher{}
 	lim := &fakeLimiter{allowed: false}
-	svc := newSvc(pub, nil, lim, false, true, nil)
+	c := newConsumer(pub, nil, lim, false, true, nil)
 
 	result := newResult(baseEvent())
-	svc.Process(context.Background(), result)
+	c.Run(context.Background(), &singleSource{result: result})
 
 	if !isAcked(result.Msg) {
 		t.Error("expected ACK")
@@ -421,10 +435,10 @@ func TestDelivery_rateLimited_requeued(t *testing.T) {
 // Cancelled notification: ACKs immediately, no publishes.
 func TestDelivery_cancelled(t *testing.T) {
 	pub := &fakePublisher{}
-	svc := newSvc(pub, nil, nil, true, true, nil)
+	c := newConsumer(pub, nil, nil, true, true, nil)
 
 	result := newResult(baseEvent())
-	svc.Process(context.Background(), result)
+	c.Run(context.Background(), &singleSource{result: result})
 
 	if !isAcked(result.Msg) {
 		t.Error("expected ACK")
@@ -436,7 +450,6 @@ func TestDelivery_cancelled(t *testing.T) {
 
 // --- delivery attempt tests ---
 
-// baseEventWithID returns a baseEvent with a valid UUID notification ID.
 func baseEventWithID() stream.NotificationCreatedEvent {
 	evt := baseEvent()
 	evt.NotificationID = uuid.New().String()
@@ -449,11 +462,11 @@ func TestDelivery_attempts_delivered(t *testing.T) {
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: true, StatusCode: 202, LatencyMS: 50}}
 	lim := &fakeLimiter{allowed: true}
 	aw := &mockAttemptWriter{}
-	svc := newSvc(pub, dc, lim, false, true, aw)
+	c := newConsumer(pub, dc, lim, false, true, aw)
 
 	evt := baseEventWithID()
 	evt.AttemptNumber = 2
-	svc.Process(context.Background(), newResult(evt))
+	c.Run(context.Background(), &singleSource{result: newResult(evt)})
 
 	attempts := aw.recorded()
 	if len(attempts) != 1 {
@@ -467,18 +480,18 @@ func TestDelivery_attempts_delivered(t *testing.T) {
 	}
 }
 
-// Retryable failure path: attempt written with status=failed before re-enqueue.
+// Retryable failure path: attempt written with status=failed.
 func TestDelivery_attempts_retryable(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: true, StatusCode: 503}}
 	lim := &fakeLimiter{allowed: true}
 	aw := &mockAttemptWriter{}
-	svc := newSvc(pub, dc, lim, false, true, aw)
+	c := newConsumer(pub, dc, lim, false, true, aw)
 
 	evt := baseEventWithID()
 	evt.AttemptNumber = 1
 	evt.MaxAttempts = 4
-	svc.Process(context.Background(), newResult(evt))
+	c.Run(context.Background(), &singleSource{result: newResult(evt)})
 
 	attempts := aw.recorded()
 	if len(attempts) != 1 {
@@ -495,9 +508,9 @@ func TestDelivery_attempts_terminal(t *testing.T) {
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: false, StatusCode: 400}}
 	lim := &fakeLimiter{allowed: true}
 	aw := &mockAttemptWriter{}
-	svc := newSvc(pub, dc, lim, false, true, aw)
+	c := newConsumer(pub, dc, lim, false, true, aw)
 
-	svc.Process(context.Background(), newResult(baseEventWithID()))
+	c.Run(context.Background(), &singleSource{result: newResult(baseEventWithID())})
 
 	attempts := aw.recorded()
 	if len(attempts) != 1 {
@@ -508,17 +521,16 @@ func TestDelivery_attempts_terminal(t *testing.T) {
 	}
 }
 
-// Write error: service does not abort — publishStatus still fires.
+// Write error: consumer does not abort — publishStatus still fires.
 func TestDelivery_attempts_writeError_doesNotAbort(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: true, StatusCode: 202}}
 	lim := &fakeLimiter{allowed: true}
 	aw := &mockAttemptWriter{err: errTest}
-	svc := newSvc(pub, dc, lim, false, true, aw)
+	c := newConsumer(pub, dc, lim, false, true, aw)
 
-	svc.Process(context.Background(), newResult(baseEventWithID()))
+	c.Run(context.Background(), &singleSource{result: newResult(baseEventWithID())})
 
-	// publishStatus must still have fired
 	calls := pub.calls()
 	if len(calls) != 1 || calls[0].topic != stream.TopicStatus {
 		t.Errorf("expected status publish after write error, got %v", pub.topicsPublished())
