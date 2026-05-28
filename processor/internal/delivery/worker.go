@@ -63,12 +63,12 @@ func NewWorker(
 	}
 }
 
-// Run calls src.Next in a tight loop until ctx is cancelled or Next returns false.
+// Run calls src.Next in a tight loop until ctx is cancelled.
 func (w *Worker) Run(ctx context.Context, src MessageSource) {
-	for {
+	for ctx.Err() == nil {
 		result, ok := src.Next(ctx)
 		if !ok {
-			return
+			continue
 		}
 		if result.Err != nil {
 			slog.ErrorContext(result.Ctx, "stream read error", "error", result.Err)
