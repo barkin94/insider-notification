@@ -33,7 +33,6 @@ func newAttempt(t *testing.T) *processordb.DeliveryAttempt {
 }
 
 func TestCreate_insertsRow(t *testing.T) {
-	t.Skip("testcontainers migration issue pending investigation")
 	ctx := context.Background()
 	repo := processordb.NewDeliveryAttemptRepository(testDB)
 
@@ -60,7 +59,6 @@ func TestCreate_insertsRow(t *testing.T) {
 }
 
 func TestCreate_idempotent(t *testing.T) {
-	t.Skip("testcontainers migration issue pending investigation")
 	ctx := context.Background()
 	repo := processordb.NewDeliveryAttemptRepository(testDB)
 
@@ -74,7 +72,7 @@ func TestCreate_idempotent(t *testing.T) {
 
 	var count int
 	err := testDB.NewSelect().
-		TableExpr("processor.delivery_attempts").
+		TableExpr("delivery_attempts").
 		ColumnExpr("count(*)").
 		Where("notification_id = ? AND attempt_number = ?", a.NotificationID, a.AttemptNumber).
 		Scan(ctx, &count)

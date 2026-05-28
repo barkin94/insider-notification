@@ -1,6 +1,4 @@
-CREATE SCHEMA IF NOT EXISTS processor;
-
-CREATE TABLE processor.delivery_attempts (
+CREATE TABLE delivery_attempts (
     id              UUID        PRIMARY KEY,
     notification_id UUID        NOT NULL,
     attempt_number  INT         NOT NULL,
@@ -11,6 +9,6 @@ CREATE TABLE processor.delivery_attempts (
 );
 
 CREATE INDEX idx_delivery_attempts_notification_id
-    ON processor.delivery_attempts(notification_id);
+    ON delivery_attempts(notification_id);
 CREATE INDEX idx_delivery_attempts_created_at
-    ON processor.delivery_attempts(created_at DESC);
+    ON delivery_attempts(created_at DESC);

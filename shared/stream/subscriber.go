@@ -12,9 +12,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// Subscribe returns a channel of decoded NotificationCreatedEvents for the
-// given topic (TopicHigh, TopicNormal, or TopicLow). The caller is responsible
-// for calling msg.Ack() or msg.Nack() on each received message.
+// Subscribe returns a channel of decoded events for the given topic. The caller
+// is responsible for calling msg.Ack() or msg.Nack() on each received message.
 func Subscribe[T any](ctx context.Context, sub message.Subscriber, topic, tracerName string) (<-chan Result[T], error) {
 	msgs, err := sub.Subscribe(ctx, topic)
 	if err != nil {
@@ -25,38 +24,46 @@ func Subscribe[T any](ctx context.Context, sub message.Subscriber, topic, tracer
 	go func() {
 		defer close(out)
 		for msg := range msgs {
-			// Extract the W3C trace context the publisher injected into metadata.
-			msgCtx := otel.GetTextMapPropagator().Extract(ctx, NewStreamCarrier(msg.Metadata))
-			// Start a consumer span that continues the distributed trace.
-			msgCtx, span := otel.Tracer(tracerName).Start(
-				msgCtx,
-				fmt.Sprintf("consume %s", topic),
-				trace.WithSpanKind(trace.SpanKindConsumer),
-			)
-
-			span.SetAttributes(
-				attribute.String("messaging.src", topic),
-			)
-			slog.InfoContext(msgCtx, "message received", "topic", topic)
-			var e T
-			if err := json.Unmarshal(msg.Payload, &e); err != nil {
-				msg.Nack()
-				select {
-				case out <- Result[T]{Ctx: msgCtx, Err: fmt.Errorf("unmarshal: %w", err)}:
-				case <-ctx.Done():
-					return
-				}
-				continue
-			}
-			select {
-			case out <- Result[T]{Ctx: msgCtx, Event: e, Msg: msg}:
-			case <-ctx.Done():
-				span.End()
+			if !consumeMsg(ctx, msg, topic, tracerName, out) {
 				return
 			}
 		}
 	}()
 	return out, nil
+}
+
+// consumeMsg handles a single message: extracts trace context, opens a consumer
+// span, decodes the payload, and forwards the result. Returns false when ctx is
+// cancelled and the caller should stop the loop.
+func consumeMsg[T any](ctx context.Context, msg *message.Message, topic, tracerName string, out chan<- Result[T]) bool {
+	msgCtx := otel.GetTextMapPropagator().Extract(ctx, NewStreamCarrier(msg.Metadata))
+	msgCtx, span := otel.Tracer(tracerName).Start(
+		msgCtx,
+		fmt.Sprintf("consume %s", topic),
+		trace.WithSpanKind(trace.SpanKindConsumer),
+	)
+	defer span.End()
+
+	span.SetAttributes(attribute.String("messaging.src", topic))
+	slog.InfoContext(msgCtx, "message received", "topic", topic)
+
+	var e T
+	if err := json.Unmarshal(msg.Payload, &e); err != nil {
+		msg.Nack()
+		select {
+		case out <- Result[T]{Ctx: msgCtx, Err: fmt.Errorf("unmarshal: %w", err)}:
+			return true
+		case <-ctx.Done():
+			return false
+		}
+	}
+
+	select {
+	case out <- Result[T]{Ctx: msgCtx, Event: e, Msg: msg}:
+		return true
+	case <-ctx.Done():
+		return false
+	}
 }
 
 // Result carries a decoded event, its underlying watermill message, and a

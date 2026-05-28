@@ -8,7 +8,7 @@ import (
 	"github.com/uptrace/bun"
 )
 
-// NotificationRow holds the fields the scheduler needs from public.notifications.
+// NotificationRow holds the fields the scheduler needs from notifications.
 type NotificationRow struct {
 	ID          uuid.UUID `bun:"id"`
 	Priority    string    `bun:"priority"`

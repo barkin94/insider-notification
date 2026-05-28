@@ -14,7 +14,7 @@ type DeliveryAttemptRepository interface {
 	FindDueRetries(ctx context.Context) ([]*DeliveryAttempt, error)
 }
 
-// NotificationReader is the read-only port for the public.notifications table.
+// NotificationReader is the read-only port for the notifications table.
 type NotificationReader interface {
 	FindScheduledDue(ctx context.Context) ([]NotificationRow, error)
 	FindByIDs(ctx context.Context, ids []uuid.UUID) ([]NotificationRow, error)

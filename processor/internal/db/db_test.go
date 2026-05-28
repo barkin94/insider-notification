@@ -42,7 +42,7 @@ func TestMain(m *testing.M) {
 		}
 	}()
 
-	connStr, err := pgContainer.ConnectionString(ctx, "sslmode=disable", "search_path=processor,public")
+	connStr, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
 	if err != nil {
 		log.Fatalf("get connection string: %v", err)
 	}

@@ -78,7 +78,7 @@ services:
     volumes:
       - ./api/migrations:/migrations:ro
     entrypoint: ["/bin/sh", "-c"]
-    command: ["migrate -path=/migrations -database $$DATABASE_URL up"]
+    command: ["migrate -path=/migrations -database $$MIGRATE_DATABASE_URL up"]
     env_file: api/.env
     depends_on:
       postgres:
@@ -89,7 +89,7 @@ services:
     volumes:
       - ./processor/migrations:/migrations:ro
     entrypoint: ["/bin/sh", "-c"]
-    command: ["migrate -path=/migrations -database $$DATABASE_URL up"]
+    command: ["migrate -path=/migrations -database $$MIGRATE_DATABASE_URL up"]
     env_file: processor/.env
     depends_on:
       postgres:
