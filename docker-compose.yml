@@ -73,6 +73,24 @@ services:
       - loki
       - otel-collector
 
+  mock-ntfn-provider:
+    image: mockoon/cli:latest
+    command: ["--data", "/data/config.json", "--port", "3001"]
+    volumes:
+      - ./mockoon/config.json:/data/config.json:ro
+    ports:
+      - "3001:3001"
+    # healthcheck:
+    #   test: ["CMD-SHELL", "wget -qO /dev/null --post-data='' http://localhost:3001"]
+    #   interval: 5s
+    #   timeout: 5s
+    #   retries: 5
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 3s
+      timeout: 3s
+      retries: 3
+
   migrate-api:
     image: migrate/migrate
     volumes:
@@ -121,6 +139,8 @@ services:
       migrate-processor:
         condition: service_completed_successfully
       redis:
+        condition: service_healthy
+      mock-ntfn-provider:
         condition: service_healthy
       otel-collector:
         condition: service_started
