@@ -24,9 +24,10 @@ type CancellationStore interface {
 	IsCancelled(ctx context.Context, id string) (bool, error)
 }
 
-// DeliveryAttemptWriter persists a delivery attempt record.
+// DeliveryAttemptWriter persists and counts delivery attempt records.
 type DeliveryAttemptWriter interface {
 	Create(ctx context.Context, a *processordb.DeliveryAttempt) error
+	CountByNotificationID(ctx context.Context, id uuid.UUID) (int, error)
 }
 
 var topicByPriority = map[string]string{
@@ -112,6 +113,14 @@ func (w *Worker) deliver(ctx context.Context, result stream.Result[stream.Notifi
 	if err != nil { msg.Nack(); return }
 	if limited    { msg.Ack();  return }
 
+	notifID, err := uuid.Parse(evt.NotificationID)
+	if err != nil {
+		slog.ErrorContext(ctx, "invalid notification_id", "id", evt.NotificationID, "error", err)
+		msg.Nack()
+		return
+	}
+	currentAttempt := w.countPriorAttempts(ctx, notifID) + 1
+
 	dr, err := w.deliveryClient.Send(ctx, evt.Recipient, evt.Channel, evt.Content)
 	if err != nil {
 		slog.ErrorContext(ctx, "delivery transport error", "id", evt.NotificationID, "error", err)
@@ -119,8 +128,22 @@ func (w *Worker) deliver(ctx context.Context, result stream.Result[stream.Notifi
 		return
 	}
 
-	w.recordOutcome(ctx, evt, dr)
+	w.recordOutcome(ctx, evt, dr, notifID, currentAttempt)
 	msg.Ack()
+}
+
+// countPriorAttempts returns the number of persisted delivery attempts for the
+// notification. Returns 0 if the writer is nil (test convenience) or on error.
+func (w *Worker) countPriorAttempts(ctx context.Context, id uuid.UUID) int {
+	if w.attempts == nil {
+		return 0
+	}
+	n, err := w.attempts.CountByNotificationID(ctx, id)
+	if err != nil {
+		slog.ErrorContext(ctx, "count prior attempts failed", "id", id, "error", err)
+		return 0
+	}
+	return n
 }
 
 // isPremature reports whether the event's deliver_after has not yet passed.
@@ -164,33 +187,34 @@ func (w *Worker) applyRateLimit(ctx context.Context, evt stream.NotificationCrea
 	return true, nil
 }
 
-// recordOutcome writes a delivery attempt and, when the notification reaches a
-// terminal state, publishes a status event for the API to consume.
-func (w *Worker) recordOutcome(ctx context.Context, evt stream.NotificationCreatedEvent, dr service.DeliveryResult) {
+// recordOutcome writes a delivery attempt when the delivery failed and, when the
+// notification reaches a terminal state, publishes a status event for the API.
+// On success no DB row is written — DeliveryAttempt rows exist solely to drive
+// retry scheduling.
+func (w *Worker) recordOutcome(ctx context.Context, evt stream.NotificationCreatedEvent, dr service.DeliveryResult, notifID uuid.UUID, currentAttempt int) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	switch {
 	case dr.Success:
-		w.writeAttempt(ctx, evt.NotificationID, evt.AttemptNumber, model.StatusDelivered, nil, evt.Priority)
 		w.publishStatus(ctx, stream.NotificationDeliveryResultEvent{
 			NotificationID:    evt.NotificationID,
 			Status:            model.StatusDelivered,
-			AttemptNumber:     evt.AttemptNumber,
+			AttemptNumber:     currentAttempt,
 			HTTPStatusCode:    dr.StatusCode,
 			ProviderMessageID: dr.ProviderMsgID,
 			LatencyMS:         int(dr.LatencyMS),
 			UpdatedAt:         now,
 		})
 
-	case dr.Retryable && evt.AttemptNumber < evt.MaxAttempts:
-		retryAfter := time.Now().Add(service.RetryDelay(evt.AttemptNumber + 1)).UTC()
-		w.writeAttempt(ctx, evt.NotificationID, evt.AttemptNumber, model.StatusFailed, &retryAfter, evt.Priority)
+	case dr.Retryable && currentAttempt < evt.MaxAttempts:
+		retryAfter := time.Now().Add(service.RetryDelay(currentAttempt + 1)).UTC()
+		w.writeAttempt(ctx, notifID, currentAttempt, &retryAfter, evt.Priority)
 
 	default:
-		w.writeAttempt(ctx, evt.NotificationID, evt.AttemptNumber, model.StatusFailed, nil, evt.Priority)
+		w.writeAttempt(ctx, notifID, currentAttempt, nil, evt.Priority)
 		w.publishStatus(ctx, stream.NotificationDeliveryResultEvent{
 			NotificationID: evt.NotificationID,
 			Status:         model.StatusFailed,
-			AttemptNumber:  evt.AttemptNumber,
+			AttemptNumber:  currentAttempt,
 			HTTPStatusCode: dr.StatusCode,
 			ErrorMessage:   dr.ErrorMessage,
 			LatencyMS:      int(dr.LatencyMS),
@@ -205,13 +229,8 @@ func (w *Worker) publishStatus(ctx context.Context, evt stream.NotificationDeliv
 	}
 }
 
-func (w *Worker) writeAttempt(ctx context.Context, notifIDStr string, attemptNumber int, status string, retryAfter *time.Time, priority string) {
+func (w *Worker) writeAttempt(ctx context.Context, notifID uuid.UUID, attemptNumber int, retryAfter *time.Time, priority string) {
 	if w.attempts == nil {
-		return
-	}
-	notifID, err := uuid.Parse(notifIDStr)
-	if err != nil {
-		slog.ErrorContext(ctx, "invalid notification_id for attempt write", "id", notifIDStr, "error", err)
 		return
 	}
 	id, err := uuid.NewV7()
@@ -223,7 +242,6 @@ func (w *Worker) writeAttempt(ctx context.Context, notifIDStr string, attemptNum
 	a := &processordb.DeliveryAttempt{
 		NotificationID: notifID,
 		AttemptNumber:  attemptNumber,
-		Status:         status,
 		Priority:       priority,
 		RetryAfter:     retryAfter,
 	}
@@ -231,6 +249,6 @@ func (w *Worker) writeAttempt(ctx context.Context, notifIDStr string, attemptNum
 	a.CreatedAt = now
 	a.UpdatedAt = now
 	if err := w.attempts.Create(ctx, a); err != nil {
-		slog.ErrorContext(ctx, "write delivery attempt failed", "id", notifIDStr, "error", err)
+		slog.ErrorContext(ctx, "write delivery attempt failed", "id", notifID, "error", err)
 	}
 }

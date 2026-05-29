@@ -89,9 +89,6 @@ func TestTick_initialScheduled_enqueues(t *testing.T) {
 	if evt.NotificationID != id.String() {
 		t.Errorf("notification_id = %q, want %q", evt.NotificationID, id.String())
 	}
-	if evt.AttemptNumber != 1 {
-		t.Errorf("attempt_number = %d, want 1", evt.AttemptNumber)
-	}
 	if evt.DeliverAfter != "" {
 		t.Errorf("deliver_after should be empty, got %q", evt.DeliverAfter)
 	}
@@ -115,7 +112,7 @@ func TestTick_retry_enqueuesWithNextAttempt(t *testing.T) {
 	id := uuid.New()
 	past := time.Now().Add(-time.Minute)
 	retryRepo := &fakeRetryRepo{rows: []*processordb.DeliveryAttempt{
-		{NotificationID: id, AttemptNumber: 2, Status: "failed",
+		{NotificationID: id, AttemptNumber: 2,
 			Priority: model.PriorityNormal, RetryAfter: &past},
 	}}
 	notifReader := &fakeNotifReader{byID: map[string]processordb.NotificationRow{
@@ -133,9 +130,6 @@ func TestTick_retry_enqueuesWithNextAttempt(t *testing.T) {
 	evt := msgs[0].payload
 	if evt.NotificationID != id.String() {
 		t.Errorf("notification_id = %q, want %q", evt.NotificationID, id.String())
-	}
-	if evt.AttemptNumber != 3 {
-		t.Errorf("attempt_number = %d, want 3", evt.AttemptNumber)
 	}
 	if evt.Channel != model.ChannelEmail {
 		t.Errorf("channel = %q, want email", evt.Channel)

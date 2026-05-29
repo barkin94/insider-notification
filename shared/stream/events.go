@@ -8,7 +8,6 @@ type NotificationCreatedEvent struct {
 	Recipient      string
 	Content        string
 	Priority       string
-	AttemptNumber  int
 	MaxAttempts    int
 	DeliverAfter   string // RFC3339 or empty
 	Metadata       string // JSON string, "{}" if absent

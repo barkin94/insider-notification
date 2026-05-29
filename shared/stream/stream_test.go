@@ -94,7 +94,6 @@ func TestPublisher_routesToCorrectTopic(t *testing.T) {
 			Recipient:      "+1555",
 			Content:        "hello",
 			Priority:       tc.priority,
-			AttemptNumber:  1,
 			MaxAttempts:    3,
 			Metadata:       "{}",
 		}

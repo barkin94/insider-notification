@@ -80,9 +80,10 @@ func (f *fakeLimiter) Allow(_ context.Context, _ string) (bool, error) {
 }
 
 type mockAttemptWriter struct {
-	mu    sync.Mutex
-	calls []*processordb.DeliveryAttempt
-	err   error
+	mu          sync.Mutex
+	calls       []*processordb.DeliveryAttempt
+	err         error
+	countResult int
 }
 
 func (m *mockAttemptWriter) Create(_ context.Context, a *processordb.DeliveryAttempt) error {
@@ -90,6 +91,10 @@ func (m *mockAttemptWriter) Create(_ context.Context, a *processordb.DeliveryAtt
 	defer m.mu.Unlock()
 	m.calls = append(m.calls, a)
 	return m.err
+}
+
+func (m *mockAttemptWriter) CountByNotificationID(_ context.Context, _ uuid.UUID) (int, error) {
+	return m.countResult, nil
 }
 
 func (m *mockAttemptWriter) recorded() []*processordb.DeliveryAttempt {
@@ -100,14 +105,19 @@ func (m *mockAttemptWriter) recorded() []*processordb.DeliveryAttempt {
 	return out
 }
 
-// singleSource feeds exactly one message then returns false forever.
+// singleSource feeds exactly one message, then cancels the context so Run exits.
 type singleSource struct {
 	result stream.Result[stream.NotificationCreatedEvent]
 	done   bool
+	cancel context.CancelFunc
 }
 
 func (s *singleSource) Next(_ context.Context) (stream.Result[stream.NotificationCreatedEvent], bool) {
 	if s.done {
+		if s.cancel != nil {
+			s.cancel()
+			s.cancel = nil
+		}
 		return stream.Result[stream.NotificationCreatedEvent]{}, false
 	}
 	s.done = true
@@ -116,25 +126,36 @@ func (s *singleSource) Next(_ context.Context) (stream.Result[stream.Notificatio
 
 // --- helpers ---
 
-func newResult(evt stream.NotificationCreatedEvent) stream.Result[stream.NotificationCreatedEvent] {
+// runSingle delivers one event through w and returns the watermill message for Ack/Nack inspection.
+func runSingle(w *delivery.Worker, evt stream.NotificationCreatedEvent) *message.Message {
+	ctx, cancel := context.WithCancel(context.Background())
 	msg := message.NewMessage(watermill.NewUUID(), nil)
-	return stream.Result[stream.NotificationCreatedEvent]{
-		Ctx:   context.Background(),
+	result := stream.Result[stream.NotificationCreatedEvent]{
+		Ctx:   ctx,
 		Event: evt,
 		Msg:   msg,
 	}
+	w.Run(ctx, &singleSource{result: result, cancel: cancel})
+	return msg
 }
+
+const baseNotifID = "00000000-0000-0000-0000-000000000001"
 
 func baseEvent() stream.NotificationCreatedEvent {
 	return stream.NotificationCreatedEvent{
-		NotificationID: "notif-1",
+		NotificationID: baseNotifID,
 		Priority:       model.PriorityHigh,
 		Channel:        model.ChannelEmail,
 		Recipient:      "+905551234567",
 		Content:        "Your message",
-		AttemptNumber:  1,
 		MaxAttempts:    4,
 	}
+}
+
+func baseEventWithID() stream.NotificationCreatedEvent {
+	evt := baseEvent()
+	evt.NotificationID = uuid.New().String()
+	return evt
 }
 
 func newConsumer(pub *fakePublisher, dc service.DeliveryClient, lim service.Limiter, cancelled bool, lockGranted bool, attempts delivery.DeliveryAttemptWriter) *delivery.Worker {
@@ -166,11 +187,10 @@ func TestProcessOne_DeliverAfterFuture(t *testing.T) {
 
 	evt := baseEvent()
 	evt.DeliverAfter = time.Now().Add(10 * time.Minute).UTC().Format(time.RFC3339)
-	result := newResult(evt)
 
-	c.Run(context.Background(), &singleSource{result: result})
+	msg := runSingle(c, evt)
 
-	if !isAcked(result.Msg) {
+	if !isAcked(msg) {
 		t.Error("expected ACK")
 	}
 	if len(pub.calls()) != 0 {
@@ -187,11 +207,10 @@ func TestProcessOne_DeliverAfterPast(t *testing.T) {
 
 	evt := baseEvent()
 	evt.DeliverAfter = time.Now().Add(-10 * time.Minute).UTC().Format(time.RFC3339)
-	result := newResult(evt)
 
-	c.Run(context.Background(), &singleSource{result: result})
+	msg := runSingle(c, evt)
 
-	if !isAcked(result.Msg) {
+	if !isAcked(msg) {
 		t.Error("expected ACK")
 	}
 	topics := pub.topicsPublished()
@@ -205,10 +224,9 @@ func TestProcessOne_Cancelled(t *testing.T) {
 	pub := &fakePublisher{}
 	c := newConsumer(pub, nil, nil, true, true, nil)
 
-	result := newResult(baseEvent())
-	c.Run(context.Background(), &singleSource{result: result})
+	msg := runSingle(c, baseEvent())
 
-	if !isAcked(result.Msg) {
+	if !isAcked(msg) {
 		t.Error("expected ACK")
 	}
 	if len(pub.calls()) != 0 {
@@ -221,10 +239,9 @@ func TestProcessOne_LockMiss(t *testing.T) {
 	pub := &fakePublisher{}
 	c := newConsumer(pub, nil, nil, false, false, nil)
 
-	result := newResult(baseEvent())
-	c.Run(context.Background(), &singleSource{result: result})
+	msg := runSingle(c, baseEvent())
 
-	if !isAcked(result.Msg) {
+	if !isAcked(msg) {
 		t.Error("expected ACK")
 	}
 	if len(pub.calls()) != 0 {
@@ -239,10 +256,9 @@ func TestProcessOne_TerminalFailure(t *testing.T) {
 	lim := &fakeLimiter{allowed: true}
 	c := newConsumer(pub, dc, lim, false, true, nil)
 
-	result := newResult(baseEvent())
-	c.Run(context.Background(), &singleSource{result: result})
+	msg := runSingle(c, baseEvent())
 
-	if !isAcked(result.Msg) {
+	if !isAcked(msg) {
 		t.Error("expected ACK")
 	}
 	calls := pub.calls()
@@ -258,17 +274,16 @@ func TestProcessOne_TerminalFailure(t *testing.T) {
 	}
 }
 
-// Success result: one status event with status=delivered.
+// Success result: one status event with status=delivered, no DB write.
 func TestDelivery_delivered(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: true, StatusCode: 202, LatencyMS: 50}}
 	lim := &fakeLimiter{allowed: true}
 	c := newConsumer(pub, dc, lim, false, true, nil)
 
-	result := newResult(baseEvent())
-	c.Run(context.Background(), &singleSource{result: result})
+	msg := runSingle(c, baseEvent())
 
-	if !isAcked(result.Msg) {
+	if !isAcked(msg) {
 		t.Error("expected ACK")
 	}
 	calls := pub.calls()
@@ -289,14 +304,12 @@ func TestDelivery_retryable_writesRetryAfter(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: true, StatusCode: 503}}
 	lim := &fakeLimiter{allowed: true}
-	aw := &mockAttemptWriter{}
+	aw := &mockAttemptWriter{countResult: 0} // first attempt
 	c := newConsumer(pub, dc, lim, false, true, aw)
 
-	evt := baseEventWithID()
-	result := newResult(evt)
-	c.Run(context.Background(), &singleSource{result: result})
+	msg := runSingle(c, baseEventWithID())
 
-	if !isAcked(result.Msg) {
+	if !isAcked(msg) {
 		t.Error("expected ACK")
 	}
 	if len(pub.calls()) != 0 {
@@ -307,9 +320,6 @@ func TestDelivery_retryable_writesRetryAfter(t *testing.T) {
 		t.Fatalf("expected 1 attempt write, got %d", len(attempts))
 	}
 	a := attempts[0]
-	if a.Status != model.StatusFailed {
-		t.Errorf("attempt status = %q, want failed", a.Status)
-	}
 	if a.RetryAfter == nil {
 		t.Error("expected retry_after to be set")
 	}
@@ -318,20 +328,20 @@ func TestDelivery_retryable_writesRetryAfter(t *testing.T) {
 	}
 }
 
-// Retryable failure at max attempts: status=failed, no re-enqueue.
+// Retryable failure at max attempts: status=failed published, attempt written without retry_after.
 func TestDelivery_exhausted_failed(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: true, StatusCode: 503}}
 	lim := &fakeLimiter{allowed: true}
-	c := newConsumer(pub, dc, lim, false, true, nil)
+	// 3 prior attempts → currentAttempt=4=MaxAttempts → terminal
+	aw := &mockAttemptWriter{countResult: 3}
+	c := newConsumer(pub, dc, lim, false, true, aw)
 
-	evt := baseEvent()
-	evt.AttemptNumber = 4
+	evt := baseEventWithID()
 	evt.MaxAttempts = 4
-	result := newResult(evt)
-	c.Run(context.Background(), &singleSource{result: result})
+	msg := runSingle(c, evt)
 
-	if !isAcked(result.Msg) {
+	if !isAcked(msg) {
 		t.Error("expected ACK")
 	}
 	calls := pub.calls()
@@ -345,6 +355,16 @@ func TestDelivery_exhausted_failed(t *testing.T) {
 	if last.Status != model.StatusFailed {
 		t.Errorf("expected status %s, got %s", model.StatusFailed, last.Status)
 	}
+	if last.AttemptNumber != 4 {
+		t.Errorf("expected attempt_number 4, got %d", last.AttemptNumber)
+	}
+	written := aw.recorded()
+	if len(written) != 1 {
+		t.Fatalf("expected 1 attempt write (terminal tombstone), got %d", len(written))
+	}
+	if written[0].RetryAfter != nil {
+		t.Error("expected retry_after to be nil for terminal attempt")
+	}
 }
 
 // Non-retryable failure: status=failed, no re-enqueue.
@@ -354,10 +374,9 @@ func TestDelivery_nonRetryable_failed(t *testing.T) {
 	lim := &fakeLimiter{allowed: true}
 	c := newConsumer(pub, dc, lim, false, true, nil)
 
-	result := newResult(baseEvent())
-	c.Run(context.Background(), &singleSource{result: result})
+	msg := runSingle(c, baseEvent())
 
-	if !isAcked(result.Msg) {
+	if !isAcked(msg) {
 		t.Error("expected ACK")
 	}
 	calls := pub.calls()
@@ -375,10 +394,9 @@ func TestDelivery_lockMiss(t *testing.T) {
 	pub := &fakePublisher{}
 	c := newConsumer(pub, nil, nil, false, false, nil)
 
-	result := newResult(baseEvent())
-	c.Run(context.Background(), &singleSource{result: result})
+	msg := runSingle(c, baseEvent())
 
-	if !isAcked(result.Msg) {
+	if !isAcked(msg) {
 		t.Error("expected ACK")
 	}
 	if len(pub.calls()) != 0 {
@@ -393,10 +411,10 @@ func TestDelivery_deliverAfter_dropped(t *testing.T) {
 
 	evt := baseEvent()
 	evt.DeliverAfter = time.Now().Add(5 * time.Minute).UTC().Format(time.RFC3339)
-	result := newResult(evt)
-	c.Run(context.Background(), &singleSource{result: result})
 
-	if !isAcked(result.Msg) {
+	msg := runSingle(c, evt)
+
+	if !isAcked(msg) {
 		t.Error("expected ACK")
 	}
 	if len(pub.calls()) != 0 {
@@ -404,16 +422,15 @@ func TestDelivery_deliverAfter_dropped(t *testing.T) {
 	}
 }
 
-// Rate limited: re-enqueue with same AttemptNumber, no status event.
+// Rate limited: re-enqueues the event unchanged, no status event.
 func TestDelivery_rateLimited_requeued(t *testing.T) {
 	pub := &fakePublisher{}
 	lim := &fakeLimiter{allowed: false}
 	c := newConsumer(pub, nil, lim, false, true, nil)
 
-	result := newResult(baseEvent())
-	c.Run(context.Background(), &singleSource{result: result})
+	msg := runSingle(c, baseEvent())
 
-	if !isAcked(result.Msg) {
+	if !isAcked(msg) {
 		t.Error("expected ACK")
 	}
 	calls := pub.calls()
@@ -423,12 +440,8 @@ func TestDelivery_rateLimited_requeued(t *testing.T) {
 	if calls[0].topic != stream.TopicHigh {
 		t.Errorf("expected re-enqueue to %s, got %s", stream.TopicHigh, calls[0].topic)
 	}
-	retryEvt, ok := calls[0].payload.(stream.NotificationCreatedEvent)
-	if !ok {
+	if _, ok := calls[0].payload.(stream.NotificationCreatedEvent); !ok {
 		t.Fatal("expected re-enqueue payload to be NotificationCreatedEvent")
-	}
-	if retryEvt.AttemptNumber != 1 {
-		t.Errorf("rate-limited re-enqueue should keep same AttemptNumber=1, got %d", retryEvt.AttemptNumber)
 	}
 }
 
@@ -437,10 +450,9 @@ func TestDelivery_cancelled(t *testing.T) {
 	pub := &fakePublisher{}
 	c := newConsumer(pub, nil, nil, true, true, nil)
 
-	result := newResult(baseEvent())
-	c.Run(context.Background(), &singleSource{result: result})
+	msg := runSingle(c, baseEvent())
 
-	if !isAcked(result.Msg) {
+	if !isAcked(msg) {
 		t.Error("expected ACK")
 	}
 	if len(pub.calls()) != 0 {
@@ -450,59 +462,28 @@ func TestDelivery_cancelled(t *testing.T) {
 
 // --- delivery attempt tests ---
 
-func baseEventWithID() stream.NotificationCreatedEvent {
-	evt := baseEvent()
-	evt.NotificationID = uuid.New().String()
-	return evt
-}
-
-// Success path: attempt written with status=delivered and correct AttemptNumber.
-func TestDelivery_attempts_delivered(t *testing.T) {
-	pub := &fakePublisher{}
-	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: true, StatusCode: 202, LatencyMS: 50}}
-	lim := &fakeLimiter{allowed: true}
-	aw := &mockAttemptWriter{}
-	c := newConsumer(pub, dc, lim, false, true, aw)
-
-	evt := baseEventWithID()
-	evt.AttemptNumber = 2
-	c.Run(context.Background(), &singleSource{result: newResult(evt)})
-
-	attempts := aw.recorded()
-	if len(attempts) != 1 {
-		t.Fatalf("expected 1 attempt write, got %d", len(attempts))
-	}
-	if attempts[0].Status != model.StatusDelivered {
-		t.Errorf("attempt status = %q, want %q", attempts[0].Status, model.StatusDelivered)
-	}
-	if attempts[0].AttemptNumber != 2 {
-		t.Errorf("attempt number = %d, want 2", attempts[0].AttemptNumber)
-	}
-}
-
-// Retryable failure path: attempt written with status=failed.
+// Retryable failure path: attempt written with status=failed and correct attempt number from count.
 func TestDelivery_attempts_retryable(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: true, StatusCode: 503}}
 	lim := &fakeLimiter{allowed: true}
-	aw := &mockAttemptWriter{}
+	aw := &mockAttemptWriter{countResult: 0} // first attempt
 	c := newConsumer(pub, dc, lim, false, true, aw)
 
 	evt := baseEventWithID()
-	evt.AttemptNumber = 1
 	evt.MaxAttempts = 4
-	c.Run(context.Background(), &singleSource{result: newResult(evt)})
+	runSingle(c, evt)
 
 	attempts := aw.recorded()
 	if len(attempts) != 1 {
 		t.Fatalf("expected 1 attempt write, got %d", len(attempts))
 	}
-	if attempts[0].Status != model.StatusFailed {
-		t.Errorf("attempt status = %q, want %q", attempts[0].Status, model.StatusFailed)
+	if attempts[0].AttemptNumber != 1 {
+		t.Errorf("attempt number = %d, want 1", attempts[0].AttemptNumber)
 	}
 }
 
-// Terminal failure path: attempt written with status=failed.
+// Terminal failure path: attempt written with status=failed, retry_after nil.
 func TestDelivery_attempts_terminal(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: false, StatusCode: 400}}
@@ -510,27 +491,30 @@ func TestDelivery_attempts_terminal(t *testing.T) {
 	aw := &mockAttemptWriter{}
 	c := newConsumer(pub, dc, lim, false, true, aw)
 
-	c.Run(context.Background(), &singleSource{result: newResult(baseEventWithID())})
+	runSingle(c, baseEventWithID())
 
 	attempts := aw.recorded()
 	if len(attempts) != 1 {
 		t.Fatalf("expected 1 attempt write, got %d", len(attempts))
 	}
-	if attempts[0].Status != model.StatusFailed {
-		t.Errorf("attempt status = %q, want %q", attempts[0].Status, model.StatusFailed)
+	if attempts[0].RetryAfter != nil {
+		t.Error("expected retry_after to be nil for terminal attempt")
 	}
 }
 
-// Write error: consumer does not abort — publishStatus still fires.
+// Write error on terminal failure: consumer still ACKs and publishes status.
 func TestDelivery_attempts_writeError_doesNotAbort(t *testing.T) {
 	pub := &fakePublisher{}
-	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: true, StatusCode: 202}}
+	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: false, StatusCode: 400}}
 	lim := &fakeLimiter{allowed: true}
 	aw := &mockAttemptWriter{err: errTest}
 	c := newConsumer(pub, dc, lim, false, true, aw)
 
-	c.Run(context.Background(), &singleSource{result: newResult(baseEventWithID())})
+	msg := runSingle(c, baseEventWithID())
 
+	if !isAcked(msg) {
+		t.Error("expected ACK even when attempt write fails")
+	}
 	calls := pub.calls()
 	if len(calls) != 1 || calls[0].topic != stream.TopicStatus {
 		t.Errorf("expected status publish after write error, got %v", pub.topicsPublished())

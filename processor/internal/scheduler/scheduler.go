@@ -70,7 +70,6 @@ func (s *Scheduler) dispatchScheduled(ctx context.Context) {
 			Recipient:      n.Recipient,
 			Content:        n.Content,
 			Priority:       n.Priority,
-			AttemptNumber:  1,
 			MaxAttempts:    n.MaxAttempts,
 		}
 		topic := topicByPriority[n.Priority]
@@ -116,7 +115,6 @@ func (s *Scheduler) dispatchRetries(ctx context.Context) {
 			Recipient:      n.Recipient,
 			Content:        n.Content,
 			Priority:       a.Priority,
-			AttemptNumber:  a.AttemptNumber + 1,
 			MaxAttempts:    n.MaxAttempts,
 		}
 		topic := topicByPriority[a.Priority]
