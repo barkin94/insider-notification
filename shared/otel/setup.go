@@ -2,9 +2,8 @@ package otel
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
-	"strings"
+	"os"
 
 	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/otel"
@@ -18,6 +17,8 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
+
+	sharedlogger "github.com/barkin/insider-notification/shared/logger"
 )
 
 // Shutdown cleanly flushes and stops the OTel SDK.
@@ -25,21 +26,25 @@ type Shutdown func(context.Context) error
 
 // Init initialises the global TracerProvider, MeterProvider, and LoggerProvider,
 // all pushing via OTLP gRPC to the OTel Collector. Call the returned Shutdown on exit.
-func Init(ctx context.Context, serviceName, collectorEndpoint string) (Shutdown, error) {
+// Exits the process on any initialisation error.
+func Init(ctx context.Context, serviceName, collectorEndpoint, logLevel string) Shutdown {
+	exitIfErr := func(err error, msg string) {
+		if err != nil {
+			slog.Error(msg, "error", err)
+			os.Exit(1)
+		}
+	}
+
 	res, err := resource.New(ctx,
 		resource.WithAttributes(semconv.ServiceNameKey.String(serviceName)),
 	)
-	if err != nil {
-		return nil, fmt.Errorf("otel resource: %w", err)
-	}
+	exitIfErr(err, "otel resource")
 
 	traceExp, err := otlptracegrpc.New(ctx,
 		otlptracegrpc.WithEndpoint(collectorEndpoint),
 		otlptracegrpc.WithInsecure(),
 	)
-	if err != nil {
-		return nil, fmt.Errorf("otlp trace exporter: %w", err)
-	}
+	exitIfErr(err, "otlp trace exporter")
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(traceExp),
 		sdktrace.WithResource(res),
@@ -51,9 +56,7 @@ func Init(ctx context.Context, serviceName, collectorEndpoint string) (Shutdown,
 		otlpmetricgrpc.WithEndpoint(collectorEndpoint),
 		otlpmetricgrpc.WithInsecure(),
 	)
-	if err != nil {
-		return nil, fmt.Errorf("otlp metric exporter: %w", err)
-	}
+	exitIfErr(err, "otlp metric exporter")
 	mp := sdkmetric.NewMeterProvider(
 		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(metricExp)),
 		sdkmetric.WithResource(res),
@@ -64,9 +67,7 @@ func Init(ctx context.Context, serviceName, collectorEndpoint string) (Shutdown,
 		otlploggrpc.WithEndpoint(collectorEndpoint),
 		otlploggrpc.WithInsecure(),
 	)
-	if err != nil {
-		return nil, fmt.Errorf("otlp log exporter: %w", err)
-	}
+	exitIfErr(err, "otlp log exporter")
 	lp := sdklog.NewLoggerProvider(
 		sdklog.WithProcessor(sdklog.NewBatchProcessor(logExp)),
 		sdklog.WithResource(res),
@@ -74,7 +75,12 @@ func Init(ctx context.Context, serviceName, collectorEndpoint string) (Shutdown,
 	global.SetLoggerProvider(lp)
 
 	otel.SetErrorHandler(otel.ErrorHandlerFunc(func(err error) {
-		slog.Debug("otel", "error", err)
+		slog.Error("otel", "error", err)
+	}))
+
+	slog.SetDefault(slog.New(&levelHandler{
+		min:  sharedlogger.ParseLevel(logLevel),
+		next: otelslog.NewHandler("app"),
 	}))
 
 	return func(ctx context.Context) error {
@@ -85,32 +91,11 @@ func Init(ctx context.Context, serviceName, collectorEndpoint string) (Shutdown,
 			return err
 		}
 		return lp.Shutdown(ctx)
-	}, nil
-}
-
-// InitLogger configures the global slog logger to export via OTel log bridge.
-// Call after Init so the global LoggerProvider is set.
-func InitLogger(level string) {
-	var l slog.Level
-	switch strings.ToLower(level) {
-	case "debug":
-		l = slog.LevelDebug
-	case "warn":
-		l = slog.LevelWarn
-	case "error":
-		l = slog.LevelError
-	default:
-		l = slog.LevelInfo
 	}
-	// otelslog.NewHandler uses global.LoggerProvider() which was set by Init.
-	// The OTel log bridge automatically injects trace_id/span_id from active spans.
-	slog.SetDefault(slog.New(&levelHandler{
-		min:  l,
-		next: otelslog.NewHandler("app"),
-	}))
 }
 
-// levelHandler enforces a minimum slog level; otelslog's Enabled() passes everything through.
+// levelHandler enforces a minimum slog level; otelslog's Enabled() delegates to the
+// OTel backend and does not apply a client-side threshold.
 type levelHandler struct {
 	min  slog.Level
 	next slog.Handler

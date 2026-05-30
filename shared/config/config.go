@@ -11,6 +11,7 @@ type Base struct {
 	DatabaseURL     string
 	RedisAddr       string
 	LogLevel        string
+	OTelEnabled     bool
 	OTelServiceName string
 	OTelEndpoint    string
 }
@@ -21,6 +22,7 @@ func NewViper() *viper.Viper {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 	v.SetDefault("LOG_LEVEL", "info")
+	v.SetDefault("OTEL_ENABLED", false)
 	return v
 }
 
@@ -39,6 +41,7 @@ func LoadBase(v *viper.Viper) (Base, string) {
 		DatabaseURL:     dbURL,
 		RedisAddr:       redisAddr,
 		LogLevel:        v.GetString("LOG_LEVEL"),
+		OTelEnabled:     v.GetBool("OTEL_ENABLED"),
 		OTelEndpoint:    v.GetString("OTEL_ENDPOINT"),
 		OTelServiceName: v.GetString("OTEL_SERVICE_NAME"),
 	}, ""

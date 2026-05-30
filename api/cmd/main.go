@@ -16,19 +16,18 @@ import (
 
 	"github.com/barkin/insider-notification/api/internal/app"
 	"github.com/barkin/insider-notification/api/internal/config"
+	sharedlogger "github.com/barkin/insider-notification/shared/logger"
 	sharedotel "github.com/barkin/insider-notification/shared/otel"
 )
 
 func main() {
 	cfg := config.Load()
+	sharedlogger.Init(cfg.LogLevel)
 
-	otelShutdown, err := sharedotel.Init(context.Background(), cfg.OTelServiceName, cfg.OTelEndpoint)
-	if err != nil {
-		slog.Error("init otel", "error", err)
-		os.Exit(1)
+	if cfg.OTelEnabled {
+		otelShutdown := sharedotel.Init(context.Background(), cfg.OTelServiceName, cfg.OTelEndpoint, cfg.LogLevel)
+		defer otelShutdown(context.Background())
 	}
-	defer otelShutdown(context.Background())
-	sharedotel.InitLogger(cfg.LogLevel)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
