@@ -11,6 +11,7 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 	processordb "github.com/barkin/insider-notification/processor/internal/db"
 	"github.com/barkin/insider-notification/processor/internal/delivery"
+	"github.com/barkin/insider-notification/processor/internal/metrics"
 	"github.com/barkin/insider-notification/processor/internal/service"
 	"github.com/barkin/insider-notification/shared/model"
 	"github.com/barkin/insider-notification/shared/stream"
@@ -159,6 +160,7 @@ func baseEventWithID() stream.NotificationCreatedEvent {
 }
 
 func newConsumer(pub *fakePublisher, dc service.DeliveryClient, lim service.Limiter, cancelled bool, lockGranted bool, attempts delivery.DeliveryAttemptWriter) *delivery.Worker {
+	m, _ := metrics.New(nil)
 	return delivery.NewWorker(
 		pub,
 		dc,
@@ -166,6 +168,7 @@ func newConsumer(pub *fakePublisher, dc service.DeliveryClient, lim service.Limi
 		&fakeLocker{locked: lockGranted},
 		&fakeCancellationStore{cancelled: cancelled},
 		attempts,
+		m,
 	)
 }
 

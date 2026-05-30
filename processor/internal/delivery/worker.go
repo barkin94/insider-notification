@@ -6,6 +6,7 @@ import (
 	"time"
 
 	processordb "github.com/barkin/insider-notification/processor/internal/db"
+	"github.com/barkin/insider-notification/processor/internal/metrics"
 	"github.com/barkin/insider-notification/processor/internal/service"
 	"github.com/barkin/insider-notification/shared/lock"
 	"github.com/barkin/insider-notification/shared/model"
@@ -44,6 +45,7 @@ type Worker struct {
 	locker         lock.Locker
 	cancel         CancellationStore
 	attempts       DeliveryAttemptWriter
+	metrics        metrics.Metrics
 }
 
 func NewWorker(
@@ -53,6 +55,7 @@ func NewWorker(
 	locker lock.Locker,
 	cancel CancellationStore,
 	attempts DeliveryAttemptWriter,
+	m metrics.Metrics,
 ) *Worker {
 	return &Worker{
 		pub:            pub,
@@ -61,6 +64,7 @@ func NewWorker(
 		locker:         locker,
 		cancel:         cancel,
 		attempts:       attempts,
+		metrics:        m,
 	}
 }
 
@@ -93,8 +97,14 @@ func (w *Worker) deliver(ctx context.Context, result stream.Result[stream.Notifi
 	}
 
 	cancelled, err := w.isCancelled(ctx, evt.NotificationID)
-	if err != nil { msg.Nack(); return }
-	if cancelled   { msg.Ack();  return }
+	if err != nil {
+		msg.Nack()
+		return
+	}
+	if cancelled {
+		msg.Ack()
+		return
+	}
 
 	locked, err := w.locker.TryLock(ctx, evt.NotificationID)
 	if err != nil {
@@ -110,8 +120,14 @@ func (w *Worker) deliver(ctx context.Context, result stream.Result[stream.Notifi
 	defer w.locker.Unlock(ctx, evt.NotificationID) //nolint:errcheck
 
 	limited, err := w.applyRateLimit(ctx, evt)
-	if err != nil { msg.Nack(); return }
-	if limited    { msg.Ack();  return }
+	if err != nil {
+		msg.Nack()
+		return
+	}
+	if limited {
+		msg.Ack()
+		return
+	}
 
 	notifID, err := uuid.Parse(evt.NotificationID)
 	if err != nil {
@@ -195,6 +211,7 @@ func (w *Worker) recordOutcome(ctx context.Context, evt stream.NotificationCreat
 	now := time.Now().UTC().Format(time.RFC3339)
 	switch {
 	case dr.Success:
+		w.metrics.RecordNotificationSent(ctx, dr.LatencyMS)
 		w.publishStatus(ctx, stream.NotificationDeliveryResultEvent{
 			NotificationID:    evt.NotificationID,
 			Status:            model.StatusDelivered,
@@ -210,6 +227,7 @@ func (w *Worker) recordOutcome(ctx context.Context, evt stream.NotificationCreat
 		w.writeAttempt(ctx, notifID, currentAttempt, &retryAfter, evt.Priority)
 
 	default:
+		w.metrics.RecordNotificationFailed(ctx, dr.LatencyMS)
 		w.writeAttempt(ctx, notifID, currentAttempt, nil, evt.Priority)
 		w.publishStatus(ctx, stream.NotificationDeliveryResultEvent{
 			NotificationID: evt.NotificationID,
@@ -238,7 +256,6 @@ func (w *Worker) writeAttempt(ctx context.Context, notifID uuid.UUID, attemptNum
 		slog.ErrorContext(ctx, "generate attempt id failed", "error", err)
 		return
 	}
-	now := time.Now().UTC()
 	a := &processordb.DeliveryAttempt{
 		NotificationID: notifID,
 		AttemptNumber:  attemptNumber,
@@ -246,8 +263,6 @@ func (w *Worker) writeAttempt(ctx context.Context, notifID uuid.UUID, attemptNum
 		RetryAfter:     retryAfter,
 	}
 	a.ID = id
-	a.CreatedAt = now
-	a.UpdatedAt = now
 	if err := w.attempts.Create(ctx, a); err != nil {
 		slog.ErrorContext(ctx, "write delivery attempt failed", "id", notifID, "error", err)
 	}

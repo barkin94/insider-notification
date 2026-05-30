@@ -9,6 +9,7 @@ import (
 	"github.com/barkin/insider-notification/processor/internal/config"
 	"github.com/barkin/insider-notification/processor/internal/delivery"
 	processordb "github.com/barkin/insider-notification/processor/internal/db"
+	processormetrics "github.com/barkin/insider-notification/processor/internal/metrics"
 	"github.com/barkin/insider-notification/processor/internal/priorityrouter"
 	"github.com/barkin/insider-notification/processor/internal/scheduler"
 	"github.com/barkin/insider-notification/processor/internal/service"
@@ -81,6 +82,13 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 		{Ch: lowMsgs, Weight: cfg.LowWeight},
 	})
 
+	m, err := processormetrics.New(rdb)
+	if err != nil {
+		sub.Close()
+		bundb.Close()
+		return nil, nil, fmt.Errorf("init metrics: %w", err)
+	}
+
 	c := delivery.NewWorker(
 		pub,
 		service.NewDeliveryClient(cfg.WebhookURL, cfg.WebhookTimeout),
@@ -88,6 +96,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 		lock.NewRedisLocker(rdb),
 		service.NewRedisCancellationStore(rdb),
 		attemptRepo,
+		m,
 	)
 
 	notifReader := processordb.NewNotificationReader(bundb)
