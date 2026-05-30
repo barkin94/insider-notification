@@ -159,7 +159,7 @@ func baseEventWithID() stream.NotificationCreatedEvent {
 	return evt
 }
 
-func newConsumer(pub *fakePublisher, dc service.DeliveryClient, lim service.Limiter, cancelled bool, lockGranted bool, attempts delivery.DeliveryAttemptWriter) *delivery.Worker {
+func newConsumer(pub *fakePublisher, dc service.NtfnDeliveryClient, lim service.Limiter, cancelled bool, lockGranted bool, attempts delivery.DeliveryAttemptWriter) *delivery.Worker {
 	m, _ := metrics.New(nil)
 	return delivery.NewWorker(
 		pub,

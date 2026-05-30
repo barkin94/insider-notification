@@ -21,30 +21,30 @@ type DeliveryResult struct {
 }
 
 // DeliveryClient delivers a notification to the webhook provider.
-type DeliveryClient interface {
+type NtfnDeliveryClient interface {
 	Send(ctx context.Context, to, channel, content string) (DeliveryResult, error)
 }
 
-type webhookClient struct {
+type ntfnDeliveryClient struct {
 	http *httpclient.Client
 }
 
-// NewDeliveryClient returns a DeliveryClient that POSTs to webhookURL with the given timeout.
-func NewDeliveryClient(webhookURL string, timeout time.Duration) DeliveryClient {
-	return &webhookClient{
-		http: httpclient.New(webhookURL, httpclient.WithTimeout(timeout)),
+// NewDeliveryClient returns a DeliveryClient that POSTs to notificationProviderURL with the given timeout.
+func NewNtfnDeliveryClient(notificationProviderURL string, timeout time.Duration) NtfnDeliveryClient {
+	return &ntfnDeliveryClient{
+		http: httpclient.New(notificationProviderURL, httpclient.WithTimeout(timeout)),
 	}
 }
 
-type deliveryRequestBody struct {
+type ntfnDeliveryRequestBody struct {
 	To      string `json:"to"`
 	Channel string `json:"channel"`
 	Content string `json:"content"`
 }
 
-func (c *webhookClient) Send(ctx context.Context, to, channel, content string) (DeliveryResult, error) {
+func (c *ntfnDeliveryClient) Send(ctx context.Context, to, channel, content string) (DeliveryResult, error) {
 	start := time.Now()
-	resp, err := c.http.Request(ctx, http.MethodPost, "", deliveryRequestBody{
+	resp, err := c.http.Request(ctx, http.MethodPost, "", ntfnDeliveryRequestBody{
 		To:      to,
 		Channel: channel,
 		Content: content,

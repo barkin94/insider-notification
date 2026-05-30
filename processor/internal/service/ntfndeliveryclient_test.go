@@ -10,8 +10,8 @@ import (
 	"github.com/barkin/insider-notification/processor/internal/service"
 )
 
-func newTestDeliveryClient(serverURL string) service.DeliveryClient {
-	return service.NewDeliveryClient(serverURL, 5*time.Second)
+func newTestDeliveryClient(serverURL string) service.NtfnDeliveryClient {
+	return service.NewNtfnDeliveryClient(serverURL, 5*time.Second)
 }
 
 func TestSend_202_success(t *testing.T) {
@@ -116,7 +116,7 @@ func TestSend_timeout_retryable(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := service.NewDeliveryClient(srv.URL, 50*time.Millisecond)
+	client := service.NewNtfnDeliveryClient(srv.URL, 50*time.Millisecond)
 	result, err := client.Send(context.Background(), "+1", "sms", "test")
 	if err != nil {
 		t.Fatal(err)

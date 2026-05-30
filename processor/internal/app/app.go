@@ -7,8 +7,8 @@ import (
 	"sync"
 
 	"github.com/barkin/insider-notification/processor/internal/config"
-	"github.com/barkin/insider-notification/processor/internal/delivery"
 	processordb "github.com/barkin/insider-notification/processor/internal/db"
+	"github.com/barkin/insider-notification/processor/internal/delivery"
 	processormetrics "github.com/barkin/insider-notification/processor/internal/metrics"
 	"github.com/barkin/insider-notification/processor/internal/priorityrouter"
 	"github.com/barkin/insider-notification/processor/internal/scheduler"
@@ -91,7 +91,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 
 	c := delivery.NewWorker(
 		pub,
-		service.NewDeliveryClient(cfg.WebhookURL, cfg.WebhookTimeout),
+		service.NewNtfnDeliveryClient(cfg.NtfnDeliveryClientURL, cfg.NtfnDeliveryClientTimeout),
 		service.NewLimiter(rdb),
 		lock.NewRedisLocker(rdb),
 		service.NewRedisCancellationStore(rdb),

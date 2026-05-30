@@ -40,7 +40,7 @@ var topicByPriority = map[string]string{
 // Worker reads notification events from a MessageSource and delivers them.
 type Worker struct {
 	pub            stream.Publisher
-	deliveryClient service.DeliveryClient
+	deliveryClient service.NtfnDeliveryClient
 	limiter        service.Limiter
 	locker         lock.Locker
 	cancel         CancellationStore
@@ -50,7 +50,7 @@ type Worker struct {
 
 func NewWorker(
 	pub stream.Publisher,
-	deliveryClient service.DeliveryClient,
+	deliveryClient service.NtfnDeliveryClient,
 	limiter service.Limiter,
 	locker lock.Locker,
 	cancel CancellationStore,

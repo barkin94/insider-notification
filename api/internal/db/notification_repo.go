@@ -13,6 +13,8 @@ import (
 
 type bunNotificationRepo struct{ db *bun.DB }
 
+var _ NotificationRepository = (*bunNotificationRepo)(nil)
+
 func NewNotificationRepository(db *bun.DB) NotificationRepository {
 	return &bunNotificationRepo{db: db}
 }
