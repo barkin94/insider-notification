@@ -20,8 +20,8 @@ import (
 // App wires and runs the processor service.
 type App struct {
 	scheduler   *scheduler.Scheduler
-	pipeline    *delivery.NotificationDeliveryPipeline
-	router      *delivery.PriorityRouter[stream.Result[stream.NotificationCreatedEvent]]
+	pipeline    *delivery.NotificationDeliveryPipelineWorker
+	router      *delivery.PriorityRouter[stream.Result[stream.NotificationReadyEvent]]
 	concurrency int
 }
 
@@ -55,26 +55,26 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 
 	// TODO: PEL reclaim before workers start (priority-router task)
 
-	highMsgs, err := stream.Subscribe[stream.NotificationCreatedEvent](ctx, sub, stream.TopicHigh, cfg.OTelServiceName)
+	highMsgs, err := stream.Subscribe[stream.NotificationReadyEvent](ctx, sub, stream.TopicHigh, cfg.OTelServiceName)
 	if err != nil {
 		sub.Close()
 		bundb.Close()
 		return nil, nil, fmt.Errorf("subscribe high: %w", err)
 	}
-	normalMsgs, err := stream.Subscribe[stream.NotificationCreatedEvent](ctx, sub, stream.TopicNormal, cfg.OTelServiceName)
+	normalMsgs, err := stream.Subscribe[stream.NotificationReadyEvent](ctx, sub, stream.TopicNormal, cfg.OTelServiceName)
 	if err != nil {
 		sub.Close()
 		bundb.Close()
 		return nil, nil, fmt.Errorf("subscribe normal: %w", err)
 	}
-	lowMsgs, err := stream.Subscribe[stream.NotificationCreatedEvent](ctx, sub, stream.TopicLow, cfg.OTelServiceName)
+	lowMsgs, err := stream.Subscribe[stream.NotificationReadyEvent](ctx, sub, stream.TopicLow, cfg.OTelServiceName)
 	if err != nil {
 		sub.Close()
 		bundb.Close()
 		return nil, nil, fmt.Errorf("subscribe low: %w", err)
 	}
 
-	router := delivery.NewPriorityRouter([]delivery.WeightedSource[stream.Result[stream.NotificationCreatedEvent]]{
+	router := delivery.NewPriorityRouter([]delivery.WeightedSource[stream.Result[stream.NotificationReadyEvent]]{
 		{Ch: highMsgs, Weight: cfg.HighWeight},
 		{Ch: normalMsgs, Weight: cfg.NormalWeight},
 		{Ch: lowMsgs, Weight: cfg.LowWeight},
@@ -87,18 +87,16 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 		return nil, nil, fmt.Errorf("init metrics: %w", err)
 	}
 
-	pipeline := delivery.NewNotificationDeliveryPipeline(
+	pipeline := delivery.NewNotificationDeliveryPipelineWorker(
 		pub,
 		service.NewNtfnDeliveryClient(cfg.NtfnDeliveryClientURL, cfg.NtfnDeliveryClientTimeout),
 		service.NewLimiter(rdb),
 		lock.NewRedisLocker(rdb),
-		service.NewRedisCancellationStore(rdb),
 		attemptRepo,
 		m,
 	)
 
-	notifReader := processordb.NewNotificationReader(bundb)
-	sched := scheduler.New(notifReader, attemptRepo, pub, cfg.SchedulerInterval)
+	sched := scheduler.New(attemptRepo, pub, cfg.SchedulerInterval)
 
 	cleanup := func() {
 		sub.Close()

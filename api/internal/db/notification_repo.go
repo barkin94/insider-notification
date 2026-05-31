@@ -5,11 +5,40 @@ import (
 	"database/sql"
 	"errors"
 	"strings"
+	"time"
 
 	apimodel "github.com/barkin/insider-notification/api/internal/model"
 	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 )
+
+// ListFilter holds query parameters for listing notifications.
+// Set CursorID for keyset pagination; leave nil for offset pagination.
+type ListFilter struct {
+	Status   string
+	Channel  string
+	BatchID  *uuid.UUID
+	DateFrom *time.Time
+	DateTo   *time.Time
+	PageSize int
+	// keyset pagination — takes precedence over Page/Sort/Order when set
+	CursorID *uuid.UUID
+	// offset pagination
+	Page  int
+	Sort  string
+	Order string
+}
+
+// NotificationRepository is the port for notification persistence.
+type NotificationRepository interface {
+	Create(ctx context.Context, n *apimodel.Notification) error
+	GetByID(ctx context.Context, id uuid.UUID) (*apimodel.Notification, error)
+	List(ctx context.Context, f ListFilter) ([]*apimodel.Notification, int, *uuid.UUID, error)
+	Transition(ctx context.Context, id uuid.UUID, from, to string) (*apimodel.Notification, error)
+	IncrementAttempts(ctx context.Context, id uuid.UUID) error
+	UpdateStatus(ctx context.Context, id uuid.UUID, status string) error
+	FindScheduledDue(ctx context.Context) ([]*apimodel.Notification, error)
+}
 
 type bunNotificationRepo struct{ db *bun.DB }
 
@@ -57,6 +86,19 @@ func (r *bunNotificationRepo) UpdateStatus(ctx context.Context, id uuid.UUID, st
 		`UPDATE notifications SET status = ?, updated_at = NOW() WHERE id = ?`, status, id,
 	).Exec(ctx)
 	return err
+}
+
+func (r *bunNotificationRepo) FindScheduledDue(ctx context.Context) ([]*apimodel.Notification, error) {
+	var rows []*apimodel.Notification
+	err := r.db.NewSelect().
+		Model(&rows).
+		Where("deliver_after IS NOT NULL").
+		Where("deliver_after <= NOW()").
+		Where("status = 'pending'").
+		OrderExpr("deliver_after ASC").
+		Limit(500).
+		Scan(ctx)
+	return rows, err
 }
 
 func applyFilters(q *bun.SelectQuery, f ListFilter) *bun.SelectQuery {

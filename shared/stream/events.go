@@ -1,22 +1,15 @@
 package stream
 
-// NotificationCreatedEvent is published to a priority stream when the API
-// creates a notification. Trace context travels in message.Metadata.
-type NotificationCreatedEvent struct {
+// NotificationReadyEvent is published to a priority stream when a notification
+// is ready to be delivered immediately. Trace context travels in message.Metadata.
+type NotificationReadyEvent struct {
 	NotificationID string
 	Channel        string
 	Recipient      string
 	Content        string
 	Priority       string
 	MaxAttempts    int
-	DeliverAfter   string // RFC3339 or empty
 	Metadata       string // JSON string, "{}" if absent
-}
-
-// NotificationCancelledEvent is published to the cancellation stream by the API
-// when a notification is cancelled. The Processor consumes this to skip in-flight delivery.
-type NotificationCancelledEvent struct {
-	NotificationID string
 }
 
 // NotificationDeliveryResultEvent is published to the status stream by the

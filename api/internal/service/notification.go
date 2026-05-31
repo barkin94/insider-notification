@@ -140,25 +140,19 @@ func (s *notificationService) Create(ctx context.Context, req CreateRequest) (*a
 		return nil, fmt.Errorf("create notification: %w", err)
 	}
 
-	deliverAfter := ""
-	if n.DeliverAfter != nil {
-		deliverAfter = n.DeliverAfter.Format(time.RFC3339)
-	}
-
-	evt := stream.NotificationCreatedEvent{
-		NotificationID: n.ID.String(),
-		Channel:        n.Channel,
-		Recipient:      n.Recipient,
-		Content:        n.Content,
-		Priority:       n.Priority,
-		MaxAttempts:    n.MaxAttempts,
-		DeliverAfter:   deliverAfter,
-		Metadata:       string(n.Metadata),
-	}
-
-	topic := topicByPriority[priority]
-	if err := s.publisher.Publish(ctx, topic, evt); err != nil {
-		return nil, fmt.Errorf("publish event: %w", err)
+	if n.DeliverAfter == nil {
+		evt := stream.NotificationReadyEvent{
+			NotificationID: n.ID.String(),
+			Channel:        n.Channel,
+			Recipient:      n.Recipient,
+			Content:        n.Content,
+			Priority:       n.Priority,
+			MaxAttempts:    n.MaxAttempts,
+			Metadata:       string(n.Metadata),
+		}
+		if err := s.publisher.Publish(ctx, topicByPriority[priority], evt); err != nil {
+			return nil, fmt.Errorf("publish event: %w", err)
+		}
 	}
 
 	return n, nil
@@ -173,13 +167,7 @@ func (s *notificationService) List(ctx context.Context, filter db.ListFilter) ([
 }
 
 func (s *notificationService) Cancel(ctx context.Context, id uuid.UUID) (*apimodel.Notification, error) {
-	n, err := s.repo.Transition(ctx, id, model.StatusPending, model.StatusCancelled)
-	if err != nil {
-		return nil, err
-	}
-	evt := stream.NotificationCancelledEvent{NotificationID: id.String()}
-	_ = s.publisher.Publish(ctx, stream.TopicCancellation, evt)
-	return n, nil
+	return s.repo.Transition(ctx, id, model.StatusPending, model.StatusCancelled)
 }
 
 func (s *notificationService) CreateBatch(ctx context.Context, reqs []CreateRequest) (uuid.UUID, []BatchResult, error) {
@@ -236,25 +224,19 @@ func (s *notificationService) createWithBatchID(ctx context.Context, req CreateR
 		return nil, fmt.Errorf("create notification: %w", err)
 	}
 
-	deliverAfter := ""
-	if n.DeliverAfter != nil {
-		deliverAfter = n.DeliverAfter.Format(time.RFC3339)
-	}
-
-	evt := stream.NotificationCreatedEvent{
-		NotificationID: n.ID.String(),
-		Channel:        n.Channel,
-		Recipient:      n.Recipient,
-		Content:        n.Content,
-		Priority:       n.Priority,
-		MaxAttempts:    n.MaxAttempts,
-		DeliverAfter:   deliverAfter,
-		Metadata:       string(n.Metadata),
-	}
-
-	topic := topicByPriority[priority]
-	if err := s.publisher.Publish(ctx, topic, evt); err != nil {
-		return nil, fmt.Errorf("publish event: %w", err)
+	if n.DeliverAfter == nil {
+		evt := stream.NotificationReadyEvent{
+			NotificationID: n.ID.String(),
+			Channel:        n.Channel,
+			Recipient:      n.Recipient,
+			Content:        n.Content,
+			Priority:       n.Priority,
+			MaxAttempts:    n.MaxAttempts,
+			Metadata:       string(n.Metadata),
+		}
+		if err := s.publisher.Publish(ctx, topicByPriority[priority], evt); err != nil {
+			return nil, fmt.Errorf("publish event: %w", err)
+		}
 	}
 
 	return n, nil

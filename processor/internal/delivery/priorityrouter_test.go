@@ -10,10 +10,10 @@ import (
 )
 
 // result aliases the concrete type to keep test lines short.
-type result = stream.Result[stream.NotificationCreatedEvent]
+type result = stream.Result[stream.NotificationReadyEvent]
 
 func makeResult(priority string) result {
-	return result{Event: stream.NotificationCreatedEvent{Priority: priority}}
+	return result{Event: stream.NotificationReadyEvent{Priority: priority}}
 }
 
 func filledChan(results []result) <-chan result {

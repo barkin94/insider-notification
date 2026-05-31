@@ -12,6 +12,7 @@ import (
 	"github.com/barkin/insider-notification/api/internal/consumer"
 	"github.com/barkin/insider-notification/api/internal/db"
 	"github.com/barkin/insider-notification/api/internal/handler"
+	apischeduler "github.com/barkin/insider-notification/api/internal/scheduler"
 	"github.com/barkin/insider-notification/api/internal/service"
 	shareddb "github.com/barkin/insider-notification/shared/db"
 	sharedredis "github.com/barkin/insider-notification/shared/redis"
@@ -21,6 +22,7 @@ import (
 // App wires and runs the API service.
 type App struct {
 	server     *http.Server
+	scheduler  *apischeduler.Scheduler
 	consumer   *consumer.StatusConsumer
 	statusMsgs <-chan stream.Result[stream.NotificationDeliveryResultEvent]
 }
@@ -76,20 +78,24 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 
 	return &App{
 		server:     srv,
+		scheduler:  apischeduler.New(notifRepo, pub, cfg.SchedulerInterval),
 		consumer:   consumer.NewStatusConsumer(notifRepo),
 		statusMsgs: statusMsgs,
 	}, cleanup, nil
 }
 
-// Run starts the HTTP server and status consumer, blocks until ctx is cancelled,
-// then gracefully shuts down.
+// Run starts the HTTP server, scheduler, and status consumer, blocks until ctx
+// is cancelled, then gracefully shuts down.
 func (a *App) Run(ctx context.Context) {
 	var wg sync.WaitGroup
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		a.consumer.Run(ctx, a.statusMsgs)
 	}()
+
+	go a.scheduler.Run(ctx)
 
 	go func() {
 		slog.Info("api server starting", "addr", a.server.Addr)

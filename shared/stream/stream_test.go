@@ -83,12 +83,12 @@ func TestPublisher_routesToCorrectTopic(t *testing.T) {
 		pub := newPublisher(t)
 		sub := newSubscriber(t, "test-cg-"+tc.priority)
 
-		msgs, err := stream.Subscribe[stream.NotificationCreatedEvent](ctx, sub, tc.topic, "test")
+		msgs, err := stream.Subscribe[stream.NotificationReadyEvent](ctx, sub, tc.topic, "test")
 		if err != nil {
 			t.Fatalf("subscribe: %v", err)
 		}
 
-		evt := stream.NotificationCreatedEvent{
+		evt := stream.NotificationReadyEvent{
 			NotificationID: "id-" + tc.priority,
 			Channel:        "sms",
 			Recipient:      "+1555",

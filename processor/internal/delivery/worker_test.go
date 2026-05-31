@@ -5,7 +5,6 @@ import (
 	"errors"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -53,12 +52,6 @@ func (f *fakePublisher) topicsPublished() []string {
 	return topics
 }
 
-type fakeCancellationStore struct{ cancelled bool }
-
-func (f *fakeCancellationStore) IsCancelled(_ context.Context, _ string) (bool, error) {
-	return f.cancelled, nil
-}
-
 type fakeLocker struct{ locked bool }
 
 func (f *fakeLocker) TryLock(_ context.Context, _ string) (bool, error) { return f.locked, nil }
@@ -99,10 +92,8 @@ func (m *mockAttemptWriter) CountByNotificationID(_ context.Context, _ uuid.UUID
 	return m.countResult, nil
 }
 
-// FindDueRetries implements [db.DeliveryAttemptRepository].
-func (m *mockAttemptWriter) FindDueRetries(ctx context.Context) ([]*processordb.DeliveryAttempt, error) {
+func (m *mockAttemptWriter) FindDueRetries(_ context.Context) ([]*processordb.DeliveryAttempt, error) {
 	return nil, nil
-	//panic("unimplemented")
 }
 
 func (m *mockAttemptWriter) recorded() []*processordb.DeliveryAttempt {
@@ -116,10 +107,10 @@ func (m *mockAttemptWriter) recorded() []*processordb.DeliveryAttempt {
 // --- helpers ---
 
 // runSingle delivers one event through p and returns the watermill message for Ack/Nack inspection.
-func runSingle(p *delivery.NotificationDeliveryPipeline, evt stream.NotificationCreatedEvent) *message.Message {
+func runSingle(p *delivery.NotificationDeliveryPipelineWorker, evt stream.NotificationReadyEvent) *message.Message {
 	ctx := context.Background()
 	msg := message.NewMessage(watermill.NewUUID(), nil)
-	result := stream.Result[stream.NotificationCreatedEvent]{
+	result := stream.Result[stream.NotificationReadyEvent]{
 		Ctx:   ctx,
 		Event: evt,
 		Msg:   msg,
@@ -130,31 +121,31 @@ func runSingle(p *delivery.NotificationDeliveryPipeline, evt stream.Notification
 
 const baseNotifID = "00000000-0000-0000-0000-000000000001"
 
-func baseEvent() stream.NotificationCreatedEvent {
-	return stream.NotificationCreatedEvent{
+func baseEvent() stream.NotificationReadyEvent {
+	return stream.NotificationReadyEvent{
 		NotificationID: baseNotifID,
 		Priority:       model.PriorityHigh,
 		Channel:        model.ChannelEmail,
 		Recipient:      "+905551234567",
 		Content:        "Your message",
 		MaxAttempts:    4,
+		Metadata:       "{}",
 	}
 }
 
-func baseEventWithID() stream.NotificationCreatedEvent {
+func baseEventWithID() stream.NotificationReadyEvent {
 	evt := baseEvent()
 	evt.NotificationID = uuid.New().String()
 	return evt
 }
 
-func newPipeline(pub *fakePublisher, dc service.NtfnDeliveryClient, lim service.Limiter, cancelled bool, lockGranted bool, attempts processordb.DeliveryAttemptRepository) *delivery.NotificationDeliveryPipeline {
+func newPipeline(pub *fakePublisher, dc service.NtfnDeliveryClient, lim service.Limiter, lockGranted bool, attempts processordb.DeliveryAttemptRepository) *delivery.NotificationDeliveryPipelineWorker {
 	m, _ := service.NewMetrics(nil)
-	return delivery.NewNotificationDeliveryPipeline(
+	return delivery.NewNotificationDeliveryPipelineWorker(
 		pub,
 		dc,
 		lim,
 		&fakeLocker{locked: lockGranted},
-		&fakeCancellationStore{cancelled: cancelled},
 		attempts,
 		m,
 	)
@@ -171,64 +162,10 @@ func isAcked(msg *message.Message) bool {
 
 // --- tests ---
 
-// deliver_after in the future: ACKs and drops; scheduler handles it.
-func TestProcessOne_DeliverAfterFuture(t *testing.T) {
-	pub := &fakePublisher{}
-	c := newPipeline(pub, nil, nil, false, true, nil)
-
-	evt := baseEvent()
-	evt.DeliverAfter = time.Now().Add(10 * time.Minute).UTC().Format(time.RFC3339)
-
-	msg := runSingle(c, evt)
-
-	if !isAcked(msg) {
-		t.Error("expected ACK")
-	}
-	if len(pub.calls()) != 0 {
-		t.Errorf("expected no publishes, got %v", pub.topicsPublished())
-	}
-}
-
-// deliver_after already passed: pipeline continues normally.
-func TestProcessOne_DeliverAfterPast(t *testing.T) {
-	pub := &fakePublisher{}
-	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: false}}
-	lim := &fakeLimiter{allowed: true}
-	c := newPipeline(pub, dc, lim, false, true, nil)
-
-	evt := baseEvent()
-	evt.DeliverAfter = time.Now().Add(-10 * time.Minute).UTC().Format(time.RFC3339)
-
-	msg := runSingle(c, evt)
-
-	if !isAcked(msg) {
-		t.Error("expected ACK")
-	}
-	topics := pub.topicsPublished()
-	if len(topics) != 1 {
-		t.Errorf("expected 1 status publish, got %d: %v", len(topics), topics)
-	}
-}
-
-// Cancelled notification: ACKs immediately, no status published.
-func TestProcessOne_Cancelled(t *testing.T) {
-	pub := &fakePublisher{}
-	c := newPipeline(pub, nil, nil, true, true, nil)
-
-	msg := runSingle(c, baseEvent())
-
-	if !isAcked(msg) {
-		t.Error("expected ACK")
-	}
-	if len(pub.calls()) != 0 {
-		t.Errorf("expected no publishes, got %d", len(pub.calls()))
-	}
-}
-
 // Lock miss: ACKs immediately, no status published.
 func TestProcessOne_LockMiss(t *testing.T) {
 	pub := &fakePublisher{}
-	c := newPipeline(pub, nil, nil, false, false, nil)
+	c := newPipeline(pub, nil, nil, false, nil)
 
 	msg := runSingle(c, baseEvent())
 
@@ -245,7 +182,7 @@ func TestProcessOne_TerminalFailure(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: false}}
 	lim := &fakeLimiter{allowed: true}
-	c := newPipeline(pub, dc, lim, false, true, nil)
+	c := newPipeline(pub, dc, lim, true, nil)
 
 	msg := runSingle(c, baseEvent())
 
@@ -270,7 +207,7 @@ func TestDelivery_delivered(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: true, StatusCode: 202, LatencyMS: 50}}
 	lim := &fakeLimiter{allowed: true}
-	c := newPipeline(pub, dc, lim, false, true, nil)
+	c := newPipeline(pub, dc, lim, true, nil)
 
 	msg := runSingle(c, baseEvent())
 
@@ -296,7 +233,7 @@ func TestDelivery_retryable_writesRetryAfter(t *testing.T) {
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: true, StatusCode: 503}}
 	lim := &fakeLimiter{allowed: true}
 	aw := &mockAttemptWriter{countResult: 0} // first attempt
-	c := newPipeline(pub, dc, lim, false, true, aw)
+	c := newPipeline(pub, dc, lim, true, aw)
 
 	msg := runSingle(c, baseEventWithID())
 
@@ -326,7 +263,7 @@ func TestDelivery_exhausted_failed(t *testing.T) {
 	lim := &fakeLimiter{allowed: true}
 	// 3 prior attempts → currentAttempt=4=MaxAttempts → terminal
 	aw := &mockAttemptWriter{countResult: 3}
-	c := newPipeline(pub, dc, lim, false, true, aw)
+	c := newPipeline(pub, dc, lim, true, aw)
 
 	evt := baseEventWithID()
 	evt.MaxAttempts = 4
@@ -363,7 +300,7 @@ func TestDelivery_nonRetryable_failed(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: false, StatusCode: 400}}
 	lim := &fakeLimiter{allowed: true}
-	c := newPipeline(pub, dc, lim, false, true, nil)
+	c := newPipeline(pub, dc, lim, true, nil)
 
 	msg := runSingle(c, baseEvent())
 
@@ -383,7 +320,7 @@ func TestDelivery_nonRetryable_failed(t *testing.T) {
 // Lock miss: ACKs, no publishes.
 func TestDelivery_lockMiss(t *testing.T) {
 	pub := &fakePublisher{}
-	c := newPipeline(pub, nil, nil, false, false, nil)
+	c := newPipeline(pub, nil, nil, false, nil)
 
 	msg := runSingle(c, baseEvent())
 
@@ -395,29 +332,11 @@ func TestDelivery_lockMiss(t *testing.T) {
 	}
 }
 
-// Future DeliverAfter: ACK and drop; scheduler handles it.
-func TestDelivery_deliverAfter_dropped(t *testing.T) {
-	pub := &fakePublisher{}
-	c := newPipeline(pub, nil, nil, false, true, nil)
-
-	evt := baseEvent()
-	evt.DeliverAfter = time.Now().Add(5 * time.Minute).UTC().Format(time.RFC3339)
-
-	msg := runSingle(c, evt)
-
-	if !isAcked(msg) {
-		t.Error("expected ACK")
-	}
-	if len(pub.calls()) != 0 {
-		t.Errorf("expected no publishes, got %v", pub.topicsPublished())
-	}
-}
-
 // Rate limited: re-enqueues the event unchanged, no status event.
 func TestDelivery_rateLimited_requeued(t *testing.T) {
 	pub := &fakePublisher{}
 	lim := &fakeLimiter{allowed: false}
-	c := newPipeline(pub, nil, lim, false, true, nil)
+	c := newPipeline(pub, nil, lim, true, nil)
 
 	msg := runSingle(c, baseEvent())
 
@@ -431,35 +350,20 @@ func TestDelivery_rateLimited_requeued(t *testing.T) {
 	if calls[0].topic != stream.TopicHigh {
 		t.Errorf("expected re-enqueue to %s, got %s", stream.TopicHigh, calls[0].topic)
 	}
-	if _, ok := calls[0].payload.(stream.NotificationCreatedEvent); !ok {
-		t.Fatal("expected re-enqueue payload to be NotificationCreatedEvent")
-	}
-}
-
-// Cancelled notification: ACKs immediately, no publishes.
-func TestDelivery_cancelled(t *testing.T) {
-	pub := &fakePublisher{}
-	c := newPipeline(pub, nil, nil, true, true, nil)
-
-	msg := runSingle(c, baseEvent())
-
-	if !isAcked(msg) {
-		t.Error("expected ACK")
-	}
-	if len(pub.calls()) != 0 {
-		t.Errorf("expected no publishes, got %d", len(pub.calls()))
+	if _, ok := calls[0].payload.(stream.NotificationReadyEvent); !ok {
+		t.Fatal("expected re-enqueue payload to be NotificationReadyEvent")
 	}
 }
 
 // --- delivery attempt tests ---
 
-// Retryable failure path: attempt written with status=failed and correct attempt number from count.
+// Retryable failure path: attempt written with correct attempt number from count.
 func TestDelivery_attempts_retryable(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: true, StatusCode: 503}}
 	lim := &fakeLimiter{allowed: true}
 	aw := &mockAttemptWriter{countResult: 0} // first attempt
-	c := newPipeline(pub, dc, lim, false, true, aw)
+	c := newPipeline(pub, dc, lim, true, aw)
 
 	evt := baseEventWithID()
 	evt.MaxAttempts = 4
@@ -474,13 +378,13 @@ func TestDelivery_attempts_retryable(t *testing.T) {
 	}
 }
 
-// Terminal failure path: attempt written with status=failed, retry_after nil.
+// Terminal failure path: attempt written with retry_after nil.
 func TestDelivery_attempts_terminal(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: false, StatusCode: 400}}
 	lim := &fakeLimiter{allowed: true}
 	aw := &mockAttemptWriter{}
-	c := newPipeline(pub, dc, lim, false, true, aw)
+	c := newPipeline(pub, dc, lim, true, aw)
 
 	runSingle(c, baseEventWithID())
 
@@ -499,7 +403,7 @@ func TestDelivery_attempts_writeError_doesNotAbort(t *testing.T) {
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: false, StatusCode: 400}}
 	lim := &fakeLimiter{allowed: true}
 	aw := &mockAttemptWriter{err: errTest}
-	c := newPipeline(pub, dc, lim, false, true, aw)
+	c := newPipeline(pub, dc, lim, true, aw)
 
 	msg := runSingle(c, baseEventWithID())
 
@@ -509,6 +413,44 @@ func TestDelivery_attempts_writeError_doesNotAbort(t *testing.T) {
 	calls := pub.calls()
 	if len(calls) != 1 || calls[0].topic != stream.TopicStatus {
 		t.Errorf("expected status publish after write error, got %v", pub.topicsPublished())
+	}
+}
+
+// Attempt payload is populated from the event so the retry scheduler can re-dispatch without DB lookup.
+func TestDelivery_attempts_payloadPersisted(t *testing.T) {
+	pub := &fakePublisher{}
+	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: true, StatusCode: 503}}
+	lim := &fakeLimiter{allowed: true}
+	aw := &mockAttemptWriter{countResult: 0}
+	c := newPipeline(pub, dc, lim, true, aw)
+
+	evt := baseEventWithID()
+	evt.Channel = model.ChannelSMS
+	evt.Recipient = "+905550001"
+	evt.Content = "hello"
+	evt.Metadata = `{"foo":"bar"}`
+	evt.MaxAttempts = 3
+	runSingle(c, evt)
+
+	attempts := aw.recorded()
+	if len(attempts) != 1 {
+		t.Fatalf("expected 1 attempt write, got %d", len(attempts))
+	}
+	a := attempts[0]
+	if a.Channel != model.ChannelSMS {
+		t.Errorf("channel = %q, want sms", a.Channel)
+	}
+	if a.Recipient != "+905550001" {
+		t.Errorf("recipient = %q, want +905550001", a.Recipient)
+	}
+	if a.Content != "hello" {
+		t.Errorf("content = %q, want hello", a.Content)
+	}
+	if a.Metadata != `{"foo":"bar"}` {
+		t.Errorf("metadata = %q, want {\"foo\":\"bar\"}", a.Metadata)
+	}
+	if a.MaxAttempts != 3 {
+		t.Errorf("max_attempts = %d, want 3", a.MaxAttempts)
 	}
 }
 

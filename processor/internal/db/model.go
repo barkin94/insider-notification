@@ -13,4 +13,9 @@ type DeliveryAttempt struct {
 	AttemptNumber      int        `bun:"attempt_number"`
 	Priority           string     `bun:"priority"`
 	RetryAfter         *time.Time `bun:"retry_after"`
+	Channel            string     `bun:"channel"`
+	Recipient          string     `bun:"recipient"`
+	Content            string     `bun:"content"`
+	MaxAttempts        int        `bun:"max_attempts"`
+	Metadata           string     `bun:"metadata"`
 }

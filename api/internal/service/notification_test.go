@@ -46,6 +46,10 @@ func (m *mockNotifRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status s
 	return nil
 }
 
+func (m *mockNotifRepo) FindScheduledDue(_ context.Context) ([]*apimodel.Notification, error) {
+	return nil, nil
+}
+
 // --- mock publisher ---
 
 type mockPublisher struct {
@@ -151,17 +155,13 @@ func TestCreate_publishFailure(t *testing.T) {
 }
 
 func TestCancel_success(t *testing.T) {
-	var gotTopic string
-	svc := newSvc(okRepo(), okPublisher(&gotTopic))
+	svc := newSvc(okRepo(), okPublisher(nil))
 	n, err := svc.Cancel(context.Background(), uuid.New())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if n.Status != model.StatusCancelled {
 		t.Errorf("status = %q, want cancelled", n.Status)
-	}
-	if gotTopic != stream.TopicCancellation {
-		t.Errorf("cancel event published to %q, want %q", gotTopic, stream.TopicCancellation)
 	}
 }
 

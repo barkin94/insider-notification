@@ -29,7 +29,15 @@ func NewDeliveryAttemptRepository(db *bun.DB) DeliveryAttemptRepository {
 
 func (r *bunDeliveryAttemptRepo) Create(ctx context.Context, a *DeliveryAttempt) error {
 	_, err := r.db.NewInsert().Model(a).
-		On("CONFLICT (notification_id) DO UPDATE SET attempt_number = EXCLUDED.attempt_number, retry_after = EXCLUDED.retry_after, updated_at = EXCLUDED.updated_at").
+		On("CONFLICT (notification_id) DO UPDATE").
+		Set("attempt_number = EXCLUDED.attempt_number").
+		Set("retry_after = EXCLUDED.retry_after").
+		Set("channel = EXCLUDED.channel").
+		Set("recipient = EXCLUDED.recipient").
+		Set("content = EXCLUDED.content").
+		Set("max_attempts = EXCLUDED.max_attempts").
+		Set("metadata = EXCLUDED.metadata").
+		Set("updated_at = EXCLUDED.updated_at").
 		Exec(ctx)
 	return err
 }
