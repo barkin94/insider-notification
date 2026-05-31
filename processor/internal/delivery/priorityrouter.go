@@ -1,4 +1,4 @@
-package priorityrouter
+package delivery
 
 import (
 	"context"

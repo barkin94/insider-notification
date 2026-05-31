@@ -22,8 +22,8 @@ type Config struct {
 func Load() *Config {
 	v := shared.NewViper()
 	v.SetDefault("WORKER_CONCURRENCY", 10)
-	v.SetDefault("NOTIFICATION_PROVIDER_URL", "http://localhost:8080")
-	v.SetDefault("NOTIFICATION_PROVIDER_TIMEOUT", "10s")
+	v.SetDefault("NTFN_DELIVERY_CLIENT_URL", "http://localhost:8080")
+	v.SetDefault("NTFN_DELIVERY_CLIENT_TIMEOUT", "10s")
 	v.SetDefault("SCHEDULER_INTERVAL", "5s")
 	v.SetDefault("HIGH_WEIGHT", 3)
 	v.SetDefault("NORMAL_WEIGHT", 2)

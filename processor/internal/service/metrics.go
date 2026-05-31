@@ -1,4 +1,4 @@
-package metrics
+package service
 
 import (
 	"context"
@@ -18,7 +18,7 @@ type metrics struct {
 	latencyHist   metric.Int64Histogram
 }
 
-// MetricsRecorder records delivery outcomes.
+// Metrics is the interface for recording delivery outcomes.
 type Metrics interface {
 	RecordNotificationSent(ctx context.Context, latencyMS int64)
 	RecordNotificationFailed(ctx context.Context, latencyMS int64)
@@ -26,9 +26,9 @@ type Metrics interface {
 
 var _ Metrics = (*metrics)(nil)
 
-// New registers all processor metric instruments against the global MeterProvider.
+// NewMetrics registers all processor metric instruments against the global MeterProvider.
 // rdb is used to poll Redis stream lengths for the queue depth gauge.
-func New(rdb *goredis.Client) (*metrics, error) {
+func NewMetrics(rdb *goredis.Client) (Metrics, error) {
 	meter := otel.Meter("processor")
 
 	sent, err := newSentCounter(meter)

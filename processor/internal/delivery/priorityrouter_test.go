@@ -1,11 +1,11 @@
-package priorityrouter_test
+package delivery_test
 
 import (
 	"context"
 	"testing"
 	"time"
 
-	"github.com/barkin/insider-notification/processor/internal/priorityrouter"
+	"github.com/barkin/insider-notification/processor/internal/delivery"
 	"github.com/barkin/insider-notification/shared/stream"
 )
 
@@ -31,8 +31,8 @@ func emptyChan() <-chan result {
 // newRouter is a convenience wrapper that mirrors the old 3-arg signature used
 // throughout the tests, so each call site stays concise.
 // Weights are passed explicitly — the router package owns no defaults.
-func newRouter(high, normal, low <-chan result, weights [3]int) *priorityrouter.PriorityRouter[result] {
-	return priorityrouter.NewPriorityRouter([]priorityrouter.WeightedSource[result]{
+func newRouter(high, normal, low <-chan result, weights [3]int) *delivery.PriorityRouter[result] {
+	return delivery.NewPriorityRouter([]delivery.WeightedSource[result]{
 		{Ch: high, Weight: weights[0]},
 		{Ch: normal, Weight: weights[1]},
 		{Ch: low, Weight: weights[2]},

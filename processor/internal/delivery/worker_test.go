@@ -11,7 +11,6 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 	processordb "github.com/barkin/insider-notification/processor/internal/db"
 	"github.com/barkin/insider-notification/processor/internal/delivery"
-	"github.com/barkin/insider-notification/processor/internal/metrics"
 	"github.com/barkin/insider-notification/processor/internal/service"
 	"github.com/barkin/insider-notification/shared/model"
 	"github.com/barkin/insider-notification/shared/stream"
@@ -87,6 +86,8 @@ type mockAttemptWriter struct {
 	countResult int
 }
 
+var _ processordb.DeliveryAttemptRepository = (*mockAttemptWriter)(nil)
+
 func (m *mockAttemptWriter) Create(_ context.Context, a *processordb.DeliveryAttempt) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -98,6 +99,12 @@ func (m *mockAttemptWriter) CountByNotificationID(_ context.Context, _ uuid.UUID
 	return m.countResult, nil
 }
 
+// FindDueRetries implements [db.DeliveryAttemptRepository].
+func (m *mockAttemptWriter) FindDueRetries(ctx context.Context) ([]*processordb.DeliveryAttempt, error) {
+	return nil, nil
+	//panic("unimplemented")
+}
+
 func (m *mockAttemptWriter) recorded() []*processordb.DeliveryAttempt {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -106,37 +113,18 @@ func (m *mockAttemptWriter) recorded() []*processordb.DeliveryAttempt {
 	return out
 }
 
-// singleSource feeds exactly one message, then cancels the context so Run exits.
-type singleSource struct {
-	result stream.Result[stream.NotificationCreatedEvent]
-	done   bool
-	cancel context.CancelFunc
-}
-
-func (s *singleSource) Next(_ context.Context) (stream.Result[stream.NotificationCreatedEvent], bool) {
-	if s.done {
-		if s.cancel != nil {
-			s.cancel()
-			s.cancel = nil
-		}
-		return stream.Result[stream.NotificationCreatedEvent]{}, false
-	}
-	s.done = true
-	return s.result, true
-}
-
 // --- helpers ---
 
-// runSingle delivers one event through w and returns the watermill message for Ack/Nack inspection.
-func runSingle(w *delivery.Worker, evt stream.NotificationCreatedEvent) *message.Message {
-	ctx, cancel := context.WithCancel(context.Background())
+// runSingle delivers one event through p and returns the watermill message for Ack/Nack inspection.
+func runSingle(p *delivery.NotificationDeliveryPipeline, evt stream.NotificationCreatedEvent) *message.Message {
+	ctx := context.Background()
 	msg := message.NewMessage(watermill.NewUUID(), nil)
 	result := stream.Result[stream.NotificationCreatedEvent]{
 		Ctx:   ctx,
 		Event: evt,
 		Msg:   msg,
 	}
-	w.Run(ctx, &singleSource{result: result, cancel: cancel})
+	p.Run(ctx, result)
 	return msg
 }
 
@@ -159,9 +147,9 @@ func baseEventWithID() stream.NotificationCreatedEvent {
 	return evt
 }
 
-func newConsumer(pub *fakePublisher, dc service.NtfnDeliveryClient, lim service.Limiter, cancelled bool, lockGranted bool, attempts delivery.DeliveryAttemptWriter) *delivery.Worker {
-	m, _ := metrics.New(nil)
-	return delivery.NewWorker(
+func newPipeline(pub *fakePublisher, dc service.NtfnDeliveryClient, lim service.Limiter, cancelled bool, lockGranted bool, attempts processordb.DeliveryAttemptRepository) *delivery.NotificationDeliveryPipeline {
+	m, _ := service.NewMetrics(nil)
+	return delivery.NewNotificationDeliveryPipeline(
 		pub,
 		dc,
 		lim,
@@ -186,7 +174,7 @@ func isAcked(msg *message.Message) bool {
 // deliver_after in the future: ACKs and drops; scheduler handles it.
 func TestProcessOne_DeliverAfterFuture(t *testing.T) {
 	pub := &fakePublisher{}
-	c := newConsumer(pub, nil, nil, false, true, nil)
+	c := newPipeline(pub, nil, nil, false, true, nil)
 
 	evt := baseEvent()
 	evt.DeliverAfter = time.Now().Add(10 * time.Minute).UTC().Format(time.RFC3339)
@@ -206,7 +194,7 @@ func TestProcessOne_DeliverAfterPast(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: false}}
 	lim := &fakeLimiter{allowed: true}
-	c := newConsumer(pub, dc, lim, false, true, nil)
+	c := newPipeline(pub, dc, lim, false, true, nil)
 
 	evt := baseEvent()
 	evt.DeliverAfter = time.Now().Add(-10 * time.Minute).UTC().Format(time.RFC3339)
@@ -225,7 +213,7 @@ func TestProcessOne_DeliverAfterPast(t *testing.T) {
 // Cancelled notification: ACKs immediately, no status published.
 func TestProcessOne_Cancelled(t *testing.T) {
 	pub := &fakePublisher{}
-	c := newConsumer(pub, nil, nil, true, true, nil)
+	c := newPipeline(pub, nil, nil, true, true, nil)
 
 	msg := runSingle(c, baseEvent())
 
@@ -240,7 +228,7 @@ func TestProcessOne_Cancelled(t *testing.T) {
 // Lock miss: ACKs immediately, no status published.
 func TestProcessOne_LockMiss(t *testing.T) {
 	pub := &fakePublisher{}
-	c := newConsumer(pub, nil, nil, false, false, nil)
+	c := newPipeline(pub, nil, nil, false, false, nil)
 
 	msg := runSingle(c, baseEvent())
 
@@ -257,7 +245,7 @@ func TestProcessOne_TerminalFailure(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: false}}
 	lim := &fakeLimiter{allowed: true}
-	c := newConsumer(pub, dc, lim, false, true, nil)
+	c := newPipeline(pub, dc, lim, false, true, nil)
 
 	msg := runSingle(c, baseEvent())
 
@@ -282,7 +270,7 @@ func TestDelivery_delivered(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: true, StatusCode: 202, LatencyMS: 50}}
 	lim := &fakeLimiter{allowed: true}
-	c := newConsumer(pub, dc, lim, false, true, nil)
+	c := newPipeline(pub, dc, lim, false, true, nil)
 
 	msg := runSingle(c, baseEvent())
 
@@ -308,7 +296,7 @@ func TestDelivery_retryable_writesRetryAfter(t *testing.T) {
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: true, StatusCode: 503}}
 	lim := &fakeLimiter{allowed: true}
 	aw := &mockAttemptWriter{countResult: 0} // first attempt
-	c := newConsumer(pub, dc, lim, false, true, aw)
+	c := newPipeline(pub, dc, lim, false, true, aw)
 
 	msg := runSingle(c, baseEventWithID())
 
@@ -338,7 +326,7 @@ func TestDelivery_exhausted_failed(t *testing.T) {
 	lim := &fakeLimiter{allowed: true}
 	// 3 prior attempts → currentAttempt=4=MaxAttempts → terminal
 	aw := &mockAttemptWriter{countResult: 3}
-	c := newConsumer(pub, dc, lim, false, true, aw)
+	c := newPipeline(pub, dc, lim, false, true, aw)
 
 	evt := baseEventWithID()
 	evt.MaxAttempts = 4
@@ -375,7 +363,7 @@ func TestDelivery_nonRetryable_failed(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: false, StatusCode: 400}}
 	lim := &fakeLimiter{allowed: true}
-	c := newConsumer(pub, dc, lim, false, true, nil)
+	c := newPipeline(pub, dc, lim, false, true, nil)
 
 	msg := runSingle(c, baseEvent())
 
@@ -395,7 +383,7 @@ func TestDelivery_nonRetryable_failed(t *testing.T) {
 // Lock miss: ACKs, no publishes.
 func TestDelivery_lockMiss(t *testing.T) {
 	pub := &fakePublisher{}
-	c := newConsumer(pub, nil, nil, false, false, nil)
+	c := newPipeline(pub, nil, nil, false, false, nil)
 
 	msg := runSingle(c, baseEvent())
 
@@ -410,7 +398,7 @@ func TestDelivery_lockMiss(t *testing.T) {
 // Future DeliverAfter: ACK and drop; scheduler handles it.
 func TestDelivery_deliverAfter_dropped(t *testing.T) {
 	pub := &fakePublisher{}
-	c := newConsumer(pub, nil, nil, false, true, nil)
+	c := newPipeline(pub, nil, nil, false, true, nil)
 
 	evt := baseEvent()
 	evt.DeliverAfter = time.Now().Add(5 * time.Minute).UTC().Format(time.RFC3339)
@@ -429,7 +417,7 @@ func TestDelivery_deliverAfter_dropped(t *testing.T) {
 func TestDelivery_rateLimited_requeued(t *testing.T) {
 	pub := &fakePublisher{}
 	lim := &fakeLimiter{allowed: false}
-	c := newConsumer(pub, nil, lim, false, true, nil)
+	c := newPipeline(pub, nil, lim, false, true, nil)
 
 	msg := runSingle(c, baseEvent())
 
@@ -451,7 +439,7 @@ func TestDelivery_rateLimited_requeued(t *testing.T) {
 // Cancelled notification: ACKs immediately, no publishes.
 func TestDelivery_cancelled(t *testing.T) {
 	pub := &fakePublisher{}
-	c := newConsumer(pub, nil, nil, true, true, nil)
+	c := newPipeline(pub, nil, nil, true, true, nil)
 
 	msg := runSingle(c, baseEvent())
 
@@ -471,7 +459,7 @@ func TestDelivery_attempts_retryable(t *testing.T) {
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: true, StatusCode: 503}}
 	lim := &fakeLimiter{allowed: true}
 	aw := &mockAttemptWriter{countResult: 0} // first attempt
-	c := newConsumer(pub, dc, lim, false, true, aw)
+	c := newPipeline(pub, dc, lim, false, true, aw)
 
 	evt := baseEventWithID()
 	evt.MaxAttempts = 4
@@ -492,7 +480,7 @@ func TestDelivery_attempts_terminal(t *testing.T) {
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: false, StatusCode: 400}}
 	lim := &fakeLimiter{allowed: true}
 	aw := &mockAttemptWriter{}
-	c := newConsumer(pub, dc, lim, false, true, aw)
+	c := newPipeline(pub, dc, lim, false, true, aw)
 
 	runSingle(c, baseEventWithID())
 
@@ -511,7 +499,7 @@ func TestDelivery_attempts_writeError_doesNotAbort(t *testing.T) {
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: false, StatusCode: 400}}
 	lim := &fakeLimiter{allowed: true}
 	aw := &mockAttemptWriter{err: errTest}
-	c := newConsumer(pub, dc, lim, false, true, aw)
+	c := newPipeline(pub, dc, lim, false, true, aw)
 
 	msg := runSingle(c, baseEventWithID())
 

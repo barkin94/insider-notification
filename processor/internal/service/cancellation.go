@@ -9,7 +9,14 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// CancellationStore checks whether a notification has been cancelled by the API.
+type CancellationStore interface {
+	IsCancelled(ctx context.Context, id string) (bool, error)
+}
+
 type redisCancellationStore struct{ client *redis.Client }
+
+var _ CancellationStore = (*redisCancellationStore)(nil)
 
 func NewRedisCancellationStore(client *redis.Client) *redisCancellationStore {
 	return &redisCancellationStore{client: client}

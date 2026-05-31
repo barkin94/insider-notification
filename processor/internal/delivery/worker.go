@@ -6,7 +6,6 @@ import (
 	"time"
 
 	processordb "github.com/barkin/insider-notification/processor/internal/db"
-	"github.com/barkin/insider-notification/processor/internal/metrics"
 	"github.com/barkin/insider-notification/processor/internal/service"
 	"github.com/barkin/insider-notification/shared/lock"
 	"github.com/barkin/insider-notification/shared/model"
@@ -15,49 +14,35 @@ import (
 	"go.opentelemetry.io/otel"
 )
 
-// MessageSource is implemented by PriorityRouter.
-type MessageSource interface {
-	Next(ctx context.Context) (stream.Result[stream.NotificationCreatedEvent], bool)
-}
-
-// CancellationStore checks whether a notification has been cancelled by the API.
-type CancellationStore interface {
-	IsCancelled(ctx context.Context, id string) (bool, error)
-}
-
-// DeliveryAttemptWriter persists and counts delivery attempt records.
-type DeliveryAttemptWriter interface {
-	Create(ctx context.Context, a *processordb.DeliveryAttempt) error
-	CountByNotificationID(ctx context.Context, id uuid.UUID) (int, error)
-}
-
 var topicByPriority = map[string]string{
 	model.PriorityHigh:   stream.TopicHigh,
 	model.PriorityNormal: stream.TopicNormal,
 	model.PriorityLow:    stream.TopicLow,
 }
 
-// Worker reads notification events from a MessageSource and delivers them.
-type Worker struct {
+// NotificationDeliveryPipeline runs a single notification event through each
+// gate in sequence: premature check, cancellation, locking, rate limiting,
+// delivery, and outcome recording.
+type NotificationDeliveryPipeline struct {
 	pub            stream.Publisher
 	deliveryClient service.NtfnDeliveryClient
 	limiter        service.Limiter
 	locker         lock.Locker
-	cancel         CancellationStore
-	attempts       DeliveryAttemptWriter
-	metrics        metrics.Metrics
+	cancel         service.CancellationStore
+	attempts       processordb.DeliveryAttemptRepository
+	metrics        service.Metrics
 }
 
-func NewWorker(
+func NewNotificationDeliveryPipeline(
 	pub stream.Publisher,
 	deliveryClient service.NtfnDeliveryClient,
 	limiter service.Limiter,
 	locker lock.Locker,
-	cancel CancellationStore,
-	attempts DeliveryAttemptWriter,
-	m metrics.Metrics,
-) *Worker {
-	return &Worker{
+	cancel service.CancellationStore,
+	attempts processordb.DeliveryAttemptRepository,
+	m service.Metrics,
+) *NotificationDeliveryPipeline {
+	return &NotificationDeliveryPipeline{
 		pub:            pub,
 		deliveryClient: deliveryClient,
 		limiter:        limiter,
@@ -68,35 +53,20 @@ func NewWorker(
 	}
 }
 
-// Run calls src.Next in a tight loop until ctx is cancelled.
-func (w *Worker) Run(ctx context.Context, src MessageSource) {
-	for ctx.Err() == nil {
-		result, ok := src.Next(ctx)
-		if !ok {
-			continue
-		}
-		if result.Err != nil {
-			slog.ErrorContext(result.Ctx, "stream read error", "error", result.Err)
-			continue
-		}
-		w.deliver(result.Ctx, result)
-	}
-}
-
-// deliver runs the notification through each gate in sequence.
-// Gates own their logging; deliver owns Ack/Nack.
-func (w *Worker) deliver(ctx context.Context, result stream.Result[stream.NotificationCreatedEvent]) {
+// Run runs the notification through each gate in sequence.
+// Gates own their logging; Run owns Ack/Nack.
+func (p *NotificationDeliveryPipeline) Run(ctx context.Context, result stream.Result[stream.NotificationCreatedEvent]) {
 	ctx, span := otel.Tracer("processor").Start(ctx, "deliver")
 	defer span.End()
 
 	evt, msg := result.Event, result.Msg
 
-	if w.isPremature(evt) {
+	if p.isPremature(evt) {
 		msg.Ack()
 		return
 	}
 
-	cancelled, err := w.isCancelled(ctx, evt.NotificationID)
+	cancelled, err := p.isCancelled(ctx, evt.NotificationID)
 	if err != nil {
 		msg.Nack()
 		return
@@ -106,7 +76,7 @@ func (w *Worker) deliver(ctx context.Context, result stream.Result[stream.Notifi
 		return
 	}
 
-	locked, err := w.locker.TryLock(ctx, evt.NotificationID)
+	locked, err := p.locker.TryLock(ctx, evt.NotificationID)
 	if err != nil {
 		slog.ErrorContext(ctx, "lock error", "id", evt.NotificationID, "error", err)
 		msg.Nack()
@@ -117,9 +87,9 @@ func (w *Worker) deliver(ctx context.Context, result stream.Result[stream.Notifi
 		msg.Ack()
 		return
 	}
-	defer w.locker.Unlock(ctx, evt.NotificationID) //nolint:errcheck
+	defer p.locker.Unlock(ctx, evt.NotificationID) //nolint:errcheck
 
-	limited, err := w.applyRateLimit(ctx, evt)
+	limited, err := p.applyRateLimit(ctx, evt)
 	if err != nil {
 		msg.Nack()
 		return
@@ -135,26 +105,26 @@ func (w *Worker) deliver(ctx context.Context, result stream.Result[stream.Notifi
 		msg.Nack()
 		return
 	}
-	currentAttempt := w.countPriorAttempts(ctx, notifID) + 1
+	currentAttempt := p.countPriorAttempts(ctx, notifID) + 1
 
-	dr, err := w.deliveryClient.Send(ctx, evt.Recipient, evt.Channel, evt.Content)
+	dr, err := p.deliveryClient.Send(ctx, evt.Recipient, evt.Channel, evt.Content)
 	if err != nil {
 		slog.ErrorContext(ctx, "delivery transport error", "id", evt.NotificationID, "error", err)
 		msg.Nack()
 		return
 	}
 
-	w.recordOutcome(ctx, evt, dr, notifID, currentAttempt)
+	p.recordOutcome(ctx, evt, dr, notifID, currentAttempt)
 	msg.Ack()
 }
 
 // countPriorAttempts returns the number of persisted delivery attempts for the
 // notification. Returns 0 if the writer is nil (test convenience) or on error.
-func (w *Worker) countPriorAttempts(ctx context.Context, id uuid.UUID) int {
-	if w.attempts == nil {
+func (p *NotificationDeliveryPipeline) countPriorAttempts(ctx context.Context, id uuid.UUID) int {
+	if p.attempts == nil {
 		return 0
 	}
-	n, err := w.attempts.CountByNotificationID(ctx, id)
+	n, err := p.attempts.CountByNotificationID(ctx, id)
 	if err != nil {
 		slog.ErrorContext(ctx, "count prior attempts failed", "id", id, "error", err)
 		return 0
@@ -163,7 +133,7 @@ func (w *Worker) countPriorAttempts(ctx context.Context, id uuid.UUID) int {
 }
 
 // isPremature reports whether the event's deliver_after has not yet passed.
-func (w *Worker) isPremature(evt stream.NotificationCreatedEvent) bool {
+func (p *NotificationDeliveryPipeline) isPremature(evt stream.NotificationCreatedEvent) bool {
 	if evt.DeliverAfter == "" {
 		return false
 	}
@@ -172,8 +142,8 @@ func (w *Worker) isPremature(evt stream.NotificationCreatedEvent) bool {
 }
 
 // isCancelled reports whether the notification was cancelled by the API.
-func (w *Worker) isCancelled(ctx context.Context, id string) (bool, error) {
-	cancelled, err := w.cancel.IsCancelled(ctx, id)
+func (p *NotificationDeliveryPipeline) isCancelled(ctx context.Context, id string) (bool, error) {
+	cancelled, err := p.cancel.IsCancelled(ctx, id)
 	if err != nil {
 		slog.ErrorContext(ctx, "cancellation check error", "id", id, "error", err)
 		return false, err
@@ -186,8 +156,8 @@ func (w *Worker) isCancelled(ctx context.Context, id string) (bool, error) {
 
 // applyRateLimit checks the channel's token bucket. If exhausted, it re-enqueues
 // the event and returns limited=true so the caller can Ack and move on.
-func (w *Worker) applyRateLimit(ctx context.Context, evt stream.NotificationCreatedEvent) (limited bool, err error) {
-	allowed, err := w.limiter.Allow(ctx, evt.Channel)
+func (p *NotificationDeliveryPipeline) applyRateLimit(ctx context.Context, evt stream.NotificationCreatedEvent) (limited bool, err error) {
+	allowed, err := p.limiter.Allow(ctx, evt.Channel)
 	if err != nil {
 		slog.ErrorContext(ctx, "rate limit error", "id", evt.NotificationID, "error", err)
 		return false, err
@@ -196,7 +166,7 @@ func (w *Worker) applyRateLimit(ctx context.Context, evt stream.NotificationCrea
 		return false, nil
 	}
 	slog.InfoContext(ctx, "rate limited, re-enqueuing", "id", evt.NotificationID, "channel", evt.Channel)
-	if err := w.pub.Publish(ctx, topicByPriority[evt.Priority], evt); err != nil {
+	if err := p.pub.Publish(ctx, topicByPriority[evt.Priority], evt); err != nil {
 		slog.ErrorContext(ctx, "re-enqueue rate-limited failed", "id", evt.NotificationID, "error", err)
 		return false, err
 	}
@@ -207,12 +177,12 @@ func (w *Worker) applyRateLimit(ctx context.Context, evt stream.NotificationCrea
 // notification reaches a terminal state, publishes a status event for the API.
 // On success no DB row is written — DeliveryAttempt rows exist solely to drive
 // retry scheduling.
-func (w *Worker) recordOutcome(ctx context.Context, evt stream.NotificationCreatedEvent, dr service.DeliveryResult, notifID uuid.UUID, currentAttempt int) {
+func (p *NotificationDeliveryPipeline) recordOutcome(ctx context.Context, evt stream.NotificationCreatedEvent, dr service.DeliveryResult, notifID uuid.UUID, currentAttempt int) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	switch {
 	case dr.Success:
-		w.metrics.RecordNotificationSent(ctx, dr.LatencyMS)
-		w.publishStatus(ctx, stream.NotificationDeliveryResultEvent{
+		p.metrics.RecordNotificationSent(ctx, dr.LatencyMS)
+		p.publishStatus(ctx, stream.NotificationDeliveryResultEvent{
 			NotificationID:    evt.NotificationID,
 			Status:            model.StatusDelivered,
 			AttemptNumber:     currentAttempt,
@@ -224,12 +194,12 @@ func (w *Worker) recordOutcome(ctx context.Context, evt stream.NotificationCreat
 
 	case dr.Retryable && currentAttempt < evt.MaxAttempts:
 		retryAfter := time.Now().Add(service.RetryDelay(currentAttempt + 1)).UTC()
-		w.writeAttempt(ctx, notifID, currentAttempt, &retryAfter, evt.Priority)
+		p.writeAttempt(ctx, notifID, currentAttempt, &retryAfter, evt.Priority)
 
 	default:
-		w.metrics.RecordNotificationFailed(ctx, dr.LatencyMS)
-		w.writeAttempt(ctx, notifID, currentAttempt, nil, evt.Priority)
-		w.publishStatus(ctx, stream.NotificationDeliveryResultEvent{
+		p.metrics.RecordNotificationFailed(ctx, dr.LatencyMS)
+		p.writeAttempt(ctx, notifID, currentAttempt, nil, evt.Priority)
+		p.publishStatus(ctx, stream.NotificationDeliveryResultEvent{
 			NotificationID: evt.NotificationID,
 			Status:         model.StatusFailed,
 			AttemptNumber:  currentAttempt,
@@ -241,14 +211,14 @@ func (w *Worker) recordOutcome(ctx context.Context, evt stream.NotificationCreat
 	}
 }
 
-func (w *Worker) publishStatus(ctx context.Context, evt stream.NotificationDeliveryResultEvent) {
-	if err := w.pub.Publish(ctx, stream.TopicStatus, evt); err != nil {
+func (p *NotificationDeliveryPipeline) publishStatus(ctx context.Context, evt stream.NotificationDeliveryResultEvent) {
+	if err := p.pub.Publish(ctx, stream.TopicStatus, evt); err != nil {
 		slog.ErrorContext(ctx, "publish status failed", "id", evt.NotificationID, "error", err)
 	}
 }
 
-func (w *Worker) writeAttempt(ctx context.Context, notifID uuid.UUID, attemptNumber int, retryAfter *time.Time, priority string) {
-	if w.attempts == nil {
+func (p *NotificationDeliveryPipeline) writeAttempt(ctx context.Context, notifID uuid.UUID, attemptNumber int, retryAfter *time.Time, priority string) {
+	if p.attempts == nil {
 		return
 	}
 	id, err := uuid.NewV7()
@@ -263,7 +233,7 @@ func (w *Worker) writeAttempt(ctx context.Context, notifID uuid.UUID, attemptNum
 		RetryAfter:     retryAfter,
 	}
 	a.ID = id
-	if err := w.attempts.Create(ctx, a); err != nil {
+	if err := p.attempts.Create(ctx, a); err != nil {
 		slog.ErrorContext(ctx, "write delivery attempt failed", "id", notifID, "error", err)
 	}
 }

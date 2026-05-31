@@ -9,8 +9,6 @@ import (
 	"github.com/barkin/insider-notification/processor/internal/config"
 	processordb "github.com/barkin/insider-notification/processor/internal/db"
 	"github.com/barkin/insider-notification/processor/internal/delivery"
-	processormetrics "github.com/barkin/insider-notification/processor/internal/metrics"
-	"github.com/barkin/insider-notification/processor/internal/priorityrouter"
 	"github.com/barkin/insider-notification/processor/internal/scheduler"
 	"github.com/barkin/insider-notification/processor/internal/service"
 	shareddb "github.com/barkin/insider-notification/shared/db"
@@ -22,8 +20,8 @@ import (
 // App wires and runs the processor service.
 type App struct {
 	scheduler   *scheduler.Scheduler
-	worker      *delivery.Worker
-	router      *priorityrouter.PriorityRouter[stream.Result[stream.NotificationCreatedEvent]]
+	pipeline    *delivery.NotificationDeliveryPipeline
+	router      *delivery.PriorityRouter[stream.Result[stream.NotificationCreatedEvent]]
 	concurrency int
 }
 
@@ -76,20 +74,20 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 		return nil, nil, fmt.Errorf("subscribe low: %w", err)
 	}
 
-	router := priorityrouter.NewPriorityRouter([]priorityrouter.WeightedSource[stream.Result[stream.NotificationCreatedEvent]]{
+	router := delivery.NewPriorityRouter([]delivery.WeightedSource[stream.Result[stream.NotificationCreatedEvent]]{
 		{Ch: highMsgs, Weight: cfg.HighWeight},
 		{Ch: normalMsgs, Weight: cfg.NormalWeight},
 		{Ch: lowMsgs, Weight: cfg.LowWeight},
 	})
 
-	m, err := processormetrics.New(rdb)
+	m, err := service.NewMetrics(rdb)
 	if err != nil {
 		sub.Close()
 		bundb.Close()
 		return nil, nil, fmt.Errorf("init metrics: %w", err)
 	}
 
-	c := delivery.NewWorker(
+	pipeline := delivery.NewNotificationDeliveryPipeline(
 		pub,
 		service.NewNtfnDeliveryClient(cfg.NtfnDeliveryClientURL, cfg.NtfnDeliveryClientTimeout),
 		service.NewLimiter(rdb),
@@ -109,7 +107,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 
 	return &App{
 		scheduler:   sched,
-		worker:      c,
+		pipeline:    pipeline,
 		router:      router,
 		concurrency: cfg.WorkerConcurrency,
 	}, cleanup, nil
@@ -125,7 +123,17 @@ func (a *App) Run(ctx context.Context) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			a.worker.Run(ctx, a.router)
+			for ctx.Err() == nil {
+				result, ok := a.router.Next(ctx)
+				if !ok {
+					continue
+				}
+				if result.Err != nil {
+					slog.ErrorContext(result.Ctx, "stream read error", "error", result.Err)
+					continue
+				}
+				a.pipeline.Run(result.Ctx, result)
+			}
 		}()
 	}
 	slog.Info("processor started", "workers", a.concurrency)
