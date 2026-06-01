@@ -17,6 +17,12 @@ type Config struct {
 	HighWeight                int // HIGH_WEIGHT env var
 	NormalWeight              int // NORMAL_WEIGHT env var
 	LowWeight                 int // LOW_WEIGHT env var
+	SMSRatePerSecond          int // SMS_RATE_PER_SECOND env var
+	SMSBurst                  int // SMS_BURST env var
+	EmailRatePerSecond        int // EMAIL_RATE_PER_SECOND env var
+	EmailBurst                int // EMAIL_BURST env var
+	PushRatePerSecond         int // PUSH_RATE_PER_SECOND env var
+	PushBurst                 int // PUSH_BURST env var
 }
 
 func Load() *Config {
@@ -28,6 +34,12 @@ func Load() *Config {
 	v.SetDefault("HIGH_WEIGHT", 3)
 	v.SetDefault("NORMAL_WEIGHT", 2)
 	v.SetDefault("LOW_WEIGHT", 1)
+	v.SetDefault("SMS_RATE_PER_SECOND", 10)
+	v.SetDefault("SMS_BURST", 15)
+	v.SetDefault("EMAIL_RATE_PER_SECOND", 100)
+	v.SetDefault("EMAIL_BURST", 120)
+	v.SetDefault("PUSH_RATE_PER_SECOND", 500)
+	v.SetDefault("PUSH_BURST", 600)
 
 	base, missing := shared.LoadBase(v)
 	if missing != "" {
@@ -44,5 +56,11 @@ func Load() *Config {
 		HighWeight:                v.GetInt("HIGH_WEIGHT"),
 		NormalWeight:              v.GetInt("NORMAL_WEIGHT"),
 		LowWeight:                 v.GetInt("LOW_WEIGHT"),
+		SMSRatePerSecond:          v.GetInt("SMS_RATE_PER_SECOND"),
+		SMSBurst:                  v.GetInt("SMS_BURST"),
+		EmailRatePerSecond:        v.GetInt("EMAIL_RATE_PER_SECOND"),
+		EmailBurst:                v.GetInt("EMAIL_BURST"),
+		PushRatePerSecond:         v.GetInt("PUSH_RATE_PER_SECOND"),
+		PushBurst:                 v.GetInt("PUSH_BURST"),
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -68,8 +69,8 @@ func (f *fakeDeliveryClient) Send(_ context.Context, _, _, _ string) (service.De
 
 type fakeLimiter struct{ allowed bool }
 
-func (f *fakeLimiter) Allow(_ context.Context, _ string) (bool, error) {
-	return f.allowed, nil
+func (f *fakeLimiter) Allow(_ context.Context, _ string) (bool, time.Duration, error) {
+	return f.allowed, 0, nil
 }
 
 type mockAttemptWriter struct {

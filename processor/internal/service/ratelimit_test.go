@@ -59,10 +59,10 @@ func newRedisClient() *redis.Client {
 func TestLimiter_allows(t *testing.T) {
 	requireRedis(t)
 	ctx := context.Background()
-	limiter := service.NewLimiter(newRedisClient())
+	limiter := service.NewLimiter(newRedisClient(), nil)
 
 	for i := 0; i < 100; i++ {
-		ok, err := limiter.Allow(ctx, "sms")
+		ok, _, err := limiter.Allow(ctx,"sms")
 		if err != nil {
 			t.Fatalf("Allow error at i=%d: %v", i, err)
 		}
@@ -75,11 +75,11 @@ func TestLimiter_allows(t *testing.T) {
 func TestLimiter_throttles(t *testing.T) {
 	requireRedis(t)
 	ctx := context.Background()
-	limiter := service.NewLimiter(newRedisClient())
+	limiter := service.NewLimiter(newRedisClient(), nil)
 
 	denied := 0
 	for i := 0; i < 500; i++ {
-		ok, err := limiter.Allow(ctx, "email")
+		ok, _, err := limiter.Allow(ctx,"email")
 		if err != nil {
 			t.Fatalf("Allow error: %v", err)
 		}
@@ -95,13 +95,13 @@ func TestLimiter_throttles(t *testing.T) {
 func TestLimiter_refills(t *testing.T) {
 	requireRedis(t)
 	ctx := context.Background()
-	limiter := service.NewLimiter(newRedisClient())
+	limiter := service.NewLimiter(newRedisClient(), nil)
 
 	for i := 0; i < 500; i++ {
 		limiter.Allow(ctx, "push") //nolint:errcheck
 	}
 
-	ok, err := limiter.Allow(ctx, "push")
+	ok, _, err := limiter.Allow(ctx,"push")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestLimiter_refills(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 
-	ok, err = limiter.Allow(ctx, "push")
+	ok, _, err = limiter.Allow(ctx, "push")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestLimiter_refills(t *testing.T) {
 func TestLimiter_atomic(t *testing.T) {
 	requireRedis(t)
 	ctx := context.Background()
-	limiter := service.NewLimiter(newRedisClient())
+	limiter := service.NewLimiter(newRedisClient(), nil)
 
 	var allowed atomic.Int64
 	var wg sync.WaitGroup
@@ -131,7 +131,7 @@ func TestLimiter_atomic(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			ok, err := limiter.Allow(ctx, "concurrent")
+			ok, _, err := limiter.Allow(ctx,"concurrent")
 			if err != nil {
 				t.Errorf("Allow error: %v", err)
 				return

@@ -9,17 +9,18 @@ import (
 	"github.com/barkin/insider-notification/processor/internal/config"
 	processordb "github.com/barkin/insider-notification/processor/internal/db"
 	"github.com/barkin/insider-notification/processor/internal/delivery"
-	"github.com/barkin/insider-notification/processor/internal/scheduler"
 	"github.com/barkin/insider-notification/processor/internal/service"
 	shareddb "github.com/barkin/insider-notification/shared/db"
 	"github.com/barkin/insider-notification/shared/lock"
+	"github.com/barkin/insider-notification/shared/model"
 	sharedredis "github.com/barkin/insider-notification/shared/redis"
 	"github.com/barkin/insider-notification/shared/stream"
+	"github.com/go-redis/redis_rate/v10"
+	"time"
 )
 
 // App wires and runs the processor service.
 type App struct {
-	scheduler   *scheduler.Scheduler
 	pipeline    *delivery.NotificationDeliveryPipelineWorker
 	router      *delivery.PriorityRouter[stream.Result[stream.NotificationReadyEvent]]
 	concurrency int
@@ -90,13 +91,15 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 	pipeline := delivery.NewNotificationDeliveryPipelineWorker(
 		pub,
 		service.NewNtfnDeliveryClient(cfg.NtfnDeliveryClientURL, cfg.NtfnDeliveryClientTimeout),
-		service.NewLimiter(rdb),
+		service.NewLimiter(rdb, map[string]redis_rate.Limit{
+			model.ChannelSMS:   {Rate: cfg.SMSRatePerSecond, Burst: cfg.SMSBurst, Period: time.Second},
+			model.ChannelEmail: {Rate: cfg.EmailRatePerSecond, Burst: cfg.EmailBurst, Period: time.Second},
+			model.ChannelPush:  {Rate: cfg.PushRatePerSecond, Burst: cfg.PushBurst, Period: time.Second},
+		}),
 		lock.NewRedisLocker(rdb),
 		attemptRepo,
 		m,
 	)
-
-	sched := scheduler.New(attemptRepo, pub, cfg.SchedulerInterval)
 
 	cleanup := func() {
 		sub.Close()
@@ -104,7 +107,6 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 	}
 
 	return &App{
-		scheduler:   sched,
 		pipeline:    pipeline,
 		router:      router,
 		concurrency: cfg.WorkerConcurrency,
@@ -114,8 +116,6 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 // Run starts the scheduler and consumer pool, blocks until ctx is cancelled,
 // then waits for all consumers to finish their current message.
 func (a *App) Run(ctx context.Context) {
-	go a.scheduler.Run(ctx)
-
 	var wg sync.WaitGroup
 	for range a.concurrency {
 		wg.Add(1)

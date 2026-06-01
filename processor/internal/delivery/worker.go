@@ -116,7 +116,7 @@ func (p *NotificationDeliveryPipelineWorker) countPriorAttempts(ctx context.Cont
 // applyRateLimit checks the channel's token bucket. If exhausted, it re-enqueues
 // the event and returns limited=true so the caller can Ack and move on.
 func (p *NotificationDeliveryPipelineWorker) applyRateLimit(ctx context.Context, evt stream.NotificationReadyEvent) (limited bool, err error) {
-	allowed, err := p.limiter.Allow(ctx, evt.Channel)
+	allowed, retryAfter, err := p.limiter.Allow(ctx, evt.Channel)
 	if err != nil {
 		slog.ErrorContext(ctx, "rate limit error", "id", evt.NotificationID, "error", err)
 		return false, err
@@ -124,7 +124,7 @@ func (p *NotificationDeliveryPipelineWorker) applyRateLimit(ctx context.Context,
 	if allowed {
 		return false, nil
 	}
-	slog.InfoContext(ctx, "rate limited, re-enqueuing", "id", evt.NotificationID, "channel", evt.Channel)
+	slog.InfoContext(ctx, "rate limited, re-enqueuing", "id", evt.NotificationID, "channel", evt.Channel, "retry_after", retryAfter)
 	if err := p.pub.Publish(ctx, topicByPriority[evt.Priority], evt); err != nil {
 		slog.ErrorContext(ctx, "re-enqueue rate-limited failed", "id", evt.NotificationID, "error", err)
 		return false, err
