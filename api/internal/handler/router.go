@@ -1,15 +1,15 @@
 package handler
 
 import (
+	"context"
 	"net/http"
+	"time"
 
 	_ "github.com/barkin/insider-notification/api/docs"
+	"github.com/barkin/insider-notification/api/internal/db"
 	"github.com/barkin/insider-notification/api/internal/service"
-	sharedmiddleware "github.com/barkin/insider-notification/shared/middleware"
-	"github.com/go-chi/chi/v5"
-	chiMiddleware "github.com/go-chi/chi/v5/middleware"
+	sharedhandler "github.com/barkin/insider-notification/shared/handler"
 	"github.com/redis/go-redis/v9"
-	httpSwagger "github.com/swaggo/http-swagger"
 	"github.com/uptrace/bun"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
@@ -21,35 +21,35 @@ type Deps struct {
 	Redis   *redis.Client
 }
 
-// appRouter wraps chi.Router and automatically applies ErrorHandler
-// on every AppHandler route, so call sites never need to wrap manually.
-type appRouter struct{ chi.Router }
-
-func (r *appRouter) Get(path string, h AppHandler) {
-	r.Router.Get(path, ErrorHandler(h))
-}
-
-func (r *appRouter) Post(path string, h AppHandler) {
-	r.Router.Post(path, ErrorHandler(h))
-}
-
-func (r *appRouter) Route(path string, fn func(*appRouter)) {
-	r.Router.Route(path, func(sub chi.Router) {
-		fn(&appRouter{sub})
-	})
-}
-
 // NewRouter builds and returns the chi router with all routes registered.
 func NewRouter(deps Deps) http.Handler {
-	mux := chi.NewRouter()
-	mux.Use(chiMiddleware.Recoverer)
-	mux.Use(sharedmiddleware.Logger())
+	checkers := []sharedhandler.ReadinessChecker{
+		{
+			Name: "postgresql",
+			Check: func(ctx context.Context) error {
+				ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+				defer cancel()
+				return deps.DB.PingContext(ctx)
+			},
+		},
+		{
+			Name: "redis",
+			Check: func(ctx context.Context) error {
+				ctx, cancel := context.WithTimeout(ctx, time.Second)
+				defer cancel()
+				return deps.Redis.Ping(ctx).Err()
+			},
+		},
+	}
 
-	mux.Get("/api/v1/docs/*", httpSwagger.WrapHandler)
-	mux.Get("/api/v1/health", healthCheck(deps.DB, deps.Redis))
+	errorMap := sharedhandler.ErrorMap{
+		db.ErrNotFound:        {Status: http.StatusNotFound, Code: "NOT_FOUND", Message: "resource not found"},
+		db.ErrTransitionFailed: {Status: http.StatusConflict, Code: "INVALID_STATUS_TRANSITION"},
+	}
 
-	r := &appRouter{mux}
-	r.Route("/api/v1/notifications", func(r *appRouter) {
+	r := sharedhandler.NewRouter(checkers, errorMap)
+
+	r.Route("/api/v1/notifications", func(r *sharedhandler.AppRouter) {
 		r.Post("/", createNotification(deps.Service))
 		r.Get("/", listNotifications(deps.Service))
 		r.Post("/batch", createBatch(deps.Service))
@@ -57,5 +57,5 @@ func NewRouter(deps Deps) http.Handler {
 		r.Post("/{id}/cancel", cancelNotification(deps.Service))
 	})
 
-	return otelhttp.NewHandler(mux, "api")
+	return otelhttp.NewHandler(r, "api")
 }

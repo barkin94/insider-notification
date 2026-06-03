@@ -11,6 +11,7 @@ import (
 	"github.com/barkin/insider-notification/api/internal/db"
 	apimodel "github.com/barkin/insider-notification/api/internal/model"
 	"github.com/barkin/insider-notification/api/internal/service"
+	sharedhandler "github.com/barkin/insider-notification/shared/handler"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -90,7 +91,7 @@ type batchResponse struct {
 // @Failure     400 {object} errorBody
 // @Failure     500 {object} errorBody
 // @Router      /notifications [post]
-func createNotification(svc service.NotificationService) AppHandler {
+func createNotification(svc service.NotificationService) sharedhandler.AppHandler {
 	return func(w http.ResponseWriter, r *http.Request) error {
 		var req createRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -121,7 +122,7 @@ func createNotification(svc service.NotificationService) AppHandler {
 			return errInternal()
 		}
 
-		WriteJSON(w, http.StatusCreated, toNotificationResponse(n))
+		sharedhandler.WriteJSON(w, http.StatusCreated, toNotificationResponse(n))
 		return nil
 	}
 }
@@ -136,7 +137,7 @@ func createNotification(svc service.NotificationService) AppHandler {
 // @Failure     404 {object} errorBody
 // @Failure     500 {object} errorBody
 // @Router      /notifications/{id} [get]
-func getNotification(svc service.NotificationService) AppHandler {
+func getNotification(svc service.NotificationService) sharedhandler.AppHandler {
 	return func(w http.ResponseWriter, r *http.Request) error {
 		id, err := uuid.Parse(chi.URLParam(r, "id"))
 		if err != nil {
@@ -151,7 +152,7 @@ func getNotification(svc service.NotificationService) AppHandler {
 			return errInternal()
 		}
 
-		WriteJSON(w, http.StatusOK, toNotificationResponse(n))
+		sharedhandler.WriteJSON(w, http.StatusOK, toNotificationResponse(n))
 		return nil
 	}
 }
@@ -171,7 +172,7 @@ func getNotification(svc service.NotificationService) AppHandler {
 // @Failure     400 {object} errorBody
 // @Failure     500 {object} errorBody
 // @Router      /notifications [get]
-func listNotifications(svc service.NotificationService) AppHandler {
+func listNotifications(svc service.NotificationService) sharedhandler.AppHandler {
 	return func(w http.ResponseWriter, r *http.Request) error {
 		q := r.URL.Query()
 
@@ -222,7 +223,7 @@ func listNotifications(svc service.NotificationService) AppHandler {
 		if err != nil {
 			return errInternal()
 		}
-		WriteJSON(w, http.StatusOK, listResponse{
+		sharedhandler.WriteJSON(w, http.StatusOK, listResponse{
 			Data: toNotificationResponses(ns),
 			Pagination: paginationMeta{
 				PageSize:   pageSize,
@@ -273,7 +274,7 @@ func toNotificationResponses(ns []*apimodel.Notification) []notificationResponse
 // @Failure     409 {object} errorBody
 // @Failure     500 {object} errorBody
 // @Router      /notifications/{id}/cancel [post]
-func cancelNotification(svc service.NotificationService) AppHandler {
+func cancelNotification(svc service.NotificationService) sharedhandler.AppHandler {
 	return func(w http.ResponseWriter, r *http.Request) error {
 		id, err := uuid.Parse(chi.URLParam(r, "id"))
 		if err != nil {
@@ -291,7 +292,7 @@ func cancelNotification(svc service.NotificationService) AppHandler {
 			return errInternal()
 		}
 
-		WriteJSON(w, http.StatusOK, cancelResponse{
+		sharedhandler.WriteJSON(w, http.StatusOK, cancelResponse{
 			ID:        n.ID.String(),
 			Status:    n.Status,
 			UpdatedAt: n.UpdatedAt.Format(time.RFC3339),
@@ -310,7 +311,7 @@ func cancelNotification(svc service.NotificationService) AppHandler {
 // @Failure     400 {object} errorBody
 // @Failure     500 {object} errorBody
 // @Router      /notifications/batch [post]
-func createBatch(svc service.NotificationService) AppHandler {
+func createBatch(svc service.NotificationService) sharedhandler.AppHandler {
 	return func(w http.ResponseWriter, r *http.Request) error {
 		var req batchRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -360,7 +361,7 @@ func createBatch(svc service.NotificationService) AppHandler {
 			itemResults = append(itemResults, item)
 		}
 
-		WriteJSON(w, http.StatusMultiStatus, batchResponse{
+		sharedhandler.WriteJSON(w, http.StatusMultiStatus, batchResponse{
 			BatchID:  batchID.String(),
 			Total:    len(req.Notifications),
 			Accepted: accepted,
@@ -399,7 +400,6 @@ func toNotificationResponse(n *apimodel.Notification) notificationResponse {
 		UpdatedAt:    n.UpdatedAt.Format(time.RFC3339),
 	}
 }
-
 
 func intParam(s string, def int) int {
 	if v, err := strconv.Atoi(s); err == nil && v > 0 {
