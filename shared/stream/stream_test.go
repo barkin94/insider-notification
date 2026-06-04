@@ -95,7 +95,6 @@ func TestPublisher_routesToCorrectTopic(t *testing.T) {
 			Content:        "hello",
 			Priority:       tc.priority,
 			MaxAttempts:    3,
-			Metadata:       "{}",
 		}
 		if err := pub.Publish(ctx, tc.topic, evt); err != nil {
 			t.Fatalf("publish: %v", err)

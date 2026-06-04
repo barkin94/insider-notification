@@ -1,4 +1,4 @@
-package db
+package repos
 
 import (
 	"context"
@@ -7,7 +7,9 @@ import (
 	"strings"
 	"time"
 
-	apimodel "github.com/barkin/insider-notification/api/internal/model"
+	"github.com/barkin/insider-notification/api/internal/db"
+	"github.com/barkin/insider-notification/api/internal/db/entities"
+
 	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 )
@@ -31,13 +33,13 @@ type ListFilter struct {
 
 // NotificationRepository is the port for notification persistence.
 type NotificationRepository interface {
-	Create(ctx context.Context, n *apimodel.Notification) error
-	GetByID(ctx context.Context, id uuid.UUID) (*apimodel.Notification, error)
-	List(ctx context.Context, f ListFilter) ([]*apimodel.Notification, int, *uuid.UUID, error)
-	Transition(ctx context.Context, id uuid.UUID, from, to string) (*apimodel.Notification, error)
+	Create(ctx context.Context, n *entities.Notification) error
+	GetByID(ctx context.Context, id uuid.UUID) (*entities.Notification, error)
+	List(ctx context.Context, f ListFilter) ([]*entities.Notification, int, *uuid.UUID, error)
+	Transition(ctx context.Context, id uuid.UUID, from, to string) (*entities.Notification, error)
 	IncrementAttempts(ctx context.Context, id uuid.UUID) error
 	UpdateStatus(ctx context.Context, id uuid.UUID, status string) error
-	FindScheduledDue(ctx context.Context) ([]*apimodel.Notification, error)
+	FindScheduledDue(ctx context.Context) ([]*entities.Notification, error)
 }
 
 type bunNotificationRepo struct{ db *bun.DB }
@@ -48,28 +50,30 @@ func NewNotificationRepository(db *bun.DB) NotificationRepository {
 	return &bunNotificationRepo{db: db}
 }
 
-func (r *bunNotificationRepo) Create(ctx context.Context, n *apimodel.Notification) error {
+func (r *bunNotificationRepo) Create(ctx context.Context, n *entities.Notification) error {
 	_, err := r.db.NewInsert().Model(n).Exec(ctx)
 	return err
 }
 
-func (r *bunNotificationRepo) GetByID(ctx context.Context, id uuid.UUID) (*apimodel.Notification, error) {
-	n := new(apimodel.Notification)
+func (r *bunNotificationRepo) GetByID(ctx context.Context, id uuid.UUID) (*entities.Notification, error) {
+	n := new(entities.Notification)
 	err := r.db.NewSelect().Model(n).Where("id = ?", id).Scan(ctx)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrNotFound
+		return nil, db.ErrNotFound
 	}
 	return n, err
 }
 
-func (r *bunNotificationRepo) Transition(ctx context.Context, id uuid.UUID, from, to string) (*apimodel.Notification, error) {
-	n := new(apimodel.Notification)
+func (r *bunNotificationRepo) Transition(ctx context.Context, id uuid.UUID, from, to string) (*entities.Notification, error) {
+	n := new(entities.Notification)
 	err := r.db.NewRaw(`
 		UPDATE notifications SET status = ?, updated_at = NOW()
 		WHERE id = ? AND status = ?
-		RETURNING *`, to, id, from).Scan(ctx, n)
+		RETURNING id, batch_id, recipient, channel, content, priority, status,
+		          deliver_after, attempts, max_attempts, created_at, updated_at`,
+		to, id, from).Scan(ctx, n)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrTransitionFailed
+		return nil, db.ErrTransitionFailed
 	}
 	return n, err
 }
@@ -88,8 +92,8 @@ func (r *bunNotificationRepo) UpdateStatus(ctx context.Context, id uuid.UUID, st
 	return err
 }
 
-func (r *bunNotificationRepo) FindScheduledDue(ctx context.Context) ([]*apimodel.Notification, error) {
-	var rows []*apimodel.Notification
+func (r *bunNotificationRepo) FindScheduledDue(ctx context.Context) ([]*entities.Notification, error) {
+	var rows []*entities.Notification
 	err := r.db.NewSelect().
 		Model(&rows).
 		Where("deliver_after IS NOT NULL").
@@ -120,18 +124,18 @@ func applyFilters(q *bun.SelectQuery, f ListFilter) *bun.SelectQuery {
 	return q
 }
 
-func (r *bunNotificationRepo) List(ctx context.Context, f ListFilter) ([]*apimodel.Notification, int, *uuid.UUID, error) {
+func (r *bunNotificationRepo) List(ctx context.Context, f ListFilter) ([]*entities.Notification, int, *uuid.UUID, error) {
 	pageSize := f.PageSize
 	if pageSize < 1 {
 		pageSize = 20
 	}
 
-	total, err := applyFilters(r.db.NewSelect().Model((*apimodel.Notification)(nil)), f).Count(ctx)
+	total, err := applyFilters(r.db.NewSelect().Model((*entities.Notification)(nil)), f).Count(ctx)
 	if err != nil {
 		return nil, 0, nil, err
 	}
 
-	var ns []*apimodel.Notification
+	var ns []*entities.Notification
 	q := applyFilters(r.db.NewSelect().Model(&ns), f)
 
 	if f.CursorID != nil {

@@ -6,7 +6,6 @@ import (
 	"time"
 
 	_ "github.com/barkin/insider-notification/api/docs"
-	"github.com/barkin/insider-notification/api/internal/db"
 	"github.com/barkin/insider-notification/api/internal/service"
 	sharedhandler "github.com/barkin/insider-notification/shared/handler"
 	"github.com/redis/go-redis/v9"
@@ -42,12 +41,7 @@ func NewRouter(deps Deps) http.Handler {
 		},
 	}
 
-	errorMap := sharedhandler.ErrorMap{
-		db.ErrNotFound:        {Status: http.StatusNotFound, Code: "NOT_FOUND", Message: "resource not found"},
-		db.ErrTransitionFailed: {Status: http.StatusConflict, Code: "INVALID_STATUS_TRANSITION"},
-	}
-
-	r := sharedhandler.NewRouter(checkers, errorMap)
+	r := sharedhandler.NewRouter(checkers)
 
 	r.Route("/api/v1/notifications", func(r *sharedhandler.AppRouter) {
 		r.Post("/", createNotification(deps.Service))

@@ -17,5 +17,4 @@ type DeliveryAttempt struct {
 	Recipient          string     `bun:"recipient"`
 	Content            string     `bun:"content"`
 	MaxAttempts        int        `bun:"max_attempts"`
-	Metadata           string     `bun:"metadata"`
 }

@@ -15,9 +15,9 @@ import (
 )
 
 var topicByPriority = map[string]string{
-	model.PriorityHigh:   stream.TopicHigh,
-	model.PriorityNormal: stream.TopicNormal,
-	model.PriorityLow:    stream.TopicLow,
+	string(model.PriorityHigh):   stream.TopicHigh,
+	string(model.PriorityNormal): stream.TopicNormal,
+	string(model.PriorityLow):    stream.TopicLow,
 }
 
 // NotificationDeliveryPipelineWorker runs a single notification event through
@@ -143,7 +143,7 @@ func (p *NotificationDeliveryPipelineWorker) recordOutcome(ctx context.Context, 
 		p.metrics.RecordNotificationSent(ctx, dr.LatencyMS)
 		p.publishStatus(ctx, stream.NotificationDeliveryResultEvent{
 			NotificationID:    evt.NotificationID,
-			Status:            model.StatusDelivered,
+			Status:            string(model.StatusDelivered),
 			AttemptNumber:     currentAttempt,
 			HTTPStatusCode:    dr.StatusCode,
 			ProviderMessageID: dr.ProviderMsgID,
@@ -160,7 +160,7 @@ func (p *NotificationDeliveryPipelineWorker) recordOutcome(ctx context.Context, 
 		p.writeAttempt(ctx, evt, notifID, currentAttempt, nil)
 		p.publishStatus(ctx, stream.NotificationDeliveryResultEvent{
 			NotificationID: evt.NotificationID,
-			Status:         model.StatusFailed,
+			Status:         string(model.StatusFailed),
 			AttemptNumber:  currentAttempt,
 			HTTPStatusCode: dr.StatusCode,
 			ErrorMessage:   dr.ErrorMessage,
@@ -194,7 +194,6 @@ func (p *NotificationDeliveryPipelineWorker) writeAttempt(ctx context.Context, e
 		Recipient:      evt.Recipient,
 		Content:        evt.Content,
 		MaxAttempts:    evt.MaxAttempts,
-		Metadata:       evt.Metadata,
 	}
 	a.ID = id
 	if err := p.attempts.Create(ctx, a); err != nil {

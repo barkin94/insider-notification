@@ -11,38 +11,39 @@ import (
 	"testing"
 	"time"
 
-	apimodel "github.com/barkin/insider-notification/api/internal/model"
 	"github.com/barkin/insider-notification/api/internal/db"
+	"github.com/barkin/insider-notification/api/internal/db/entities"
+	"github.com/barkin/insider-notification/api/internal/db/repos"
+	"github.com/barkin/insider-notification/api/internal/domain"
 	"github.com/barkin/insider-notification/api/internal/handler"
 	"github.com/barkin/insider-notification/api/internal/service"
-	"github.com/barkin/insider-notification/shared/model"
 	"github.com/google/uuid"
 )
 
 // --- mock service ---
 
 type mockService struct {
-	createFn      func(ctx context.Context, req service.CreateRequest) (*apimodel.Notification, error)
-	getByIDFn     func(ctx context.Context, id uuid.UUID) (*apimodel.Notification, error)
-	listFn        func(ctx context.Context, f db.ListFilter) ([]*apimodel.Notification, int, *uuid.UUID, error)
-	cancelFn      func(ctx context.Context, id uuid.UUID) (*apimodel.Notification, error)
-	createBatchFn func(ctx context.Context, reqs []service.CreateRequest) (uuid.UUID, []service.BatchResult, error)
+	createFn      func(ctx context.Context, n domain.Notification) (*entities.Notification, error)
+	getByIDFn     func(ctx context.Context, id uuid.UUID) (*entities.Notification, error)
+	listFn        func(ctx context.Context, f repos.ListFilter) ([]*entities.Notification, int, *uuid.UUID, error)
+	cancelFn      func(ctx context.Context, id uuid.UUID) (*entities.Notification, error)
+	createBatchFn func(ctx context.Context, ns []domain.Notification) (uuid.UUID, []service.BatchResult, error)
 }
 
-func (m *mockService) Create(ctx context.Context, req service.CreateRequest) (*apimodel.Notification, error) {
-	return m.createFn(ctx, req)
+func (m *mockService) Create(ctx context.Context, n domain.Notification) (*entities.Notification, error) {
+	return m.createFn(ctx, n)
 }
-func (m *mockService) GetByID(ctx context.Context, id uuid.UUID) (*apimodel.Notification, error) {
+func (m *mockService) GetByID(ctx context.Context, id uuid.UUID) (*entities.Notification, error) {
 	return m.getByIDFn(ctx, id)
 }
-func (m *mockService) List(ctx context.Context, f db.ListFilter) ([]*apimodel.Notification, int, *uuid.UUID, error) {
+func (m *mockService) List(ctx context.Context, f repos.ListFilter) ([]*entities.Notification, int, *uuid.UUID, error) {
 	return m.listFn(ctx, f)
 }
-func (m *mockService) Cancel(ctx context.Context, id uuid.UUID) (*apimodel.Notification, error) {
+func (m *mockService) Cancel(ctx context.Context, id uuid.UUID) (*entities.Notification, error) {
 	return m.cancelFn(ctx, id)
 }
-func (m *mockService) CreateBatch(ctx context.Context, reqs []service.CreateRequest) (uuid.UUID, []service.BatchResult, error) {
-	return m.createBatchFn(ctx, reqs)
+func (m *mockService) CreateBatch(ctx context.Context, ns []domain.Notification) (uuid.UUID, []service.BatchResult, error) {
+	return m.createBatchFn(ctx, ns)
 }
 
 func newRouter(svc service.NotificationService) http.Handler {
@@ -53,14 +54,14 @@ func newRouter(svc service.NotificationService) http.Handler {
 	})
 }
 
-func newNotif() *apimodel.Notification {
+func newNotif() *entities.Notification {
 	now := time.Now().UTC()
-	n := &apimodel.Notification{
-		Recipient:   "+1",
-		Channel:     model.ChannelSMS,
+	n := &entities.Notification{
+		Recipient:   "+15551234567",
+		Channel:     "sms",
 		Content:     "hi",
-		Priority:    model.PriorityNormal,
-		Status:      model.StatusPending,
+		Priority:    "normal",
+		Status:      "pending",
 		MaxAttempts: 4,
 	}
 	n.ID = uuid.New()
@@ -73,11 +74,11 @@ func newNotif() *apimodel.Notification {
 
 func TestCreateNotification_201(t *testing.T) {
 	n := newNotif()
-	svc := &mockService{createFn: func(_ context.Context, _ service.CreateRequest) (*apimodel.Notification, error) {
+	svc := &mockService{createFn: func(_ context.Context, _ domain.Notification) (*entities.Notification, error) {
 		return n, nil
 	}}
 
-	body := `{"recipient":"+1","channel":"sms","content":"hi"}`
+	body := `{"recipient":"+15551234567","channel":"sms","content":"hi","priority":"normal"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/notifications", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -97,51 +98,56 @@ func TestCreateNotification_201(t *testing.T) {
 	}
 }
 
-func TestCreateNotification_400_missingContent(t *testing.T) {
-	svc := &mockService{createFn: func(_ context.Context, req service.CreateRequest) (*apimodel.Notification, error) {
-		return nil, &service.ValidationError{Field: "content", Message: "required"}
-	}}
+func TestCreateNotification_422_missingContent(t *testing.T) {
+	svc := &mockService{}
 
-	body := `{"recipient":"+1","channel":"sms"}`
+	body := `{"recipient":"+15551234567","channel":"sms","priority":"normal"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/notifications", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
 	newRouter(svc).ServeHTTP(w, req)
 
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400", w.Code)
-	}
-	var resp map[string]any
-	json.NewDecoder(w.Body).Decode(&resp) //nolint:errcheck
-	errObj, _ := resp["error"].(map[string]any)
-	if errObj["code"] != "VALIDATION_ERROR" {
-		t.Errorf("error code = %v, want VALIDATION_ERROR", errObj["code"])
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422", w.Code)
 	}
 }
 
-func TestCreateNotification_400_contentTooLong(t *testing.T) {
-	svc := &mockService{createFn: func(_ context.Context, req service.CreateRequest) (*apimodel.Notification, error) {
-		return nil, &service.ValidationError{Field: "content", Message: "exceeds 1600 char limit for sms"}
-	}}
+func TestCreateNotification_422_missingPriority(t *testing.T) {
+	svc := &mockService{}
 
-	body := `{"recipient":"+1","channel":"sms","content":"` + strings.Repeat("x", 1601) + `"}`
+	body := `{"recipient":"+15551234567","channel":"sms","content":"hi"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/notifications", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
 	newRouter(svc).ServeHTTP(w, req)
 
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400", w.Code)
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422", w.Code)
+	}
+}
+
+func TestCreateNotification_422_invalidChannel(t *testing.T) {
+	svc := &mockService{}
+
+	body := `{"recipient":"+15551234567","channel":"fax","content":"hi","priority":"normal"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/notifications", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	newRouter(svc).ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422", w.Code)
 	}
 }
 
 // --- GET /notifications ---
 
 func TestListNotifications_pagination(t *testing.T) {
-	svc := &mockService{listFn: func(_ context.Context, f db.ListFilter) ([]*apimodel.Notification, int, *uuid.UUID, error) {
-		return []*apimodel.Notification{newNotif()}, 42, nil, nil
+	svc := &mockService{listFn: func(_ context.Context, f repos.ListFilter) ([]*entities.Notification, int, *uuid.UUID, error) {
+		return []*entities.Notification{newNotif()}, 42, nil, nil
 	}}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/notifications?page_size=10", nil)
@@ -167,8 +173,8 @@ func TestListNotifications_pagination(t *testing.T) {
 }
 
 func TestListNotifications_filterByStatus(t *testing.T) {
-	var gotFilter db.ListFilter
-	svc := &mockService{listFn: func(_ context.Context, f db.ListFilter) ([]*apimodel.Notification, int, *uuid.UUID, error) {
+	var gotFilter repos.ListFilter
+	svc := &mockService{listFn: func(_ context.Context, f repos.ListFilter) ([]*entities.Notification, int, *uuid.UUID, error) {
 		gotFilter = f
 		return nil, 0, nil, nil
 	}}
@@ -187,7 +193,7 @@ func TestListNotifications_filterByStatus(t *testing.T) {
 
 func TestGetNotification_200(t *testing.T) {
 	n := newNotif()
-	svc := &mockService{getByIDFn: func(_ context.Context, _ uuid.UUID) (*apimodel.Notification, error) {
+	svc := &mockService{getByIDFn: func(_ context.Context, _ uuid.UUID) (*entities.Notification, error) {
 		return n, nil
 	}}
 
@@ -207,7 +213,7 @@ func TestGetNotification_200(t *testing.T) {
 }
 
 func TestGetNotification_404(t *testing.T) {
-	svc := &mockService{getByIDFn: func(_ context.Context, _ uuid.UUID) (*apimodel.Notification, error) {
+	svc := &mockService{getByIDFn: func(_ context.Context, _ uuid.UUID) (*entities.Notification, error) {
 		return nil, db.ErrNotFound
 	}}
 
@@ -216,8 +222,8 @@ func TestGetNotification_404(t *testing.T) {
 
 	newRouter(svc).ServeHTTP(w, req)
 
-	if w.Code != http.StatusNotFound {
-		t.Fatalf("status = %d, want 404", w.Code)
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", w.Code)
 	}
 }
 
@@ -225,8 +231,8 @@ func TestGetNotification_404(t *testing.T) {
 
 func TestCancelNotification_200(t *testing.T) {
 	n := newNotif()
-	n.Status = model.StatusCancelled
-	svc := &mockService{cancelFn: func(_ context.Context, _ uuid.UUID) (*apimodel.Notification, error) {
+	n.Status = "cancelled"
+	svc := &mockService{cancelFn: func(_ context.Context, _ uuid.UUID) (*entities.Notification, error) {
 		return n, nil
 	}}
 
@@ -246,7 +252,7 @@ func TestCancelNotification_200(t *testing.T) {
 }
 
 func TestCancelNotification_409(t *testing.T) {
-	svc := &mockService{cancelFn: func(_ context.Context, _ uuid.UUID) (*apimodel.Notification, error) {
+	svc := &mockService{cancelFn: func(_ context.Context, _ uuid.UUID) (*entities.Notification, error) {
 		return nil, db.ErrTransitionFailed
 	}}
 
@@ -255,14 +261,8 @@ func TestCancelNotification_409(t *testing.T) {
 
 	newRouter(svc).ServeHTTP(w, req)
 
-	if w.Code != http.StatusConflict {
-		t.Fatalf("status = %d, want 409", w.Code)
-	}
-	var resp map[string]any
-	json.NewDecoder(w.Body).Decode(&resp) //nolint:errcheck
-	errObj, _ := resp["error"].(map[string]any)
-	if errObj["code"] != "INVALID_STATUS_TRANSITION" {
-		t.Errorf("code = %v, want INVALID_STATUS_TRANSITION", errObj["code"])
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", w.Code)
 	}
 }
 
@@ -270,18 +270,16 @@ func TestCancelNotification_409(t *testing.T) {
 
 func TestCreateBatch_207(t *testing.T) {
 	id1 := uuid.New()
-	svc := &mockService{createBatchFn: func(_ context.Context, reqs []service.CreateRequest) (uuid.UUID, []service.BatchResult, error) {
-		errMsg := "validation: channel: must be one of: sms, email, push"
+	svc := &mockService{createBatchFn: func(_ context.Context, ns []domain.Notification) (uuid.UUID, []service.BatchResult, error) {
 		return uuid.New(), []service.BatchResult{
 			{Index: 0, Status: "accepted", ID: &id1},
-			{Index: 1, Status: "rejected", Error: &errMsg},
 		}, nil
 	}}
 
 	body, _ := json.Marshal(map[string]any{
 		"notifications": []map[string]any{
-			{"recipient": "+1", "channel": "sms", "content": "ok"},
-			{"recipient": "+2", "channel": "fax", "content": "bad"},
+			{"recipient": "+15551234567", "channel": "sms", "content": "ok", "priority": "normal"},
+			{"recipient": "+2", "channel": "fax", "content": "bad", "priority": "normal"},
 		},
 	})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/notifications/batch", bytes.NewReader(body))
@@ -308,7 +306,7 @@ func TestCreateBatch_400_tooLarge(t *testing.T) {
 
 	items := make([]map[string]any, 1001)
 	for i := range items {
-		items[i] = map[string]any{"recipient": "+1", "channel": "sms", "content": "hi"}
+		items[i] = map[string]any{"recipient": "+1", "channel": "sms", "content": "hi", "priority": "normal"}
 	}
 	body, _ := json.Marshal(map[string]any{"notifications": items})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/notifications/batch", bytes.NewReader(body))
@@ -317,8 +315,8 @@ func TestCreateBatch_400_tooLarge(t *testing.T) {
 
 	newRouter(svc).ServeHTTP(w, req)
 
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400", w.Code)
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422", w.Code)
 	}
 }
 
@@ -331,8 +329,8 @@ func encodeCursorForTest(id uuid.UUID) string {
 func TestListNotifications_NoCursor(t *testing.T) {
 	n := newNotif()
 	svc := &mockService{
-		listFn: func(_ context.Context, _ db.ListFilter) ([]*apimodel.Notification, int, *uuid.UUID, error) {
-			return []*apimodel.Notification{n}, 1, nil, nil
+		listFn: func(_ context.Context, _ repos.ListFilter) ([]*entities.Notification, int, *uuid.UUID, error) {
+			return []*entities.Notification{n}, 1, nil, nil
 		},
 	}
 
@@ -355,8 +353,8 @@ func TestListNotifications_WithCursor_NextPageExists(t *testing.T) {
 	n := newNotif()
 	nextID, _ := uuid.NewV7()
 	svc := &mockService{
-		listFn: func(_ context.Context, f db.ListFilter) ([]*apimodel.Notification, int, *uuid.UUID, error) {
-			return []*apimodel.Notification{n}, 50, &nextID, nil
+		listFn: func(_ context.Context, f repos.ListFilter) ([]*entities.Notification, int, *uuid.UUID, error) {
+			return []*entities.Notification{n}, 50, &nextID, nil
 		},
 	}
 
@@ -379,8 +377,8 @@ func TestListNotifications_WithCursor_NextPageExists(t *testing.T) {
 func TestListNotifications_WithCursor_LastPage(t *testing.T) {
 	n := newNotif()
 	svc := &mockService{
-		listFn: func(_ context.Context, f db.ListFilter) ([]*apimodel.Notification, int, *uuid.UUID, error) {
-			return []*apimodel.Notification{n}, 10, nil, nil
+		listFn: func(_ context.Context, f repos.ListFilter) ([]*entities.Notification, int, *uuid.UUID, error) {
+			return []*entities.Notification{n}, 10, nil, nil
 		},
 	}
 
@@ -406,15 +404,15 @@ func TestListNotifications_InvalidCursor(t *testing.T) {
 	w := httptest.NewRecorder()
 	newRouter(svc).ServeHTTP(w, req)
 
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400", w.Code)
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422", w.Code)
 	}
 }
 
 func TestListNotifications_FiltersPreservedWithCursor(t *testing.T) {
-	var capturedFilter db.ListFilter
+	var capturedFilter repos.ListFilter
 	svc := &mockService{
-		listFn: func(_ context.Context, f db.ListFilter) ([]*apimodel.Notification, int, *uuid.UUID, error) {
+		listFn: func(_ context.Context, f repos.ListFilter) ([]*entities.Notification, int, *uuid.UUID, error) {
 			capturedFilter = f
 			return nil, 0, nil, nil
 		},

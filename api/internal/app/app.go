@@ -10,7 +10,7 @@ import (
 
 	"github.com/barkin/insider-notification/api/internal/config"
 	"github.com/barkin/insider-notification/api/internal/consumer"
-	"github.com/barkin/insider-notification/api/internal/db"
+	"github.com/barkin/insider-notification/api/internal/db/repos"
 	"github.com/barkin/insider-notification/api/internal/handler"
 	apischeduler "github.com/barkin/insider-notification/api/internal/scheduler"
 	"github.com/barkin/insider-notification/api/internal/service"
@@ -62,7 +62,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 		return nil, nil, fmt.Errorf("subscribe to status stream: %w", err)
 	}
 
-	notifRepo := db.NewNotificationRepository(bundb)
+	notifRepo := repos.NewNotificationRepository(bundb)
 	svc := service.NewNotificationService(notifRepo, pub)
 	router := handler.NewRouter(handler.Deps{Service: svc, DB: bundb, Redis: rdb})
 

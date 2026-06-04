@@ -125,12 +125,11 @@ const baseNotifID = "00000000-0000-0000-0000-000000000001"
 func baseEvent() stream.NotificationReadyEvent {
 	return stream.NotificationReadyEvent{
 		NotificationID: baseNotifID,
-		Priority:       model.PriorityHigh,
-		Channel:        model.ChannelEmail,
+		Priority:       string(string(model.PriorityHigh)),
+		Channel:        string(model.ChannelEmail),
 		Recipient:      "+905551234567",
 		Content:        "Your message",
 		MaxAttempts:    4,
-		Metadata:       "{}",
 	}
 }
 
@@ -198,8 +197,8 @@ func TestProcessOne_TerminalFailure(t *testing.T) {
 		t.Errorf("expected publish to %s, got %s", stream.TopicStatus, calls[0].topic)
 	}
 	evt := calls[0].payload.(stream.NotificationDeliveryResultEvent)
-	if evt.Status != model.StatusFailed {
-		t.Errorf("expected status %s, got %s", model.StatusFailed, evt.Status)
+	if evt.Status != string(model.StatusFailed) {
+		t.Errorf("expected status %s, got %s", string(model.StatusFailed), evt.Status)
 	}
 }
 
@@ -220,8 +219,8 @@ func TestDelivery_delivered(t *testing.T) {
 		t.Fatalf("expected 1 publish (delivered), got %d", len(calls))
 	}
 	evt := calls[0].payload.(stream.NotificationDeliveryResultEvent)
-	if evt.Status != model.StatusDelivered {
-		t.Errorf("expected status %s, got %s", model.StatusDelivered, evt.Status)
+	if evt.Status != string(model.StatusDelivered) {
+		t.Errorf("expected status %s, got %s", string(model.StatusDelivered), evt.Status)
 	}
 	if evt.HTTPStatusCode != 202 {
 		t.Errorf("expected status code 202, got %d", evt.HTTPStatusCode)
@@ -252,7 +251,7 @@ func TestDelivery_retryable_writesRetryAfter(t *testing.T) {
 	if a.RetryAfter == nil {
 		t.Error("expected retry_after to be set")
 	}
-	if a.Priority != model.PriorityHigh {
+	if a.Priority != string(model.PriorityHigh) {
 		t.Errorf("priority = %q, want high", a.Priority)
 	}
 }
@@ -281,8 +280,8 @@ func TestDelivery_exhausted_failed(t *testing.T) {
 		t.Errorf("expected publish to %s, got %s", stream.TopicStatus, calls[0].topic)
 	}
 	last := calls[0].payload.(stream.NotificationDeliveryResultEvent)
-	if last.Status != model.StatusFailed {
-		t.Errorf("expected status %s, got %s", model.StatusFailed, last.Status)
+	if last.Status != string(model.StatusFailed) {
+		t.Errorf("expected status %s, got %s", string(model.StatusFailed), last.Status)
 	}
 	if last.AttemptNumber != 4 {
 		t.Errorf("expected attempt_number 4, got %d", last.AttemptNumber)
@@ -313,8 +312,8 @@ func TestDelivery_nonRetryable_failed(t *testing.T) {
 		t.Fatalf("expected 1 publish (failed), got %d", len(calls))
 	}
 	last := calls[0].payload.(stream.NotificationDeliveryResultEvent)
-	if last.Status != model.StatusFailed {
-		t.Errorf("expected status %s, got %s", model.StatusFailed, last.Status)
+	if last.Status != string(model.StatusFailed) {
+		t.Errorf("expected status %s, got %s", string(model.StatusFailed), last.Status)
 	}
 }
 
@@ -426,10 +425,9 @@ func TestDelivery_attempts_payloadPersisted(t *testing.T) {
 	c := newPipeline(pub, dc, lim, true, aw)
 
 	evt := baseEventWithID()
-	evt.Channel = model.ChannelSMS
+	evt.Channel = string(model.ChannelSMS)
 	evt.Recipient = "+905550001"
 	evt.Content = "hello"
-	evt.Metadata = `{"foo":"bar"}`
 	evt.MaxAttempts = 3
 	runSingle(c, evt)
 
@@ -438,7 +436,7 @@ func TestDelivery_attempts_payloadPersisted(t *testing.T) {
 		t.Fatalf("expected 1 attempt write, got %d", len(attempts))
 	}
 	a := attempts[0]
-	if a.Channel != model.ChannelSMS {
+	if a.Channel != string(model.ChannelSMS) {
 		t.Errorf("channel = %q, want sms", a.Channel)
 	}
 	if a.Recipient != "+905550001" {
@@ -446,9 +444,6 @@ func TestDelivery_attempts_payloadPersisted(t *testing.T) {
 	}
 	if a.Content != "hello" {
 		t.Errorf("content = %q, want hello", a.Content)
-	}
-	if a.Metadata != `{"foo":"bar"}` {
-		t.Errorf("metadata = %q, want {\"foo\":\"bar\"}", a.Metadata)
 	}
 	if a.MaxAttempts != 3 {
 		t.Errorf("max_attempts = %d, want 3", a.MaxAttempts)

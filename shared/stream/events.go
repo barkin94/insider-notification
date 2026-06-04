@@ -9,7 +9,28 @@ type NotificationReadyEvent struct {
 	Content        string
 	Priority       string
 	MaxAttempts    int
-	Metadata       string // JSON string, "{}" if absent
+}
+
+// NotificationEntity is the minimal interface NotificationReadyEvent.From requires,
+// keeping the stream package free of a dependency on api/internal/db/entities.
+type NotificationEntity interface {
+	GetID() string
+	GetChannel() string
+	GetRecipient() string
+	GetContent() string
+	GetPriority() string
+	GetMaxAttempts() int
+}
+
+func (NotificationReadyEvent) From(n NotificationEntity) NotificationReadyEvent {
+	return NotificationReadyEvent{
+		NotificationID: n.GetID(),
+		Channel:        n.GetChannel(),
+		Recipient:      n.GetRecipient(),
+		Content:        n.GetContent(),
+		Priority:       n.GetPriority(),
+		MaxAttempts:    n.GetMaxAttempts(),
+	}
 }
 
 // NotificationDeliveryResultEvent is published to the status stream by the

@@ -12,6 +12,14 @@ import (
 type BaseModel struct {
 	bun.BaseModel
 	ID        uuid.UUID `bun:",pk,type:uuid"`
-	CreatedAt time.Time `bun:",nullzero,default:current_timestamp"`
-	UpdatedAt time.Time `bun:",nullzero,default:current_timestamp"`
+	CreatedAt time.Time `bun:"created_at,nullzero,notnull,default:current_timestamp"`
+	UpdatedAt time.Time `bun:"updated_at,nullzero,notnull,default:current_timestamp"`
+}
+
+func NewBaseModel() (BaseModel, error) {
+	id, err := uuid.NewV7()
+	if err != nil {
+		return BaseModel{}, err
+	}
+	return BaseModel{ID: id}, nil
 }

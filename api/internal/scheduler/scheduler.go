@@ -5,20 +5,20 @@ import (
 	"log/slog"
 	"time"
 
-	apimodel "github.com/barkin/insider-notification/api/internal/model"
-	"github.com/barkin/insider-notification/shared/model"
+	"github.com/barkin/insider-notification/api/internal/db/entities"
+	"github.com/barkin/insider-notification/api/internal/domain"
 	"github.com/barkin/insider-notification/shared/stream"
 )
 
 var topicByPriority = map[string]string{
-	model.PriorityHigh:   stream.TopicHigh,
-	model.PriorityNormal: stream.TopicNormal,
-	model.PriorityLow:    stream.TopicLow,
+	string(domain.PriorityHigh):   stream.TopicHigh,
+	string(domain.PriorityNormal): stream.TopicNormal,
+	string(domain.PriorityLow):    stream.TopicLow,
 }
 
 // NotificationScheduleReader is the narrow read port for scheduled notifications.
 type NotificationScheduleReader interface {
-	FindScheduledDue(ctx context.Context) ([]*apimodel.Notification, error)
+	FindScheduledDue(ctx context.Context) ([]*entities.Notification, error)
 }
 
 // Scheduler polls for scheduled notifications that are due and publishes them.
@@ -67,7 +67,6 @@ func (s *Scheduler) dispatchScheduled(ctx context.Context) {
 			Content:        n.Content,
 			Priority:       n.Priority,
 			MaxAttempts:    n.MaxAttempts,
-			Metadata:       string(n.Metadata),
 		}
 		topic := topicByPriority[n.Priority]
 		if err := s.publisher.Publish(ctx, topic, evt); err != nil {

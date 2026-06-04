@@ -2,82 +2,17 @@ package handler
 
 import (
 	"encoding/base64"
-	"encoding/json"
-	"errors"
 	"net/http"
 	"strconv"
 	"time"
 
-	"github.com/barkin/insider-notification/api/internal/db"
-	apimodel "github.com/barkin/insider-notification/api/internal/model"
+	"github.com/barkin/insider-notification/api/internal/db/repos"
+	"github.com/barkin/insider-notification/api/internal/domain"
 	"github.com/barkin/insider-notification/api/internal/service"
 	sharedhandler "github.com/barkin/insider-notification/shared/handler"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
-
-// --- request/response types ---
-
-type createRequest struct {
-	Recipient    string          `json:"recipient"`
-	Channel      string          `json:"channel"`
-	Content      string          `json:"content"`
-	Priority     string          `json:"priority"`
-	Metadata     json.RawMessage `json:"metadata" swaggertype:"object"`
-	DeliverAfter *string         `json:"deliver_after"`
-}
-
-type notificationResponse struct {
-	ID           string  `json:"id"`
-	BatchID      any     `json:"batch_id"`
-	Recipient    string  `json:"recipient"`
-	Channel      string  `json:"channel"`
-	Content      string  `json:"content"`
-	Priority     string  `json:"priority"`
-	Status       string  `json:"status"`
-	Attempts     int     `json:"attempts"`
-	MaxAttempts  int     `json:"max_attempts"`
-	DeliverAfter *string `json:"deliver_after"`
-	Metadata     any     `json:"metadata"`
-	CreatedAt    string  `json:"created_at"`
-	UpdatedAt    string  `json:"updated_at"`
-}
-
-type listResponse struct {
-	Data       []notificationResponse `json:"data"`
-	Pagination paginationMeta         `json:"pagination"`
-}
-
-type paginationMeta struct {
-	PageSize   int     `json:"page_size"`
-	Total      int     `json:"total"`
-	NextCursor *string `json:"next_cursor"`
-}
-
-type cancelResponse struct {
-	ID        string `json:"id"`
-	Status    string `json:"status"`
-	UpdatedAt string `json:"updated_at"`
-}
-
-type batchRequest struct {
-	Notifications []createRequest `json:"notifications"`
-}
-
-type batchItemResult struct {
-	Index  int        `json:"index"`
-	Status string     `json:"status"`
-	ID     *string    `json:"id,omitempty"`
-	Error  *errorBody `json:"error,omitempty"`
-}
-
-type batchResponse struct {
-	BatchID  string            `json:"batch_id"`
-	Total    int               `json:"total"`
-	Accepted int               `json:"accepted"`
-	Rejected int               `json:"rejected"`
-	Results  []batchItemResult `json:"results"`
-}
 
 // --- handler constructors ---
 
@@ -88,41 +23,27 @@ type batchResponse struct {
 // @Produce     json
 // @Param       body body createRequest true "Notification payload"
 // @Success     201 {object} notificationResponse
-// @Failure     400 {object} errorBody
-// @Failure     500 {object} errorBody
+// @Failure     400 {object} sharedhandler.ErrorBody
+// @Failure     500 {object} sharedhandler.ErrorBody
 // @Router      /notifications [post]
 func createNotification(svc service.NotificationService) sharedhandler.AppHandler {
 	return func(w http.ResponseWriter, r *http.Request) error {
-		var req createRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			return errBadRequest("VALIDATION_ERROR", "invalid JSON body")
-		}
-
-		var deliverAfter *time.Time
-		if req.DeliverAfter != nil {
-			t, err := time.Parse(time.RFC3339, *req.DeliverAfter)
-			if err != nil {
-				return errBadRequest("VALIDATION_ERROR", "deliver_after must be RFC3339")
-			}
-			deliverAfter = &t
-		}
-
-		n, err := svc.Create(r.Context(), service.CreateRequest{
-			Recipient:    req.Recipient,
-			Channel:      req.Channel,
-			Content:      req.Content,
-			Priority:     req.Priority,
-			Metadata:     req.Metadata,
-			DeliverAfter: deliverAfter,
-		})
+		req, err := sharedhandler.DecodeBody[createRequest](r)
 		if err != nil {
-			if service.IsValidationError(err) {
-				return errBadRequest("VALIDATION_ERROR", err.Error())
-			}
-			return errInternal()
+			return err
 		}
 
-		sharedhandler.WriteJSON(w, http.StatusCreated, toNotificationResponse(n))
+		n, err := req.ToNotification()
+		if err != nil {
+			return err
+		}
+
+		result, err := svc.Create(r.Context(), n)
+		if err != nil {
+			return err
+		}
+
+		sharedhandler.WriteJSON(w, http.StatusCreated, toNotificationResponse(result))
 		return nil
 	}
 }
@@ -132,24 +53,21 @@ func createNotification(svc service.NotificationService) sharedhandler.AppHandle
 // @Tags        notifications
 // @Produce     json
 // @Param       id path string true "Notification ID (UUID)"
-// @Success     200 {object} notificationWithAttemptsResponse
-// @Failure     400 {object} errorBody
-// @Failure     404 {object} errorBody
-// @Failure     500 {object} errorBody
+// @Success     200 {object} notificationResponse
+// @Failure     400 {object} sharedhandler.ErrorBody
+// @Failure     404 {object} sharedhandler.ErrorBody
+// @Failure     500 {object} sharedhandler.ErrorBody
 // @Router      /notifications/{id} [get]
 func getNotification(svc service.NotificationService) sharedhandler.AppHandler {
 	return func(w http.ResponseWriter, r *http.Request) error {
 		id, err := uuid.Parse(chi.URLParam(r, "id"))
 		if err != nil {
-			return errBadRequest("VALIDATION_ERROR", "invalid notification id")
+			return sharedhandler.NewValidationError("id", "must be a valid UUID")
 		}
 
 		n, err := svc.GetByID(r.Context(), id)
 		if err != nil {
-			if errors.Is(err, db.ErrNotFound) {
-				return errNotFound("notification not found")
-			}
-			return errInternal()
+			return err
 		}
 
 		sharedhandler.WriteJSON(w, http.StatusOK, toNotificationResponse(n))
@@ -169,8 +87,8 @@ func getNotification(svc service.NotificationService) sharedhandler.AppHandler {
 // @Param       page_size query int    false "Page size (default 20, max 100)"
 // @Param       cursor    query string false "Opaque cursor for keyset pagination (base64url-encoded UUID)"
 // @Success     200 {object} listResponse
-// @Failure     400 {object} errorBody
-// @Failure     500 {object} errorBody
+// @Failure     400 {object} sharedhandler.ErrorBody
+// @Failure     500 {object} sharedhandler.ErrorBody
 // @Router      /notifications [get]
 func listNotifications(svc service.NotificationService) sharedhandler.AppHandler {
 	return func(w http.ResponseWriter, r *http.Request) error {
@@ -199,7 +117,7 @@ func listNotifications(svc service.NotificationService) sharedhandler.AppHandler
 			}
 		}
 
-		f := db.ListFilter{
+		f := repos.ListFilter{
 			Status:   q.Get("status"),
 			Channel:  q.Get("channel"),
 			BatchID:  batchID,
@@ -214,14 +132,14 @@ func listNotifications(svc service.NotificationService) sharedhandler.AppHandler
 		if cursorStr := q.Get("cursor"); cursorStr != "" {
 			cursorID, err := decodeCursor(cursorStr)
 			if err != nil {
-				return errBadRequest("VALIDATION_ERROR", "invalid cursor")
+				return sharedhandler.NewValidationError("cursor", "invalid")
 			}
 			f.CursorID = cursorID
 		}
 
 		ns, total, nextCursor, err := svc.List(r.Context(), f)
 		if err != nil {
-			return errInternal()
+			return err
 		}
 		sharedhandler.WriteJSON(w, http.StatusOK, listResponse{
 			Data: toNotificationResponses(ns),
@@ -255,41 +173,27 @@ func encodeCursor(id *uuid.UUID) *string {
 	return &s
 }
 
-func toNotificationResponses(ns []*apimodel.Notification) []notificationResponse {
-	data := make([]notificationResponse, len(ns))
-	for i, n := range ns {
-		data[i] = toNotificationResponse(n)
-	}
-	return data
-}
-
 // cancelNotification godoc
 // @Summary     Cancel a notification
 // @Tags        notifications
 // @Produce     json
 // @Param       id path string true "Notification ID (UUID)"
 // @Success     200 {object} cancelResponse
-// @Failure     400 {object} errorBody
-// @Failure     404 {object} errorBody
-// @Failure     409 {object} errorBody
-// @Failure     500 {object} errorBody
+// @Failure     400 {object} sharedhandler.ErrorBody
+// @Failure     404 {object} sharedhandler.ErrorBody
+// @Failure     409 {object} sharedhandler.ErrorBody
+// @Failure     500 {object} sharedhandler.ErrorBody
 // @Router      /notifications/{id}/cancel [post]
 func cancelNotification(svc service.NotificationService) sharedhandler.AppHandler {
 	return func(w http.ResponseWriter, r *http.Request) error {
 		id, err := uuid.Parse(chi.URLParam(r, "id"))
 		if err != nil {
-			return errBadRequest("VALIDATION_ERROR", "invalid notification id")
+			return sharedhandler.NewValidationError("id", "must be a valid UUID")
 		}
 
 		n, err := svc.Cancel(r.Context(), id)
 		if err != nil {
-			if errors.Is(err, db.ErrTransitionFailed) {
-				return errConflict("INVALID_STATUS_TRANSITION", "notification cannot be cancelled in its current status")
-			}
-			if errors.Is(err, db.ErrNotFound) {
-				return errNotFound("notification not found")
-			}
-			return errInternal()
+			return err
 		}
 
 		sharedhandler.WriteJSON(w, http.StatusOK, cancelResponse{
@@ -308,55 +212,61 @@ func cancelNotification(svc service.NotificationService) sharedhandler.AppHandle
 // @Produce     json
 // @Param       body body batchRequest true "Batch payload (max 1000 items)"
 // @Success     207 {object} batchResponse
-// @Failure     400 {object} errorBody
-// @Failure     500 {object} errorBody
+// @Failure     400 {object} sharedhandler.ErrorBody
+// @Failure     500 {object} sharedhandler.ErrorBody
 // @Router      /notifications/batch [post]
 func createBatch(svc service.NotificationService) sharedhandler.AppHandler {
 	return func(w http.ResponseWriter, r *http.Request) error {
-		var req batchRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			return errBadRequest("VALIDATION_ERROR", "invalid JSON body")
+		req, err := sharedhandler.DecodeBody[batchRequest](r)
+		if err != nil {
+			return err
 		}
 		if len(req.Notifications) > 1000 {
-			return errBadRequest("VALIDATION_ERROR", "batch size exceeds 1000")
+			return sharedhandler.NewValidationError("notifications", "max 1000 items")
 		}
 
-		svcReqs := make([]service.CreateRequest, len(req.Notifications))
+		type validItem struct {
+			idx int
+			n   domain.Notification
+		}
+
+		var valid []validItem
+		itemResults := make([]batchItemResult, 0, len(req.Notifications))
+
 		for i, item := range req.Notifications {
-			var deliverAfter *time.Time
-			if item.DeliverAfter != nil {
-				t, err := time.Parse(time.RFC3339, *item.DeliverAfter)
-				if err != nil {
-					return errBadRequest("VALIDATION_ERROR", "deliver_after must be RFC3339")
-				}
-				deliverAfter = &t
+			n, err := item.ToNotification()
+			if err != nil {
+				msg := err.Error()
+				itemResults = append(itemResults, batchItemResult{
+					Index:  i,
+					Status: "rejected",
+					Error:  &sharedhandler.ErrorBody{Code: "VALIDATION_ERROR", Message: msg},
+				})
+				continue
 			}
-			svcReqs[i] = service.CreateRequest{
-				Recipient:    item.Recipient,
-				Channel:      item.Channel,
-				Content:      item.Content,
-				Priority:     item.Priority,
-				Metadata:     item.Metadata,
-				DeliverAfter: deliverAfter,
-			}
+			valid = append(valid, validItem{idx: i, n: n})
 		}
 
-		batchID, results, err := svc.CreateBatch(r.Context(), svcReqs)
+		ns := make([]domain.Notification, len(valid))
+		for j, v := range valid {
+			ns[j] = v.n
+		}
+
+		batchID, results, err := svc.CreateBatch(r.Context(), ns)
 		if err != nil {
-			return errInternal()
+			return err
 		}
 
 		accepted := 0
-		itemResults := make([]batchItemResult, 0, len(results))
-		for _, res := range results {
-			item := batchItemResult{Index: res.Index, Status: res.Status}
+		for j, res := range results {
+			item := batchItemResult{Index: valid[j].idx, Status: res.Status}
 			if res.ID != nil {
-				idStr := res.ID.String()
-				item.ID = &idStr
+				id := res.ID.String()
+				item.ID = &id
 				accepted++
 			}
 			if res.Error != nil {
-				item.Error = &errorBody{Code: "VALIDATION_ERROR", Message: *res.Error}
+				item.Error = &sharedhandler.ErrorBody{Code: "INTERNAL_ERROR", Message: *res.Error}
 			}
 			itemResults = append(itemResults, item)
 		}
@@ -369,35 +279,6 @@ func createBatch(svc service.NotificationService) sharedhandler.AppHandler {
 			Results:  itemResults,
 		})
 		return nil
-	}
-}
-
-// --- mapping helpers ---
-
-func toNotificationResponse(n *apimodel.Notification) notificationResponse {
-	var batchID any
-	if n.BatchID != nil {
-		batchID = n.BatchID.String()
-	}
-	var deliverAfter *string
-	if n.DeliverAfter != nil {
-		s := n.DeliverAfter.Format(time.RFC3339)
-		deliverAfter = &s
-	}
-	return notificationResponse{
-		ID:           n.ID.String(),
-		BatchID:      batchID,
-		Recipient:    n.Recipient,
-		Channel:      n.Channel,
-		Content:      n.Content,
-		Priority:     n.Priority,
-		Status:       n.Status,
-		Attempts:     n.Attempts,
-		MaxAttempts:  n.MaxAttempts,
-		DeliverAfter: deliverAfter,
-		Metadata:     n.Metadata,
-		CreatedAt:    n.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:    n.UpdatedAt.Format(time.RFC3339),
 	}
 }
 

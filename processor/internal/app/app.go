@@ -92,9 +92,9 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 		pub,
 		service.NewNtfnDeliveryClient(cfg.NtfnDeliveryClientURL, cfg.NtfnDeliveryClientTimeout),
 		service.NewLimiter(rdb, map[string]redis_rate.Limit{
-			model.ChannelSMS:   {Rate: cfg.SMSRatePerSecond, Burst: cfg.SMSBurst, Period: time.Second},
-			model.ChannelEmail: {Rate: cfg.EmailRatePerSecond, Burst: cfg.EmailBurst, Period: time.Second},
-			model.ChannelPush:  {Rate: cfg.PushRatePerSecond, Burst: cfg.PushBurst, Period: time.Second},
+			string(model.ChannelSMS):   {Rate: cfg.SMSRatePerSecond, Burst: cfg.SMSBurst, Period: time.Second},
+			string(model.ChannelEmail): {Rate: cfg.EmailRatePerSecond, Burst: cfg.EmailBurst, Period: time.Second},
+			string(model.ChannelPush):  {Rate: cfg.PushRatePerSecond, Burst: cfg.PushBurst, Period: time.Second},
 		}),
 		lock.NewRedisLocker(rdb),
 		attemptRepo,

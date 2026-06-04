@@ -4,7 +4,7 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/barkin/insider-notification/api/internal/db"
+	"github.com/barkin/insider-notification/api/internal/db/repos"
 	"github.com/barkin/insider-notification/shared/stream"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
@@ -12,10 +12,10 @@ import (
 
 // StatusConsumer processes NotificationDeliveryResultEvent messages from the status stream.
 type StatusConsumer struct {
-	notifRepo db.NotificationRepository
+	notifRepo repos.NotificationRepository
 }
 
-func NewStatusConsumer(notifRepo db.NotificationRepository) *StatusConsumer {
+func NewStatusConsumer(notifRepo repos.NotificationRepository) *StatusConsumer {
 	return &StatusConsumer{notifRepo: notifRepo}
 }
 

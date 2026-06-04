@@ -1,16 +1,20 @@
 package model
 
+type Channel string
+type Priority string
+type Status string
+
 const (
-	ChannelSMS   = "sms"
-	ChannelEmail = "email"
-	ChannelPush  = "push"
+	ChannelSMS   Channel = "sms"
+	ChannelEmail Channel = "email"
+	ChannelPush  Channel = "push"
 
-	PriorityHigh   = "high"
-	PriorityNormal = "normal"
-	PriorityLow    = "low"
+	PriorityHigh   Priority = "high"
+	PriorityNormal Priority = "normal"
+	PriorityLow    Priority = "low"
 
-	StatusPending   = "pending"
-	StatusDelivered = "delivered"
-	StatusFailed    = "failed"
-	StatusCancelled = "cancelled"
+	StatusPending   Status = "pending"
+	StatusDelivered Status = "delivered"
+	StatusFailed    Status = "failed"
+	StatusCancelled Status = "cancelled"
 )

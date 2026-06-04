@@ -2,29 +2,16 @@ package service
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"time"
 
-	apimodel "github.com/barkin/insider-notification/api/internal/model"
-	"github.com/barkin/insider-notification/api/internal/db"
-	"github.com/barkin/insider-notification/shared/model"
+	"github.com/barkin/insider-notification/api/internal/db/entities"
+	"github.com/barkin/insider-notification/api/internal/db/repos"
+	"github.com/barkin/insider-notification/api/internal/domain"
 	"github.com/barkin/insider-notification/shared/stream"
 	"github.com/google/uuid"
 )
 
-// CreateRequest carries validated input for creating a notification.
-type CreateRequest struct {
-	Recipient    string
-	Channel      string
-	Content      string
-	Priority     string
-	Metadata     json.RawMessage
-	DeliverAfter *time.Time
-}
-
-// BatchResult holds the outcome of one item in a batch create request.
+// BatchResult holds the outcome of one item in a batch create operation.
 type BatchResult struct {
 	Index  int
 	Status string // "accepted" | "rejected"
@@ -34,216 +21,94 @@ type BatchResult struct {
 
 // NotificationService defines the business operations for notifications.
 type NotificationService interface {
-	Create(ctx context.Context, req CreateRequest) (*apimodel.Notification, error)
-	GetByID(ctx context.Context, id uuid.UUID) (*apimodel.Notification, error)
-	List(ctx context.Context, filter db.ListFilter) ([]*apimodel.Notification, int, *uuid.UUID, error)
-	Cancel(ctx context.Context, id uuid.UUID) (*apimodel.Notification, error)
-	CreateBatch(ctx context.Context, reqs []CreateRequest) (uuid.UUID, []BatchResult, error)
+	Create(ctx context.Context, n domain.Notification) (*entities.Notification, error)
+	GetByID(ctx context.Context, id uuid.UUID) (*entities.Notification, error)
+	List(ctx context.Context, filter repos.ListFilter) ([]*entities.Notification, int, *uuid.UUID, error)
+	Cancel(ctx context.Context, id uuid.UUID) (*entities.Notification, error)
+	CreateBatch(ctx context.Context, ns []domain.Notification) (uuid.UUID, []BatchResult, error)
 }
 
 type notificationService struct {
-	repo      db.NotificationRepository
+	repo      repos.NotificationRepository
 	publisher stream.Publisher
 }
 
 func NewNotificationService(
-	repo db.NotificationRepository,
+	repo repos.NotificationRepository,
 	publisher stream.Publisher,
 ) NotificationService {
 	return &notificationService{repo: repo, publisher: publisher}
 }
 
-var contentLimits = map[string]int{
-	model.ChannelSMS:   1600,
-	model.ChannelEmail: 100_000,
-	model.ChannelPush:  4096,
-}
-
-var validChannels = map[string]bool{
-	model.ChannelSMS:   true,
-	model.ChannelEmail: true,
-	model.ChannelPush:  true,
-}
-
-var validPriorities = map[string]bool{
-	model.PriorityHigh:   true,
-	model.PriorityNormal: true,
-	model.PriorityLow:    true,
-}
-
 var topicByPriority = map[string]string{
-	model.PriorityHigh:   stream.TopicHigh,
-	model.PriorityNormal: stream.TopicNormal,
-	model.PriorityLow:    stream.TopicLow,
+	string(domain.PriorityHigh):   stream.TopicHigh,
+	string(domain.PriorityNormal): stream.TopicNormal,
+	string(domain.PriorityLow):    stream.TopicLow,
 }
 
-// ValidationError carries a human-readable field-level validation failure.
-type ValidationError struct {
-	Field   string
-	Message string
-}
-
-func (e *ValidationError) Error() string {
-	return fmt.Sprintf("validation: %s: %s", e.Field, e.Message)
-}
-
-func validate(req CreateRequest) error {
-	if req.Recipient == "" || len(req.Recipient) > 255 {
-		return &ValidationError{Field: "recipient", Message: "required, max 255 chars"}
-	}
-	if !validChannels[req.Channel] {
-		return &ValidationError{Field: "channel", Message: "must be one of: sms, email, push"}
-	}
-	if req.Content == "" {
-		return &ValidationError{Field: "content", Message: "required"}
-	}
-	if limit, ok := contentLimits[req.Channel]; ok && len(req.Content) > limit {
-		return &ValidationError{Field: "content", Message: fmt.Sprintf("exceeds %d char limit for %s", limit, req.Channel)}
-	}
-	if req.Priority != "" && !validPriorities[req.Priority] {
-		return &ValidationError{Field: "priority", Message: "must be one of: high, normal, low"}
-	}
-	return nil
-}
-
-func (s *notificationService) Create(ctx context.Context, req CreateRequest) (*apimodel.Notification, error) {
-	if err := validate(req); err != nil {
+func (s *notificationService) Create(ctx context.Context, n domain.Notification) (*entities.Notification, error) {
+	entity, err := s.persist(ctx, n, nil)
+	if err != nil {
 		return nil, err
 	}
-
-	priority := req.Priority
-	if priority == "" {
-		priority = model.PriorityNormal
+	if err := s.publish(ctx, entity); err != nil {
+		return nil, err
 	}
-
-	metadata := req.Metadata
-	if len(metadata) == 0 {
-		metadata = json.RawMessage("{}")
-	}
-
-	now := time.Now().UTC()
-	n := &apimodel.Notification{
-		Recipient:    req.Recipient,
-		Channel:      req.Channel,
-		Content:      req.Content,
-		Priority:     priority,
-		Status:       model.StatusPending,
-		MaxAttempts:  4,
-		Metadata:     metadata,
-		DeliverAfter: req.DeliverAfter,
-	}
-	n.ID = uuid.New()
-	n.CreatedAt = now
-	n.UpdatedAt = now
-
-	if err := s.repo.Create(ctx, n); err != nil {
-		return nil, fmt.Errorf("create notification: %w", err)
-	}
-
-	if n.DeliverAfter == nil {
-		evt := stream.NotificationReadyEvent{
-			NotificationID: n.ID.String(),
-			Channel:        n.Channel,
-			Recipient:      n.Recipient,
-			Content:        n.Content,
-			Priority:       n.Priority,
-			MaxAttempts:    n.MaxAttempts,
-			Metadata:       string(n.Metadata),
-		}
-		if err := s.publisher.Publish(ctx, topicByPriority[priority], evt); err != nil {
-			return nil, fmt.Errorf("publish event: %w", err)
-		}
-	}
-
-	return n, nil
+	return entity, nil
 }
 
-func (s *notificationService) GetByID(ctx context.Context, id uuid.UUID) (*apimodel.Notification, error) {
+func (s *notificationService) GetByID(ctx context.Context, id uuid.UUID) (*entities.Notification, error) {
 	return s.repo.GetByID(ctx, id)
 }
 
-func (s *notificationService) List(ctx context.Context, filter db.ListFilter) ([]*apimodel.Notification, int, *uuid.UUID, error) {
+func (s *notificationService) List(ctx context.Context, filter repos.ListFilter) ([]*entities.Notification, int, *uuid.UUID, error) {
 	return s.repo.List(ctx, filter)
 }
 
-func (s *notificationService) Cancel(ctx context.Context, id uuid.UUID) (*apimodel.Notification, error) {
-	return s.repo.Transition(ctx, id, model.StatusPending, model.StatusCancelled)
+func (s *notificationService) Cancel(ctx context.Context, id uuid.UUID) (*entities.Notification, error) {
+	return s.repo.Transition(ctx, id, string(domain.StatusPending), string(domain.StatusCancelled))
 }
 
-func (s *notificationService) CreateBatch(ctx context.Context, reqs []CreateRequest) (uuid.UUID, []BatchResult, error) {
+func (s *notificationService) CreateBatch(ctx context.Context, ns []domain.Notification) (uuid.UUID, []BatchResult, error) {
 	batchID := uuid.New()
-	results := make([]BatchResult, len(reqs))
+	results := make([]BatchResult, len(ns))
 
-	for i, req := range reqs {
-		if err := validate(req); err != nil {
-			msg := err.Error()
-			results[i] = BatchResult{Index: i, Status: "rejected", Error: &msg}
-			continue
-		}
-
-		n, err := s.createWithBatchID(ctx, req, batchID)
+	for i, n := range ns {
+		entity, err := s.persist(ctx, n, &batchID)
 		if err != nil {
 			msg := err.Error()
 			results[i] = BatchResult{Index: i, Status: "rejected", Error: &msg}
 			continue
 		}
-		results[i] = BatchResult{Index: i, Status: "accepted", ID: &n.ID}
+		if err := s.publish(ctx, entity); err != nil {
+			msg := err.Error()
+			results[i] = BatchResult{Index: i, Status: "rejected", Error: &msg}
+			continue
+		}
+		results[i] = BatchResult{Index: i, Status: "accepted", ID: &entity.ID}
 	}
 
 	return batchID, results, nil
 }
 
-func (s *notificationService) createWithBatchID(ctx context.Context, req CreateRequest, batchID uuid.UUID) (*apimodel.Notification, error) {
-	priority := req.Priority
-	if priority == "" {
-		priority = model.PriorityNormal
+func (s *notificationService) persist(ctx context.Context, n domain.Notification, batchID *uuid.UUID) (*entities.Notification, error) {
+	entity, err := entities.Notification{}.From(n, batchID)
+	if err != nil {
+		return nil, err
 	}
-
-	metadata := req.Metadata
-	if len(metadata) == 0 {
-		metadata = json.RawMessage("{}")
-	}
-
-	now := time.Now().UTC()
-	n := &apimodel.Notification{
-		BatchID:      &batchID,
-		Recipient:    req.Recipient,
-		Channel:      req.Channel,
-		Content:      req.Content,
-		Priority:     priority,
-		Status:       model.StatusPending,
-		MaxAttempts:  4,
-		Metadata:     metadata,
-		DeliverAfter: req.DeliverAfter,
-	}
-	n.ID = uuid.New()
-	n.CreatedAt = now
-	n.UpdatedAt = now
-
-	if err := s.repo.Create(ctx, n); err != nil {
+	if err := s.repo.Create(ctx, entity); err != nil {
 		return nil, fmt.Errorf("create notification: %w", err)
 	}
-
-	if n.DeliverAfter == nil {
-		evt := stream.NotificationReadyEvent{
-			NotificationID: n.ID.String(),
-			Channel:        n.Channel,
-			Recipient:      n.Recipient,
-			Content:        n.Content,
-			Priority:       n.Priority,
-			MaxAttempts:    n.MaxAttempts,
-			Metadata:       string(n.Metadata),
-		}
-		if err := s.publisher.Publish(ctx, topicByPriority[priority], evt); err != nil {
-			return nil, fmt.Errorf("publish event: %w", err)
-		}
-	}
-
-	return n, nil
+	return entity, nil
 }
 
-// IsValidationError reports whether err is a ValidationError.
-func IsValidationError(err error) bool {
-	var ve *ValidationError
-	return errors.As(err, &ve)
+func (s *notificationService) publish(ctx context.Context, entity *entities.Notification) error {
+	if entity.DeliverAfter != nil {
+		return nil
+	}
+	evt := stream.NotificationReadyEvent{}.From(entity)
+	if err := s.publisher.Publish(ctx, topicByPriority[entity.Priority], evt); err != nil {
+		return fmt.Errorf("publish event: %w", err)
+	}
+	return nil
 }

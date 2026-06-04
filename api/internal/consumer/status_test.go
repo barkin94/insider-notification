@@ -10,7 +10,7 @@ import (
 
 	watermill "github.com/ThreeDotsLabs/watermill/message"
 	"github.com/barkin/insider-notification/api/internal/consumer"
-	"github.com/barkin/insider-notification/api/internal/db"
+	"github.com/barkin/insider-notification/api/internal/db/repos"
 	"github.com/barkin/insider-notification/shared/model"
 	"github.com/barkin/insider-notification/shared/stream"
 	"github.com/golang-migrate/migrate/v4"
@@ -106,14 +106,14 @@ func runConsumer(c *consumer.StatusConsumer, result stream.Result[stream.Notific
 
 func TestStatusConsumer_delivered(t *testing.T) {
 	notifID := mustV7()
-	seedNotification(t, notifID, model.StatusPending)
+	seedNotification(t, notifID, string(model.StatusPending))
 
-	notifRepo := db.NewNotificationRepository(testDB)
+	notifRepo := repos.NewNotificationRepository(testDB)
 	c := consumer.NewStatusConsumer(notifRepo)
 
 	evt := stream.NotificationDeliveryResultEvent{
 		NotificationID: notifID.String(),
-		Status:         model.StatusDelivered,
+		Status:         string(model.StatusDelivered),
 		AttemptNumber:  1,
 		HTTPStatusCode: 200,
 		LatencyMS:      120,
@@ -125,21 +125,21 @@ func TestStatusConsumer_delivered(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetByID: %v", err)
 	}
-	if got.Status != model.StatusDelivered {
-		t.Errorf("status = %q, want %q", got.Status, model.StatusDelivered)
+	if got.Status != string(model.StatusDelivered) {
+		t.Errorf("status = %q, want %q", got.Status, string(model.StatusDelivered))
 	}
 }
 
 func TestStatusConsumer_failed(t *testing.T) {
 	notifID := mustV7()
-	seedNotification(t, notifID, model.StatusPending)
+	seedNotification(t, notifID, string(model.StatusPending))
 
-	notifRepo := db.NewNotificationRepository(testDB)
+	notifRepo := repos.NewNotificationRepository(testDB)
 	c := consumer.NewStatusConsumer(notifRepo)
 
 	evt := stream.NotificationDeliveryResultEvent{
 		NotificationID: notifID.String(),
-		Status:         model.StatusFailed,
+		Status:         string(model.StatusFailed),
 		AttemptNumber:  4,
 		ErrorMessage:   "provider timeout",
 		LatencyMS:      500,
@@ -151,21 +151,21 @@ func TestStatusConsumer_failed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetByID: %v", err)
 	}
-	if got.Status != model.StatusFailed {
-		t.Errorf("status = %q, want %q", got.Status, model.StatusFailed)
+	if got.Status != string(model.StatusFailed) {
+		t.Errorf("status = %q, want %q", got.Status, string(model.StatusFailed))
 	}
 }
 
 func TestStatusConsumer_idempotent(t *testing.T) {
 	notifID := mustV7()
-	seedNotification(t, notifID, model.StatusPending)
+	seedNotification(t, notifID, string(model.StatusPending))
 
-	notifRepo := db.NewNotificationRepository(testDB)
+	notifRepo := repos.NewNotificationRepository(testDB)
 	c := consumer.NewStatusConsumer(notifRepo)
 
 	evt := stream.NotificationDeliveryResultEvent{
 		NotificationID: notifID.String(),
-		Status:         model.StatusDelivered,
+		Status:         string(model.StatusDelivered),
 		AttemptNumber:  1,
 		HTTPStatusCode: 200,
 		LatencyMS:      80,
@@ -179,7 +179,7 @@ func TestStatusConsumer_idempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetByID: %v", err)
 	}
-	if got.Status != model.StatusDelivered {
-		t.Errorf("status = %q, want %q", got.Status, model.StatusDelivered)
+	if got.Status != string(model.StatusDelivered) {
+		t.Errorf("status = %q, want %q", got.Status, string(model.StatusDelivered))
 	}
 }

@@ -5,10 +5,11 @@ import (
 	"errors"
 	"testing"
 
-	apimodel "github.com/barkin/insider-notification/api/internal/model"
 	"github.com/barkin/insider-notification/api/internal/db"
+	"github.com/barkin/insider-notification/api/internal/db/entities"
+	"github.com/barkin/insider-notification/api/internal/db/repos"
+	"github.com/barkin/insider-notification/api/internal/domain"
 	"github.com/barkin/insider-notification/api/internal/service"
-	"github.com/barkin/insider-notification/shared/model"
 	"github.com/barkin/insider-notification/shared/stream"
 	"github.com/google/uuid"
 )
@@ -16,24 +17,24 @@ import (
 // --- mock repo ---
 
 type mockNotifRepo struct {
-	createFn       func(ctx context.Context, n *apimodel.Notification) error
-	getByIDFn      func(ctx context.Context, id uuid.UUID) (*apimodel.Notification, error)
-	listFn         func(ctx context.Context, f db.ListFilter) ([]*apimodel.Notification, int, *uuid.UUID, error)
-	transitionFn   func(ctx context.Context, id uuid.UUID, from, to string) (*apimodel.Notification, error)
+	createFn       func(ctx context.Context, n *entities.Notification) error
+	getByIDFn      func(ctx context.Context, id uuid.UUID) (*entities.Notification, error)
+	listFn         func(ctx context.Context, f repos.ListFilter) ([]*entities.Notification, int, *uuid.UUID, error)
+	transitionFn   func(ctx context.Context, id uuid.UUID, from, to string) (*entities.Notification, error)
 	incrFn         func(ctx context.Context, id uuid.UUID) error
 	updateStatusFn func(ctx context.Context, id uuid.UUID, status string) error
 }
 
-func (m *mockNotifRepo) Create(ctx context.Context, n *apimodel.Notification) error {
+func (m *mockNotifRepo) Create(ctx context.Context, n *entities.Notification) error {
 	return m.createFn(ctx, n)
 }
-func (m *mockNotifRepo) GetByID(ctx context.Context, id uuid.UUID) (*apimodel.Notification, error) {
+func (m *mockNotifRepo) GetByID(ctx context.Context, id uuid.UUID) (*entities.Notification, error) {
 	return m.getByIDFn(ctx, id)
 }
-func (m *mockNotifRepo) List(ctx context.Context, f db.ListFilter) ([]*apimodel.Notification, int, *uuid.UUID, error) {
+func (m *mockNotifRepo) List(ctx context.Context, f repos.ListFilter) ([]*entities.Notification, int, *uuid.UUID, error) {
 	return m.listFn(ctx, f)
 }
-func (m *mockNotifRepo) Transition(ctx context.Context, id uuid.UUID, from, to string) (*apimodel.Notification, error) {
+func (m *mockNotifRepo) Transition(ctx context.Context, id uuid.UUID, from, to string) (*entities.Notification, error) {
 	return m.transitionFn(ctx, id, from, to)
 }
 func (m *mockNotifRepo) IncrementAttempts(ctx context.Context, id uuid.UUID) error {
@@ -45,8 +46,7 @@ func (m *mockNotifRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status s
 	}
 	return nil
 }
-
-func (m *mockNotifRepo) FindScheduledDue(_ context.Context) ([]*apimodel.Notification, error) {
+func (m *mockNotifRepo) FindScheduledDue(_ context.Context) ([]*entities.Notification, error) {
 	return nil, nil
 }
 
@@ -64,9 +64,9 @@ func (m *mockPublisher) Publish(ctx context.Context, topic string, payload any) 
 
 func okRepo() *mockNotifRepo {
 	return &mockNotifRepo{
-		createFn: func(_ context.Context, _ *apimodel.Notification) error { return nil },
-		transitionFn: func(_ context.Context, id uuid.UUID, _, to string) (*apimodel.Notification, error) {
-			n := &apimodel.Notification{Status: to}
+		createFn: func(_ context.Context, _ *entities.Notification) error { return nil },
+		transitionFn: func(_ context.Context, id uuid.UUID, _, to string) (*entities.Notification, error) {
+			n := &entities.Notification{Status: to}
 			n.ID = id
 			return n, nil
 		},
@@ -84,8 +84,17 @@ func okPublisher(wantTopic *string) *mockPublisher {
 	}
 }
 
-func newSvc(repo db.NotificationRepository, pub stream.Publisher) service.NotificationService {
+func newSvc(repo repos.NotificationRepository, pub stream.Publisher) service.NotificationService {
 	return service.NewNotificationService(repo, pub)
+}
+
+func validNotification(channel domain.Channel, priority domain.Priority) domain.Notification {
+	var n domain.Notification
+	n.SetChannel(channel)         //nolint:errcheck
+	n.SetRecipient("+15551234567") //nolint:errcheck
+	n.SetContent("hello")         //nolint:errcheck
+	n.SetPriority(priority)       //nolint:errcheck
+	return n
 }
 
 // --- tests ---
@@ -94,48 +103,15 @@ func TestCreate_success(t *testing.T) {
 	var gotTopic string
 	svc := newSvc(okRepo(), okPublisher(&gotTopic))
 
-	n, err := svc.Create(context.Background(), service.CreateRequest{
-		Recipient: "+905551234567",
-		Channel:   model.ChannelSMS,
-		Content:   "hello",
-		Priority:  model.PriorityHigh,
-	})
+	n, err := svc.Create(context.Background(), validNotification(domain.ChannelSMS, domain.PriorityHigh))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if n.Status != model.StatusPending {
+	if n.Status != string(domain.StatusPending) {
 		t.Errorf("status = %q, want pending", n.Status)
 	}
 	if gotTopic != stream.TopicHigh {
 		t.Errorf("published to %q, want %q", gotTopic, stream.TopicHigh)
-	}
-}
-
-func TestCreate_invalidChannel(t *testing.T) {
-	svc := newSvc(okRepo(), okPublisher(nil))
-	_, err := svc.Create(context.Background(), service.CreateRequest{
-		Recipient: "+1",
-		Channel:   "fax",
-		Content:   "hi",
-	})
-	if err == nil {
-		t.Fatal("expected validation error")
-	}
-}
-
-func TestCreate_contentTooLong(t *testing.T) {
-	svc := newSvc(okRepo(), okPublisher(nil))
-	long := make([]byte, 1601)
-	for i := range long {
-		long[i] = 'x'
-	}
-	_, err := svc.Create(context.Background(), service.CreateRequest{
-		Recipient: "+1",
-		Channel:   model.ChannelSMS,
-		Content:   string(long),
-	})
-	if err == nil {
-		t.Fatal("expected content-too-long error")
 	}
 }
 
@@ -144,11 +120,7 @@ func TestCreate_publishFailure(t *testing.T) {
 		return errors.New("redis down")
 	}}
 	svc := newSvc(okRepo(), pub)
-	_, err := svc.Create(context.Background(), service.CreateRequest{
-		Recipient: "+1",
-		Channel:   model.ChannelSMS,
-		Content:   "hi",
-	})
+	_, err := svc.Create(context.Background(), validNotification(domain.ChannelSMS, domain.PriorityNormal))
 	if err == nil {
 		t.Fatal("expected error from publisher")
 	}
@@ -160,49 +132,19 @@ func TestCancel_success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if n.Status != model.StatusCancelled {
+	if n.Status != string(domain.StatusCancelled) {
 		t.Errorf("status = %q, want cancelled", n.Status)
 	}
 }
 
 func TestCancel_transitionFailed(t *testing.T) {
 	repo := okRepo()
-	repo.transitionFn = func(_ context.Context, _ uuid.UUID, _, _ string) (*apimodel.Notification, error) {
+	repo.transitionFn = func(_ context.Context, _ uuid.UUID, _, _ string) (*entities.Notification, error) {
 		return nil, db.ErrTransitionFailed
 	}
 	svc := newSvc(repo, okPublisher(nil))
 	_, err := svc.Cancel(context.Background(), uuid.New())
 	if !errors.Is(err, db.ErrTransitionFailed) {
 		t.Fatalf("expected ErrTransitionFailed, got %v", err)
-	}
-}
-
-func TestCreateBatch_mixedResults(t *testing.T) {
-	svc := newSvc(okRepo(), okPublisher(nil))
-
-	reqs := []service.CreateRequest{
-		{Recipient: "+1", Channel: model.ChannelSMS, Content: "valid"},
-		{Recipient: "+2", Channel: "invalid", Content: "bad channel"},
-		{Recipient: "+3", Channel: model.ChannelEmail, Content: "also valid"},
-	}
-	_, results, err := svc.CreateBatch(context.Background(), reqs)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	accepted := 0
-	rejected := 0
-	for _, r := range results {
-		if r.Status == "accepted" {
-			accepted++
-		} else {
-			rejected++
-		}
-	}
-	if accepted != 2 {
-		t.Errorf("accepted = %d, want 2", accepted)
-	}
-	if rejected != 1 {
-		t.Errorf("rejected = %d, want 1", rejected)
 	}
 }

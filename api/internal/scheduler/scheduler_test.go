@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	apimodel "github.com/barkin/insider-notification/api/internal/model"
+	"github.com/barkin/insider-notification/api/internal/db/entities"
 	apischeduler "github.com/barkin/insider-notification/api/internal/scheduler"
 	"github.com/barkin/insider-notification/shared/model"
 	"github.com/barkin/insider-notification/shared/stream"
@@ -16,10 +16,10 @@ import (
 // --- fakes ---
 
 type fakeRepo struct {
-	rows []*apimodel.Notification
+	rows []*entities.Notification
 }
 
-func (f *fakeRepo) FindScheduledDue(_ context.Context) ([]*apimodel.Notification, error) {
+func (f *fakeRepo) FindScheduledDue(_ context.Context) ([]*entities.Notification, error) {
 	return f.rows, nil
 }
 
@@ -48,9 +48,9 @@ func (f *fakePublisher) published() []publishedMsg {
 	return out
 }
 
-func makeNotif(priority, channel string) *apimodel.Notification {
-	n := &apimodel.Notification{
-		Recipient:   "+1",
+func makeNotif(priority, channel string) *entities.Notification {
+	n := &entities.Notification{
+		Recipient:   "+15551234567",
 		Channel:     channel,
 		Content:     "hello",
 		Priority:    priority,
@@ -66,8 +66,8 @@ func makeNotif(priority, channel string) *apimodel.Notification {
 
 func TestTick_scheduledDue_published(t *testing.T) {
 	pub := &fakePublisher{}
-	n := makeNotif(model.PriorityHigh, model.ChannelSMS)
-	repo := &fakeRepo{rows: []*apimodel.Notification{n}}
+	n := makeNotif(string(model.PriorityHigh), string(model.ChannelSMS))
+	repo := &fakeRepo{rows: []*entities.Notification{n}}
 
 	sched := apischeduler.New(repo, pub, time.Second)
 	sched.Tick(context.Background())
@@ -80,7 +80,7 @@ func TestTick_scheduledDue_published(t *testing.T) {
 	if evt.NotificationID != n.ID.String() {
 		t.Errorf("notification_id = %q, want %q", evt.NotificationID, n.ID.String())
 	}
-	if evt.Channel != model.ChannelSMS {
+	if evt.Channel != string(model.ChannelSMS) {
 		t.Errorf("channel = %q, want sms", evt.Channel)
 	}
 	if msgs[0].topic != stream.TopicHigh {
@@ -100,10 +100,10 @@ func TestTick_noRows_noPublish(t *testing.T) {
 
 func TestTick_multipleNotifications_allPublished(t *testing.T) {
 	pub := &fakePublisher{}
-	notifications := []*apimodel.Notification{
-		makeNotif(model.PriorityHigh, model.ChannelSMS),
-		makeNotif(model.PriorityNormal, model.ChannelEmail),
-		makeNotif(model.PriorityLow, model.ChannelPush),
+	notifications := []*entities.Notification{
+		makeNotif(string(model.PriorityHigh), string(model.ChannelSMS)),
+		makeNotif(string(model.PriorityNormal), string(model.ChannelEmail)),
+		makeNotif(string(model.PriorityLow), string(model.ChannelPush)),
 	}
 	repo := &fakeRepo{rows: notifications}
 
