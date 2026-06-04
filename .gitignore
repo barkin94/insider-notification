@@ -17,5 +17,9 @@ docs/
 # Go vendor directory
 vendor/
 
+# Go workspace (local dev only, generated via `go work init`)
+go.work
+go.work.sum
+
 # OS
 .DS_Store

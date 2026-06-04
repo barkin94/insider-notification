@@ -5,7 +5,6 @@ import (
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 	httpSwagger "github.com/swaggo/http-swagger"
 
-	_ "github.com/barkin/insider-notification/api/docs"
 	"github.com/barkin/insider-notification/shared/middleware"
 )
 
