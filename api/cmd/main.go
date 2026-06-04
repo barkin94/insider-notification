@@ -26,7 +26,7 @@ func main() {
 
 	if cfg.OTelEnabled {
 		otelShutdown := sharedotel.Init(context.Background(), cfg.OTelServiceName, cfg.OTelEndpoint, cfg.LogLevel)
-		defer otelShutdown(context.Background())
+		defer otelShutdown(context.Background()) //nolint:errcheck
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

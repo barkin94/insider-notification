@@ -4,11 +4,12 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/uuid"
+
 	"github.com/barkin/insider-notification/api/internal/db/entities"
 	"github.com/barkin/insider-notification/api/internal/db/repos"
 	"github.com/barkin/insider-notification/api/internal/domain"
 	"github.com/barkin/insider-notification/shared/stream"
-	"github.com/google/uuid"
 )
 
 // BatchResult holds the outcome of one item in a batch create operation.

@@ -11,13 +11,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/barkin/insider-notification/api/internal/db"
 	"github.com/barkin/insider-notification/api/internal/db/entities"
 	"github.com/barkin/insider-notification/api/internal/db/repos"
 	"github.com/barkin/insider-notification/api/internal/domain"
 	"github.com/barkin/insider-notification/api/internal/handler"
 	"github.com/barkin/insider-notification/api/internal/service"
-	"github.com/google/uuid"
 )
 
 // --- mock service ---
@@ -89,7 +90,7 @@ func TestCreateNotification_201(t *testing.T) {
 		t.Fatalf("status = %d, want 201", w.Code)
 	}
 	var resp map[string]any
-	json.NewDecoder(w.Body).Decode(&resp) //nolint:errcheck
+	json.NewDecoder(w.Body).Decode(&resp) //nolint:errcheck,gosec
 	if resp["id"] == nil {
 		t.Error("response missing id field")
 	}
@@ -159,7 +160,7 @@ func TestListNotifications_pagination(t *testing.T) {
 		t.Fatalf("status = %d, want 200", w.Code)
 	}
 	var resp map[string]any
-	json.NewDecoder(w.Body).Decode(&resp) //nolint:errcheck
+	json.NewDecoder(w.Body).Decode(&resp) //nolint:errcheck,gosec
 	pg, _ := resp["pagination"].(map[string]any)
 	if pg["total"] != float64(42) {
 		t.Errorf("total = %v, want 42", pg["total"])
@@ -206,7 +207,7 @@ func TestGetNotification_200(t *testing.T) {
 		t.Fatalf("status = %d, want 200", w.Code)
 	}
 	var resp map[string]any
-	json.NewDecoder(w.Body).Decode(&resp) //nolint:errcheck
+	json.NewDecoder(w.Body).Decode(&resp) //nolint:errcheck,gosec
 	if resp["id"] != n.ID.String() {
 		t.Errorf("id = %v, want %v", resp["id"], n.ID.String())
 	}
@@ -245,7 +246,7 @@ func TestCancelNotification_200(t *testing.T) {
 		t.Fatalf("status = %d, want 200", w.Code)
 	}
 	var resp map[string]any
-	json.NewDecoder(w.Body).Decode(&resp) //nolint:errcheck
+	json.NewDecoder(w.Body).Decode(&resp) //nolint:errcheck,gosec
 	if resp["status"] != "cancelled" {
 		t.Errorf("status = %v, want cancelled", resp["status"])
 	}
@@ -292,7 +293,7 @@ func TestCreateBatch_207(t *testing.T) {
 		t.Fatalf("status = %d, want 207", w.Code)
 	}
 	var resp map[string]any
-	json.NewDecoder(w.Body).Decode(&resp) //nolint:errcheck
+	json.NewDecoder(w.Body).Decode(&resp) //nolint:errcheck,gosec
 	if resp["accepted"] != float64(1) {
 		t.Errorf("accepted = %v, want 1", resp["accepted"])
 	}
@@ -342,7 +343,7 @@ func TestListNotifications_NoCursor(t *testing.T) {
 		t.Fatalf("status = %d, want 200", w.Code)
 	}
 	var resp map[string]any
-	json.NewDecoder(w.Body).Decode(&resp) //nolint:errcheck
+	json.NewDecoder(w.Body).Decode(&resp) //nolint:errcheck,gosec
 	pagination := resp["pagination"].(map[string]any)
 	if pagination["next_cursor"] != nil {
 		t.Errorf("next_cursor = %v, want null", pagination["next_cursor"])
@@ -367,7 +368,7 @@ func TestListNotifications_WithCursor_NextPageExists(t *testing.T) {
 		t.Fatalf("status = %d, want 200", w.Code)
 	}
 	var resp map[string]any
-	json.NewDecoder(w.Body).Decode(&resp) //nolint:errcheck
+	json.NewDecoder(w.Body).Decode(&resp) //nolint:errcheck,gosec
 	pagination := resp["pagination"].(map[string]any)
 	if pagination["next_cursor"] == nil {
 		t.Error("expected next_cursor, got null")
@@ -391,7 +392,7 @@ func TestListNotifications_WithCursor_LastPage(t *testing.T) {
 		t.Fatalf("status = %d, want 200", w.Code)
 	}
 	var resp map[string]any
-	json.NewDecoder(w.Body).Decode(&resp) //nolint:errcheck
+	json.NewDecoder(w.Body).Decode(&resp) //nolint:errcheck,gosec
 	pagination := resp["pagination"].(map[string]any)
 	if pagination["next_cursor"] != nil {
 		t.Errorf("next_cursor = %v, want null on last page", pagination["next_cursor"])

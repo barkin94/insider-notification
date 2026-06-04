@@ -54,15 +54,15 @@ func (c *ntfnDeliveryClient) Send(ctx context.Context, to, channel, content stri
 	if err != nil {
 		return DeliveryResult{Retryable: true, LatencyMS: latency, ErrorMessage: err.Error()}, nil
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	code := resp.StatusCode
 	result := DeliveryResult{StatusCode: code, LatencyMS: latency}
 
-	switch {
-	case code == http.StatusAccepted:
+	switch code {
+	case http.StatusAccepted:
 		result.Success = true
-	case code == http.StatusBadRequest || code == http.StatusUnauthorized || code == http.StatusForbidden:
+	case http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden:
 		result.ErrorMessage = fmt.Sprintf("non-retryable provider error: %d", code)
 	default:
 		result.Retryable = true

@@ -5,13 +5,14 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+
 	processordb "github.com/barkin/insider-notification/processor/internal/db"
 	"github.com/barkin/insider-notification/processor/internal/service"
 	"github.com/barkin/insider-notification/shared/lock"
 	"github.com/barkin/insider-notification/shared/model"
 	"github.com/barkin/insider-notification/shared/stream"
-	"github.com/google/uuid"
-	"go.opentelemetry.io/otel"
 )
 
 var topicByPriority = map[string]string{

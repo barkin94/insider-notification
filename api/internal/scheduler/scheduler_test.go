@@ -6,11 +6,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/barkin/insider-notification/api/internal/db/entities"
 	apischeduler "github.com/barkin/insider-notification/api/internal/scheduler"
 	"github.com/barkin/insider-notification/shared/model"
 	"github.com/barkin/insider-notification/shared/stream"
-	"github.com/google/uuid"
 )
 
 // --- fakes ---

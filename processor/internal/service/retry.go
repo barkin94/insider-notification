@@ -21,6 +21,6 @@ func RetryDelay(attempt int) time.Duration {
 	if base > retryMaxWait {
 		base = retryMaxWait
 	}
-	jitter := time.Duration(rand.Float64() * float64(base) * 0.2)
+	jitter := time.Duration(rand.Float64() * float64(base) * 0.2) //nolint:gosec
 	return base + jitter
 }

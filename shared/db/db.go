@@ -12,7 +12,7 @@ func Open(databaseURL string) (*bun.DB, error) {
 	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(databaseURL)))
 	bundb := bun.NewDB(sqldb, pgdialect.New())
 	if err := bundb.Ping(); err != nil {
-		bundb.Close()
+		bundb.Close() //nolint:errcheck,gosec
 		return nil, err
 	}
 	return bundb, nil

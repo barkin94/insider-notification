@@ -5,10 +5,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/barkin/insider-notification/api/internal/db"
 	"github.com/barkin/insider-notification/api/internal/db/entities"
 	"github.com/barkin/insider-notification/shared/model"
-	"github.com/google/uuid"
 )
 
 func newNotification() *entities.Notification {
@@ -75,7 +76,9 @@ func TestNotificationRepo_Transition(t *testing.T) {
 	repo := NewNotificationRepository(testDB)
 
 	n := newNotification()
-	repo.Create(ctx, n)
+	if err := repo.Create(ctx, n); err != nil {
+		t.Fatalf("create notification: %v", err)
+	}
 
 	updated, err := repo.Transition(ctx, n.ID, string(model.StatusPending), string(model.StatusCancelled))
 	if err != nil {
@@ -91,7 +94,9 @@ func TestNotificationRepo_Transition_wrongFrom(t *testing.T) {
 	repo := NewNotificationRepository(testDB)
 
 	n := newNotification()
-	repo.Create(ctx, n)
+	if err := repo.Create(ctx, n); err != nil {
+		t.Fatalf("create notification: %v", err)
+	}
 
 	_, err := repo.Transition(ctx, n.ID, string(model.StatusDelivered), string(model.StatusCancelled))
 	if err != db.ErrTransitionFailed {
@@ -104,7 +109,9 @@ func TestNotificationRepo_IncrementAttempts(t *testing.T) {
 	repo := NewNotificationRepository(testDB)
 
 	n := newNotification()
-	repo.Create(ctx, n)
+	if err := repo.Create(ctx, n); err != nil {
+		t.Fatalf("create notification: %v", err)
+	}
 
 	if err := repo.IncrementAttempts(ctx, n.ID); err != nil {
 		t.Fatalf("IncrementAttempts: %v", err)
@@ -124,7 +131,9 @@ func TestList_offset_pagination(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		n := newNotification()
 		n.BatchID = &batchID
-		repo.Create(ctx, n)
+		if err := repo.Create(ctx, n); err != nil {
+			t.Fatalf("create notification: %v", err)
+		}
 	}
 
 	results, total, nextCursor, err := repo.List(ctx, ListFilter{BatchID: &batchID, Page: 1, PageSize: 3})
@@ -150,12 +159,16 @@ func TestList_offset_filterByStatus(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		n := newNotification()
 		n.BatchID = &batchID
-		repo.Create(ctx, n)
+		if err := repo.Create(ctx, n); err != nil {
+			t.Fatalf("create notification: %v", err)
+		}
 	}
 	n := newNotification()
 	n.BatchID = &batchID
 	n.Status = string(model.StatusDelivered)
-	repo.Create(ctx, n)
+	if err := repo.Create(ctx, n); err != nil {
+		t.Fatalf("create notification: %v", err)
+	}
 
 	results, total, _, err := repo.List(ctx, ListFilter{
 		BatchID: &batchID,
@@ -290,13 +303,17 @@ func TestList_cursor_filtersPreserved(t *testing.T) {
 		n := newNotification()
 		n.BatchID = &batchID
 		n.Channel = string(model.ChannelSMS)
-		repo.Create(ctx, n)
+		if err := repo.Create(ctx, n); err != nil {
+			t.Fatalf("create notification: %v", err)
+		}
 	}
 	for i := 0; i < 4; i++ {
 		n := newNotification()
 		n.BatchID = &batchID
 		n.Channel = string(model.ChannelEmail)
-		repo.Create(ctx, n)
+		if err := repo.Create(ctx, n); err != nil {
+			t.Fatalf("create notification: %v", err)
+		}
 	}
 
 	maxUUID := uuid.UUID{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}

@@ -6,12 +6,13 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
+
 	"github.com/barkin/insider-notification/api/internal/db/repos"
 	"github.com/barkin/insider-notification/api/internal/domain"
 	"github.com/barkin/insider-notification/api/internal/service"
 	sharedhandler "github.com/barkin/insider-notification/shared/handler"
-	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 )
 
 // --- handler constructors ---

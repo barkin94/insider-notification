@@ -1,11 +1,12 @@
 package handler
 
 import (
-	_ "github.com/barkin/insider-notification/api/docs"
-	"github.com/barkin/insider-notification/shared/middleware"
 	"github.com/go-chi/chi/v5"
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 	httpSwagger "github.com/swaggo/http-swagger"
+
+	_ "github.com/barkin/insider-notification/api/docs"
+	"github.com/barkin/insider-notification/shared/middleware"
 )
 
 // AppRouter wraps chi.Router and automatically applies errHandler on every AppHandler route.

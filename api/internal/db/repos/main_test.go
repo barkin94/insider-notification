@@ -57,7 +57,7 @@ func TestMain(m *testing.M) {
 
 	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(connStr)))
 	testDB = bun.NewDB(sqldb, pgdialect.New())
-	defer testDB.Close()
+	defer testDB.Close() //nolint:errcheck
 
 	os.Exit(m.Run())
 }

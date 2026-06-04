@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
+
+	"github.com/go-redis/redis_rate/v10"
 
 	"github.com/barkin/insider-notification/processor/internal/config"
 	processordb "github.com/barkin/insider-notification/processor/internal/db"
@@ -15,8 +18,6 @@ import (
 	"github.com/barkin/insider-notification/shared/model"
 	sharedredis "github.com/barkin/insider-notification/shared/redis"
 	"github.com/barkin/insider-notification/shared/stream"
-	"github.com/go-redis/redis_rate/v10"
-	"time"
 )
 
 // App wires and runs the processor service.
@@ -36,7 +37,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 
 	rdb, err := sharedredis.NewClient(ctx, cfg.RedisAddr)
 	if err != nil {
-		bundb.Close()
+		_ = bundb.Close()
 		return nil, nil, fmt.Errorf("connect to redis: %w", err)
 	}
 
@@ -44,13 +45,13 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 
 	pub, err := stream.NewRedisPublisher(rdb)
 	if err != nil {
-		bundb.Close()
+		_ = bundb.Close()
 		return nil, nil, fmt.Errorf("create stream publisher: %w", err)
 	}
 
 	sub, err := stream.NewRedisSubscriber(rdb, "notify:cg:processor")
 	if err != nil {
-		bundb.Close()
+		_ = bundb.Close()
 		return nil, nil, fmt.Errorf("create stream subscriber: %w", err)
 	}
 
@@ -58,20 +59,20 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 
 	highMsgs, err := stream.Subscribe[stream.NotificationReadyEvent](ctx, sub, stream.TopicHigh, cfg.OTelServiceName)
 	if err != nil {
-		sub.Close()
-		bundb.Close()
+		_ = sub.Close()
+		_ = bundb.Close()
 		return nil, nil, fmt.Errorf("subscribe high: %w", err)
 	}
 	normalMsgs, err := stream.Subscribe[stream.NotificationReadyEvent](ctx, sub, stream.TopicNormal, cfg.OTelServiceName)
 	if err != nil {
-		sub.Close()
-		bundb.Close()
+		_ = sub.Close()
+		_ = bundb.Close()
 		return nil, nil, fmt.Errorf("subscribe normal: %w", err)
 	}
 	lowMsgs, err := stream.Subscribe[stream.NotificationReadyEvent](ctx, sub, stream.TopicLow, cfg.OTelServiceName)
 	if err != nil {
-		sub.Close()
-		bundb.Close()
+		_ = sub.Close()
+		_ = bundb.Close()
 		return nil, nil, fmt.Errorf("subscribe low: %w", err)
 	}
 
@@ -83,8 +84,8 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 
 	m, err := service.NewMetrics(rdb)
 	if err != nil {
-		sub.Close()
-		bundb.Close()
+		_ = sub.Close()
+		_ = bundb.Close()
 		return nil, nil, fmt.Errorf("init metrics: %w", err)
 	}
 
@@ -102,8 +103,8 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 	)
 
 	cleanup := func() {
-		sub.Close()
-		bundb.Close()
+		_ = sub.Close()
+		_ = bundb.Close()
 	}
 
 	return &App{

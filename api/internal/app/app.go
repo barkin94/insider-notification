@@ -37,19 +37,19 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 
 	rdb, err := sharedredis.NewClient(ctx, cfg.RedisAddr)
 	if err != nil {
-		bundb.Close()
+		_ = bundb.Close()
 		return nil, nil, fmt.Errorf("connect to redis: %w", err)
 	}
 
 	pub, err := stream.NewRedisPublisher(rdb)
 	if err != nil {
-		bundb.Close()
+		_ = bundb.Close()
 		return nil, nil, fmt.Errorf("create stream publisher: %w", err)
 	}
 
 	sub, err := stream.NewRedisSubscriber(rdb, "notify:cg:api")
 	if err != nil {
-		bundb.Close()
+		_ = bundb.Close()
 		return nil, nil, fmt.Errorf("create stream subscriber: %w", err)
 	}
 
@@ -57,8 +57,8 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 		ctx, sub, stream.TopicStatus, cfg.OTelServiceName,
 	)
 	if err != nil {
-		sub.Close()
-		bundb.Close()
+		_ = sub.Close()
+		_ = bundb.Close()
 		return nil, nil, fmt.Errorf("subscribe to status stream: %w", err)
 	}
 
@@ -67,13 +67,14 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 	router := handler.NewRouter(handler.Deps{Service: svc, DB: bundb, Redis: rdb})
 
 	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%d", cfg.Port),
-		Handler: router,
+		Addr:              fmt.Sprintf(":%d", cfg.Port),
+		Handler:           router,
+		ReadHeaderTimeout: 30 * time.Second,
 	}
 
 	cleanup := func() {
-		sub.Close()
-		bundb.Close()
+		_ = sub.Close()
+		_ = bundb.Close()
 	}
 
 	return &App{

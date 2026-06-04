@@ -9,10 +9,6 @@ import (
 	"time"
 
 	watermill "github.com/ThreeDotsLabs/watermill/message"
-	"github.com/barkin/insider-notification/api/internal/consumer"
-	"github.com/barkin/insider-notification/api/internal/db/repos"
-	"github.com/barkin/insider-notification/shared/model"
-	"github.com/barkin/insider-notification/shared/stream"
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
@@ -23,6 +19,11 @@ import (
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
 	"github.com/uptrace/bun/driver/pgdriver"
+
+	"github.com/barkin/insider-notification/api/internal/consumer"
+	"github.com/barkin/insider-notification/api/internal/db/repos"
+	"github.com/barkin/insider-notification/shared/model"
+	"github.com/barkin/insider-notification/shared/stream"
 )
 
 var testDB *bun.DB
@@ -63,7 +64,7 @@ func TestMain(m *testing.M) {
 
 	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(connStr)))
 	testDB = bun.NewDB(sqldb, pgdialect.New())
-	defer testDB.Close()
+	defer testDB.Close() //nolint:errcheck
 
 	os.Exit(m.Run())
 }

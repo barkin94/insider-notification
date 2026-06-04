@@ -5,8 +5,9 @@ import (
 	"testing"
 	"time"
 
-	processordb "github.com/barkin/insider-notification/processor/internal/db"
 	"github.com/google/uuid"
+
+	processordb "github.com/barkin/insider-notification/processor/internal/db"
 )
 
 func mustUUID(t *testing.T) uuid.UUID {

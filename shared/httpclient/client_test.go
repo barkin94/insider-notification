@@ -7,9 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/barkin/insider-notification/shared/httpclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/barkin/insider-notification/shared/httpclient"
 )
 
 func TestNew_defaultTimeout(t *testing.T) {
@@ -33,7 +34,7 @@ func TestRequest_success(t *testing.T) {
 	c := httpclient.New(srv.URL)
 	resp, err := c.Request(context.Background(), http.MethodPost, "/notify", map[string]string{"key": "val"})
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 	assert.Equal(t, http.StatusAccepted, resp.StatusCode)
 }
 
@@ -47,7 +48,7 @@ func TestRequest_nilPayload(t *testing.T) {
 	c := httpclient.New(srv.URL)
 	resp, err := c.Request(context.Background(), http.MethodGet, "/health", nil)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
 

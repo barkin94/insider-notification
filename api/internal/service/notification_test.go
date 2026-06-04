@@ -5,13 +5,14 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"github.com/barkin/insider-notification/api/internal/db"
 	"github.com/barkin/insider-notification/api/internal/db/entities"
 	"github.com/barkin/insider-notification/api/internal/db/repos"
 	"github.com/barkin/insider-notification/api/internal/domain"
 	"github.com/barkin/insider-notification/api/internal/service"
 	"github.com/barkin/insider-notification/shared/stream"
-	"github.com/google/uuid"
 )
 
 // --- mock repo ---
@@ -90,10 +91,10 @@ func newSvc(repo repos.NotificationRepository, pub stream.Publisher) service.Not
 
 func validNotification(channel domain.Channel, priority domain.Priority) domain.Notification {
 	var n domain.Notification
-	n.SetChannel(channel)         //nolint:errcheck
-	n.SetRecipient("+15551234567") //nolint:errcheck
-	n.SetContent("hello")         //nolint:errcheck
-	n.SetPriority(priority)       //nolint:errcheck
+	n.SetChannel(channel)          //nolint:errcheck,gosec
+	n.SetRecipient("+15551234567") //nolint:errcheck,gosec
+	n.SetContent("hello")          //nolint:errcheck,gosec
+	n.SetPriority(priority)        //nolint:errcheck,gosec
 	return n
 }
 

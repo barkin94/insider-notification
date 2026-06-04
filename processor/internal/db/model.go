@@ -3,8 +3,9 @@ package db
 import (
 	"time"
 
-	shareddb "github.com/barkin/insider-notification/shared/db"
 	"github.com/google/uuid"
+
+	shareddb "github.com/barkin/insider-notification/shared/db"
 )
 
 type DeliveryAttempt struct {
