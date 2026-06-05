@@ -5,9 +5,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/barkin/insider-notification/api/internal/repository"
 	"github.com/barkin/insider-notification/shared/model"
-	"github.com/google/uuid"
 )
 
 func newNotification() *repository.Notification {

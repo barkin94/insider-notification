@@ -3,9 +3,10 @@ package repository
 import (
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/barkin/insider-notification/api/internal/domain/notification"
 	shareddb "github.com/barkin/insider-notification/shared/db"
-	"github.com/google/uuid"
 )
 
 type Notification struct {
@@ -39,7 +40,7 @@ func (Notification) From(n notification.Notification, batchID *uuid.UUID) (*Noti
 	}, nil
 }
 
-func (n *Notification) GetID() string       { return n.ID.String() }
+func (n *Notification) GetID() string        { return n.ID.String() }
 func (n *Notification) GetChannel() string   { return n.Channel }
 func (n *Notification) GetRecipient() string { return n.Recipient }
 func (n *Notification) GetContent() string   { return n.Content }

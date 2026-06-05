@@ -15,8 +15,8 @@ import (
 
 	"github.com/barkin/insider-notification/api/internal/domain/notification"
 	"github.com/barkin/insider-notification/api/internal/repository"
-	handler "github.com/barkin/insider-notification/api/internal/transport/http"
 	"github.com/barkin/insider-notification/api/internal/service"
+	handler "github.com/barkin/insider-notification/api/internal/transport/http"
 )
 
 // --- mock service ---

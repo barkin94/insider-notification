@@ -6,9 +6,10 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/barkin/insider-notification/api/internal/repository"
 	"github.com/google/uuid"
 	"github.com/uptrace/bun"
+
+	"github.com/barkin/insider-notification/api/internal/repository"
 )
 
 type bunNotificationRepo struct{ db *bun.DB }
