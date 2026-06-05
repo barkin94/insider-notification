@@ -6,13 +6,12 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
-
-	"github.com/barkin/insider-notification/api/internal/db/repos"
-	"github.com/barkin/insider-notification/api/internal/domain"
+	"github.com/barkin/insider-notification/api/internal/domain/notification"
+	"github.com/barkin/insider-notification/api/internal/repository"
 	"github.com/barkin/insider-notification/api/internal/service"
 	sharedhandler "github.com/barkin/insider-notification/shared/handler"
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 )
 
 // --- handler constructors ---
@@ -118,7 +117,7 @@ func listNotifications(svc service.NotificationService) sharedhandler.AppHandler
 			}
 		}
 
-		f := repos.ListFilter{
+		f := repository.ListFilter{
 			Status:   q.Get("status"),
 			Channel:  q.Get("channel"),
 			BatchID:  batchID,
@@ -228,7 +227,7 @@ func createBatch(svc service.NotificationService) sharedhandler.AppHandler {
 
 		type validItem struct {
 			idx int
-			n   domain.Notification
+			n   notification.Notification
 		}
 
 		var valid []validItem
@@ -248,7 +247,7 @@ func createBatch(svc service.NotificationService) sharedhandler.AppHandler {
 			valid = append(valid, validItem{idx: i, n: n})
 		}
 
-		ns := make([]domain.Notification, len(valid))
+		ns := make([]notification.Notification, len(valid))
 		for j, v := range valid {
 			ns[j] = v.n
 		}

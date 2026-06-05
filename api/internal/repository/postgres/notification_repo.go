@@ -1,71 +1,40 @@
-package repos
+package postgres
 
 import (
 	"context"
 	"database/sql"
 	"errors"
 	"strings"
-	"time"
 
-	"github.com/barkin/insider-notification/api/internal/db"
-	"github.com/barkin/insider-notification/api/internal/db/entities"
-
+	"github.com/barkin/insider-notification/api/internal/repository"
 	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 )
 
-// ListFilter holds query parameters for listing notifications.
-// Set CursorID for keyset pagination; leave nil for offset pagination.
-type ListFilter struct {
-	Status   string
-	Channel  string
-	BatchID  *uuid.UUID
-	DateFrom *time.Time
-	DateTo   *time.Time
-	PageSize int
-	// keyset pagination — takes precedence over Page/Sort/Order when set
-	CursorID *uuid.UUID
-	// offset pagination
-	Page  int
-	Sort  string
-	Order string
-}
-
-// NotificationRepository is the port for notification persistence.
-type NotificationRepository interface {
-	Create(ctx context.Context, n *entities.Notification) error
-	GetByID(ctx context.Context, id uuid.UUID) (*entities.Notification, error)
-	List(ctx context.Context, f ListFilter) ([]*entities.Notification, int, *uuid.UUID, error)
-	Transition(ctx context.Context, id uuid.UUID, from, to string) (*entities.Notification, error)
-	IncrementAttempts(ctx context.Context, id uuid.UUID) error
-	UpdateStatus(ctx context.Context, id uuid.UUID, status string) error
-	FindScheduledDue(ctx context.Context) ([]*entities.Notification, error)
-}
-
 type bunNotificationRepo struct{ db *bun.DB }
 
-var _ NotificationRepository = (*bunNotificationRepo)(nil)
+var _ repository.NotificationRepository = (*bunNotificationRepo)(nil)
 
-func NewNotificationRepository(db *bun.DB) NotificationRepository {
+func NewNotificationRepository(db *bun.DB) repository.NotificationRepository {
 	return &bunNotificationRepo{db: db}
 }
 
-func (r *bunNotificationRepo) Create(ctx context.Context, n *entities.Notification) error {
+func (r *bunNotificationRepo) Create(ctx context.Context, n *repository.Notification) error {
 	_, err := r.db.NewInsert().Model(n).Exec(ctx)
 	return err
 }
 
-func (r *bunNotificationRepo) GetByID(ctx context.Context, id uuid.UUID) (*entities.Notification, error) {
-	n := new(entities.Notification)
+func (r *bunNotificationRepo) GetByID(ctx context.Context, id uuid.UUID) (*repository.Notification, error) {
+	n := new(repository.Notification)
 	err := r.db.NewSelect().Model(n).Where("id = ?", id).Scan(ctx)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, db.ErrNotFound
+		return nil, repository.ErrNotFound
 	}
 	return n, err
 }
 
-func (r *bunNotificationRepo) Transition(ctx context.Context, id uuid.UUID, from, to string) (*entities.Notification, error) {
-	n := new(entities.Notification)
+func (r *bunNotificationRepo) Transition(ctx context.Context, id uuid.UUID, from, to string) (*repository.Notification, error) {
+	n := new(repository.Notification)
 	err := r.db.NewRaw(`
 		UPDATE notifications SET status = ?, updated_at = NOW()
 		WHERE id = ? AND status = ?
@@ -73,7 +42,7 @@ func (r *bunNotificationRepo) Transition(ctx context.Context, id uuid.UUID, from
 		          deliver_after, attempts, max_attempts, created_at, updated_at`,
 		to, id, from).Scan(ctx, n)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, db.ErrTransitionFailed
+		return nil, repository.ErrTransitionFailed
 	}
 	return n, err
 }
@@ -92,8 +61,8 @@ func (r *bunNotificationRepo) UpdateStatus(ctx context.Context, id uuid.UUID, st
 	return err
 }
 
-func (r *bunNotificationRepo) FindScheduledDue(ctx context.Context) ([]*entities.Notification, error) {
-	var rows []*entities.Notification
+func (r *bunNotificationRepo) FindScheduledDue(ctx context.Context) ([]*repository.Notification, error) {
+	var rows []*repository.Notification
 	err := r.db.NewSelect().
 		Model(&rows).
 		Where("deliver_after IS NOT NULL").
@@ -105,7 +74,7 @@ func (r *bunNotificationRepo) FindScheduledDue(ctx context.Context) ([]*entities
 	return rows, err
 }
 
-func applyFilters(q *bun.SelectQuery, f ListFilter) *bun.SelectQuery {
+func applyFilters(q *bun.SelectQuery, f repository.ListFilter) *bun.SelectQuery {
 	if f.Status != "" {
 		q = q.Where("status = ?", f.Status)
 	}
@@ -124,18 +93,18 @@ func applyFilters(q *bun.SelectQuery, f ListFilter) *bun.SelectQuery {
 	return q
 }
 
-func (r *bunNotificationRepo) List(ctx context.Context, f ListFilter) ([]*entities.Notification, int, *uuid.UUID, error) {
+func (r *bunNotificationRepo) List(ctx context.Context, f repository.ListFilter) ([]*repository.Notification, int, *uuid.UUID, error) {
 	pageSize := f.PageSize
 	if pageSize < 1 {
 		pageSize = 20
 	}
 
-	total, err := applyFilters(r.db.NewSelect().Model((*entities.Notification)(nil)), f).Count(ctx)
+	total, err := applyFilters(r.db.NewSelect().Model((*repository.Notification)(nil)), f).Count(ctx)
 	if err != nil {
 		return nil, 0, nil, err
 	}
 
-	var ns []*entities.Notification
+	var ns []*repository.Notification
 	q := applyFilters(r.db.NewSelect().Model(&ns), f)
 
 	if f.CursorID != nil {

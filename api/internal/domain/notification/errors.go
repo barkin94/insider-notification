@@ -1,8 +1,8 @@
-package domain
+package notification
 
 import sharedErrors "github.com/barkin/insider-notification/shared/errors"
 
-// DomainError is an alias so callers reference domain.DomainError
+// DomainError is an alias so callers reference notification.DomainError
 // while the type itself lives in shared/errors.
 type DomainError = sharedErrors.DomainError
 

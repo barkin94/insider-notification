@@ -5,20 +5,20 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/barkin/insider-notification/api/internal/db/entities"
-	"github.com/barkin/insider-notification/api/internal/domain"
+	"github.com/barkin/insider-notification/api/internal/domain/notification"
+	"github.com/barkin/insider-notification/api/internal/repository"
 	"github.com/barkin/insider-notification/shared/stream"
 )
 
 var topicByPriority = map[string]string{
-	string(domain.PriorityHigh):   stream.TopicHigh,
-	string(domain.PriorityNormal): stream.TopicNormal,
-	string(domain.PriorityLow):    stream.TopicLow,
+	string(notification.PriorityHigh):   stream.TopicHigh,
+	string(notification.PriorityNormal): stream.TopicNormal,
+	string(notification.PriorityLow):    stream.TopicLow,
 }
 
 // NotificationScheduleReader is the narrow read port for scheduled notifications.
 type NotificationScheduleReader interface {
-	FindScheduledDue(ctx context.Context) ([]*entities.Notification, error)
+	FindScheduledDue(ctx context.Context) ([]*repository.Notification, error)
 }
 
 // Scheduler polls for scheduled notifications that are due and publishes them.

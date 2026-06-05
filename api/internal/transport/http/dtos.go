@@ -3,8 +3,8 @@ package handler
 import (
 	"time"
 
-	"github.com/barkin/insider-notification/api/internal/db/entities"
-	"github.com/barkin/insider-notification/api/internal/domain"
+	"github.com/barkin/insider-notification/api/internal/domain/notification"
+	"github.com/barkin/insider-notification/api/internal/repository"
 	sharedhandler "github.com/barkin/insider-notification/shared/handler"
 )
 
@@ -16,10 +16,10 @@ type createRequest struct {
 	DeliverAfter *string `json:"deliver_after"`
 }
 
-func (r createRequest) ToNotification() (domain.Notification, error) {
-	var n domain.Notification
+func (r createRequest) ToNotification() (notification.Notification, error) {
+	var n notification.Notification
 
-	if err := n.SetChannel(domain.Channel(r.Channel)); err != nil {
+	if err := n.SetChannel(notification.Channel(r.Channel)); err != nil {
 		return n, err
 	}
 	if err := n.SetRecipient(r.Recipient); err != nil {
@@ -28,13 +28,13 @@ func (r createRequest) ToNotification() (domain.Notification, error) {
 	if err := n.SetContent(r.Content); err != nil {
 		return n, err
 	}
-	if err := n.SetPriority(domain.Priority(r.Priority)); err != nil {
+	if err := n.SetPriority(notification.Priority(r.Priority)); err != nil {
 		return n, err
 	}
 	if r.DeliverAfter != nil {
 		t, err := time.Parse(time.RFC3339, *r.DeliverAfter)
 		if err != nil {
-			return n, domain.ErrInvalidDeliverAfter()
+			return n, notification.ErrInvalidDeliverAfter()
 		}
 		n.SetDeliverAfter(&t)
 	}
@@ -93,7 +93,7 @@ type batchResponse struct {
 	Results  []batchItemResult `json:"results"`
 }
 
-func toNotificationResponse(n *entities.Notification) notificationResponse {
+func toNotificationResponse(n *repository.Notification) notificationResponse {
 	var batchID any
 	if n.BatchID != nil {
 		batchID = n.BatchID.String()
@@ -119,7 +119,7 @@ func toNotificationResponse(n *entities.Notification) notificationResponse {
 	}
 }
 
-func toNotificationResponses(ns []*entities.Notification) []notificationResponse {
+func toNotificationResponses(ns []*repository.Notification) []notificationResponse {
 	data := make([]notificationResponse, len(ns))
 	for i, n := range ns {
 		data[i] = toNotificationResponse(n)

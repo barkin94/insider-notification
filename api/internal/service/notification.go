@@ -6,9 +6,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/barkin/insider-notification/api/internal/db/entities"
-	"github.com/barkin/insider-notification/api/internal/db/repos"
-	"github.com/barkin/insider-notification/api/internal/domain"
+	"github.com/barkin/insider-notification/api/internal/domain/notification"
+	"github.com/barkin/insider-notification/api/internal/repository"
 	"github.com/barkin/insider-notification/shared/stream"
 )
 
@@ -22,32 +21,32 @@ type BatchResult struct {
 
 // NotificationService defines the business operations for notifications.
 type NotificationService interface {
-	Create(ctx context.Context, n domain.Notification) (*entities.Notification, error)
-	GetByID(ctx context.Context, id uuid.UUID) (*entities.Notification, error)
-	List(ctx context.Context, filter repos.ListFilter) ([]*entities.Notification, int, *uuid.UUID, error)
-	Cancel(ctx context.Context, id uuid.UUID) (*entities.Notification, error)
-	CreateBatch(ctx context.Context, ns []domain.Notification) (uuid.UUID, []BatchResult, error)
+	Create(ctx context.Context, n notification.Notification) (*repository.Notification, error)
+	GetByID(ctx context.Context, id uuid.UUID) (*repository.Notification, error)
+	List(ctx context.Context, filter repository.ListFilter) ([]*repository.Notification, int, *uuid.UUID, error)
+	Cancel(ctx context.Context, id uuid.UUID) (*repository.Notification, error)
+	CreateBatch(ctx context.Context, ns []notification.Notification) (uuid.UUID, []BatchResult, error)
 }
 
 type notificationService struct {
-	repo      repos.NotificationRepository
+	repo      repository.NotificationRepository
 	publisher stream.Publisher
 }
 
 func NewNotificationService(
-	repo repos.NotificationRepository,
+	repo repository.NotificationRepository,
 	publisher stream.Publisher,
 ) NotificationService {
 	return &notificationService{repo: repo, publisher: publisher}
 }
 
 var topicByPriority = map[string]string{
-	string(domain.PriorityHigh):   stream.TopicHigh,
-	string(domain.PriorityNormal): stream.TopicNormal,
-	string(domain.PriorityLow):    stream.TopicLow,
+	string(notification.PriorityHigh):   stream.TopicHigh,
+	string(notification.PriorityNormal): stream.TopicNormal,
+	string(notification.PriorityLow):    stream.TopicLow,
 }
 
-func (s *notificationService) Create(ctx context.Context, n domain.Notification) (*entities.Notification, error) {
+func (s *notificationService) Create(ctx context.Context, n notification.Notification) (*repository.Notification, error) {
 	entity, err := s.persist(ctx, n, nil)
 	if err != nil {
 		return nil, err
@@ -58,19 +57,19 @@ func (s *notificationService) Create(ctx context.Context, n domain.Notification)
 	return entity, nil
 }
 
-func (s *notificationService) GetByID(ctx context.Context, id uuid.UUID) (*entities.Notification, error) {
+func (s *notificationService) GetByID(ctx context.Context, id uuid.UUID) (*repository.Notification, error) {
 	return s.repo.GetByID(ctx, id)
 }
 
-func (s *notificationService) List(ctx context.Context, filter repos.ListFilter) ([]*entities.Notification, int, *uuid.UUID, error) {
+func (s *notificationService) List(ctx context.Context, filter repository.ListFilter) ([]*repository.Notification, int, *uuid.UUID, error) {
 	return s.repo.List(ctx, filter)
 }
 
-func (s *notificationService) Cancel(ctx context.Context, id uuid.UUID) (*entities.Notification, error) {
-	return s.repo.Transition(ctx, id, string(domain.StatusPending), string(domain.StatusCancelled))
+func (s *notificationService) Cancel(ctx context.Context, id uuid.UUID) (*repository.Notification, error) {
+	return s.repo.Transition(ctx, id, string(notification.StatusPending), string(notification.StatusCancelled))
 }
 
-func (s *notificationService) CreateBatch(ctx context.Context, ns []domain.Notification) (uuid.UUID, []BatchResult, error) {
+func (s *notificationService) CreateBatch(ctx context.Context, ns []notification.Notification) (uuid.UUID, []BatchResult, error) {
 	batchID := uuid.New()
 	results := make([]BatchResult, len(ns))
 
@@ -92,8 +91,8 @@ func (s *notificationService) CreateBatch(ctx context.Context, ns []domain.Notif
 	return batchID, results, nil
 }
 
-func (s *notificationService) persist(ctx context.Context, n domain.Notification, batchID *uuid.UUID) (*entities.Notification, error) {
-	entity, err := entities.Notification{}.From(n, batchID)
+func (s *notificationService) persist(ctx context.Context, n notification.Notification, batchID *uuid.UUID) (*repository.Notification, error) {
+	entity, err := repository.Notification{}.From(n, batchID)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +102,7 @@ func (s *notificationService) persist(ctx context.Context, n domain.Notification
 	return entity, nil
 }
 
-func (s *notificationService) publish(ctx context.Context, entity *entities.Notification) error {
+func (s *notificationService) publish(ctx context.Context, entity *repository.Notification) error {
 	if entity.DeliverAfter != nil {
 		return nil
 	}

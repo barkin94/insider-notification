@@ -9,11 +9,11 @@ import (
 	"time"
 
 	"github.com/barkin/insider-notification/api/internal/config"
-	"github.com/barkin/insider-notification/api/internal/consumer"
-	"github.com/barkin/insider-notification/api/internal/db/repos"
-	"github.com/barkin/insider-notification/api/internal/handler"
+	"github.com/barkin/insider-notification/api/internal/repository/postgres"
 	apischeduler "github.com/barkin/insider-notification/api/internal/scheduler"
 	"github.com/barkin/insider-notification/api/internal/service"
+	handler "github.com/barkin/insider-notification/api/internal/transport/http"
+	"github.com/barkin/insider-notification/api/internal/transport/messaging"
 	shareddb "github.com/barkin/insider-notification/shared/db"
 	sharedredis "github.com/barkin/insider-notification/shared/redis"
 	"github.com/barkin/insider-notification/shared/stream"
@@ -23,7 +23,7 @@ import (
 type App struct {
 	server     *http.Server
 	scheduler  *apischeduler.Scheduler
-	consumer   *consumer.StatusConsumer
+	consumer   *messaging.StatusConsumer
 	statusMsgs <-chan stream.Result[stream.NotificationDeliveryResultEvent]
 }
 
@@ -62,7 +62,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 		return nil, nil, fmt.Errorf("subscribe to status stream: %w", err)
 	}
 
-	notifRepo := repos.NewNotificationRepository(bundb)
+	notifRepo := postgres.NewNotificationRepository(bundb)
 	svc := service.NewNotificationService(notifRepo, pub)
 	router := handler.NewRouter(handler.Deps{Service: svc, DB: bundb, Redis: rdb})
 
@@ -80,7 +80,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 	return &App{
 		server:     srv,
 		scheduler:  apischeduler.New(notifRepo, pub, cfg.SchedulerInterval),
-		consumer:   consumer.NewStatusConsumer(notifRepo),
+		consumer:   messaging.NewStatusConsumer(notifRepo),
 		statusMsgs: statusMsgs,
 	}, cleanup, nil
 }

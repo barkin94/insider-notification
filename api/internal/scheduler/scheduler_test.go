@@ -8,7 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/barkin/insider-notification/api/internal/db/entities"
+	"github.com/barkin/insider-notification/api/internal/repository"
 	apischeduler "github.com/barkin/insider-notification/api/internal/scheduler"
 	"github.com/barkin/insider-notification/shared/model"
 	"github.com/barkin/insider-notification/shared/stream"
@@ -17,10 +17,10 @@ import (
 // --- fakes ---
 
 type fakeRepo struct {
-	rows []*entities.Notification
+	rows []*repository.Notification
 }
 
-func (f *fakeRepo) FindScheduledDue(_ context.Context) ([]*entities.Notification, error) {
+func (f *fakeRepo) FindScheduledDue(_ context.Context) ([]*repository.Notification, error) {
 	return f.rows, nil
 }
 
@@ -49,8 +49,8 @@ func (f *fakePublisher) published() []publishedMsg {
 	return out
 }
 
-func makeNotif(priority, channel string) *entities.Notification {
-	n := &entities.Notification{
+func makeNotif(priority, channel string) *repository.Notification {
+	n := &repository.Notification{
 		Recipient:   "+15551234567",
 		Channel:     channel,
 		Content:     "hello",
@@ -68,7 +68,7 @@ func makeNotif(priority, channel string) *entities.Notification {
 func TestTick_scheduledDue_published(t *testing.T) {
 	pub := &fakePublisher{}
 	n := makeNotif(string(model.PriorityHigh), string(model.ChannelSMS))
-	repo := &fakeRepo{rows: []*entities.Notification{n}}
+	repo := &fakeRepo{rows: []*repository.Notification{n}}
 
 	sched := apischeduler.New(repo, pub, time.Second)
 	sched.Tick(context.Background())
@@ -101,7 +101,7 @@ func TestTick_noRows_noPublish(t *testing.T) {
 
 func TestTick_multipleNotifications_allPublished(t *testing.T) {
 	pub := &fakePublisher{}
-	notifications := []*entities.Notification{
+	notifications := []*repository.Notification{
 		makeNotif(string(model.PriorityHigh), string(model.ChannelSMS)),
 		makeNotif(string(model.PriorityNormal), string(model.ChannelEmail)),
 		makeNotif(string(model.PriorityLow), string(model.ChannelPush)),

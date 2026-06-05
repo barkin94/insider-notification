@@ -1,4 +1,4 @@
-package consumer_test
+package messaging_test
 
 import (
 	"context"
@@ -14,14 +14,14 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/google/uuid"
 	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
+	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
 	"github.com/uptrace/bun/driver/pgdriver"
 
-	"github.com/barkin/insider-notification/api/internal/consumer"
-	"github.com/barkin/insider-notification/api/internal/db/repos"
+	repopostgres "github.com/barkin/insider-notification/api/internal/repository/postgres"
+	"github.com/barkin/insider-notification/api/internal/transport/messaging"
 	"github.com/barkin/insider-notification/shared/model"
 	"github.com/barkin/insider-notification/shared/stream"
 )
@@ -31,11 +31,11 @@ var testDB *bun.DB
 func TestMain(m *testing.M) {
 	ctx := context.Background()
 
-	pgContainer, err := postgres.Run(ctx,
+	pgContainer, err := tcpostgres.Run(ctx,
 		"postgres:16-alpine",
-		postgres.WithDatabase("testdb"),
-		postgres.WithUsername("test"),
-		postgres.WithPassword("test"),
+		tcpostgres.WithDatabase("testdb"),
+		tcpostgres.WithUsername("test"),
+		tcpostgres.WithPassword("test"),
 		testcontainers.WithWaitStrategy(
 			wait.ForListeningPort("5432/tcp").WithStartupTimeout(120*time.Second),
 		),
@@ -54,7 +54,7 @@ func TestMain(m *testing.M) {
 		log.Fatalf("get connection string: %v", err)
 	}
 
-	mig, err := migrate.New("file://../../../api/migrations", "pgx5://"+connStr[len("postgres://"):])
+	mig, err := migrate.New("file://../../../../api/migrations", "pgx5://"+connStr[len("postgres://"):])
 	if err != nil {
 		log.Fatalf("create migrator: %v", err)
 	}
@@ -96,7 +96,7 @@ func makeResult(evt stream.NotificationDeliveryResultEvent) stream.Result[stream
 	return stream.Result[stream.NotificationDeliveryResultEvent]{Ctx: context.Background(), Event: evt, Msg: msg}
 }
 
-func runConsumer(c *consumer.StatusConsumer, result stream.Result[stream.NotificationDeliveryResultEvent]) {
+func runConsumer(c *messaging.StatusConsumer, result stream.Result[stream.NotificationDeliveryResultEvent]) {
 	ch := make(chan stream.Result[stream.NotificationDeliveryResultEvent], 1)
 	ch <- result
 	close(ch)
@@ -109,8 +109,8 @@ func TestStatusConsumer_delivered(t *testing.T) {
 	notifID := mustV7()
 	seedNotification(t, notifID, string(model.StatusPending))
 
-	notifRepo := repos.NewNotificationRepository(testDB)
-	c := consumer.NewStatusConsumer(notifRepo)
+	notifRepo := repopostgres.NewNotificationRepository(testDB)
+	c := messaging.NewStatusConsumer(notifRepo)
 
 	evt := stream.NotificationDeliveryResultEvent{
 		NotificationID: notifID.String(),
@@ -135,8 +135,8 @@ func TestStatusConsumer_failed(t *testing.T) {
 	notifID := mustV7()
 	seedNotification(t, notifID, string(model.StatusPending))
 
-	notifRepo := repos.NewNotificationRepository(testDB)
-	c := consumer.NewStatusConsumer(notifRepo)
+	notifRepo := repopostgres.NewNotificationRepository(testDB)
+	c := messaging.NewStatusConsumer(notifRepo)
 
 	evt := stream.NotificationDeliveryResultEvent{
 		NotificationID: notifID.String(),
@@ -161,8 +161,8 @@ func TestStatusConsumer_idempotent(t *testing.T) {
 	notifID := mustV7()
 	seedNotification(t, notifID, string(model.StatusPending))
 
-	notifRepo := repos.NewNotificationRepository(testDB)
-	c := consumer.NewStatusConsumer(notifRepo)
+	notifRepo := repopostgres.NewNotificationRepository(testDB)
+	c := messaging.NewStatusConsumer(notifRepo)
 
 	evt := stream.NotificationDeliveryResultEvent{
 		NotificationID: notifID.String(),

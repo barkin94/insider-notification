@@ -5,13 +5,12 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/redis/go-redis/v9"
-	"github.com/uptrace/bun"
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
-
 	_ "github.com/barkin/insider-notification/api/docs"
 	"github.com/barkin/insider-notification/api/internal/service"
 	sharedhandler "github.com/barkin/insider-notification/shared/handler"
+	"github.com/redis/go-redis/v9"
+	"github.com/uptrace/bun"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 // Deps holds the dependencies required to build the HTTP router.
