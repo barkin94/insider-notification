@@ -5,9 +5,9 @@ help: ## Show available commands
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-18s %s\n", $$1, $$2}'
 
 infra: ## Start Postgres and Redis only (for local development)
-	docker compose up -d postgres redis
+	docker compose up -d postgres redis mock-ntfn-provider migrate-api migrate-processor
 
-up: ## Run migrations then start all services
+up: ## Start all services
 	docker compose up -d
 
 down: ## Stop all services
