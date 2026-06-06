@@ -13,7 +13,6 @@ import (
 	processordb "github.com/barkin/insider-notification/processor/internal/db"
 	"github.com/barkin/insider-notification/processor/internal/delivery"
 	"github.com/barkin/insider-notification/processor/internal/service"
-	shareddb "github.com/barkin/insider-notification/shared/db"
 	"github.com/barkin/insider-notification/shared/lock"
 	"github.com/barkin/insider-notification/shared/model"
 	sharedredis "github.com/barkin/insider-notification/shared/redis"
@@ -22,36 +21,29 @@ import (
 
 // App wires and runs the processor service.
 type App struct {
-	pipeline    *delivery.NotificationDeliveryPipelineWorker
-	router      *delivery.PriorityRouter[stream.Result[stream.NotificationReadyEvent]]
-	concurrency int
+	pipeline        *delivery.NotificationDeliveryPipelineWorker
+	retryDispatcher *delivery.RetryDispatcher
+	router          *delivery.PriorityRouter[stream.Result[stream.NotificationReadyEvent]]
+	concurrency     int
 }
 
 // New constructs all dependencies and returns a ready-to-run App.
-// The returned cleanup func closes infrastructure (DB, subscriber) and must be deferred by the caller.
+// The returned cleanup func closes infrastructure and must be deferred by the caller.
 func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
-	bundb, err := shareddb.Open(cfg.DatabaseURL)
-	if err != nil {
-		return nil, nil, fmt.Errorf("connect to postgres: %w", err)
-	}
-
 	rdb, err := sharedredis.NewClient(ctx, cfg.RedisAddr)
 	if err != nil {
-		_ = bundb.Close()
 		return nil, nil, fmt.Errorf("connect to redis: %w", err)
 	}
 
-	attemptRepo := processordb.NewDeliveryAttemptRepository(bundb)
+	attemptRepo := processordb.NewDeliveryAttemptRepository(rdb)
 
 	pub, err := stream.NewRedisPublisher(rdb)
 	if err != nil {
-		_ = bundb.Close()
 		return nil, nil, fmt.Errorf("create stream publisher: %w", err)
 	}
 
 	sub, err := stream.NewRedisSubscriber(rdb, "notify:cg:processor")
 	if err != nil {
-		_ = bundb.Close()
 		return nil, nil, fmt.Errorf("create stream subscriber: %w", err)
 	}
 
@@ -60,19 +52,16 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 	highMsgs, err := stream.Subscribe[stream.NotificationReadyEvent](ctx, sub, stream.TopicHigh, cfg.OTelServiceName)
 	if err != nil {
 		_ = sub.Close()
-		_ = bundb.Close()
 		return nil, nil, fmt.Errorf("subscribe high: %w", err)
 	}
 	normalMsgs, err := stream.Subscribe[stream.NotificationReadyEvent](ctx, sub, stream.TopicNormal, cfg.OTelServiceName)
 	if err != nil {
 		_ = sub.Close()
-		_ = bundb.Close()
 		return nil, nil, fmt.Errorf("subscribe normal: %w", err)
 	}
 	lowMsgs, err := stream.Subscribe[stream.NotificationReadyEvent](ctx, sub, stream.TopicLow, cfg.OTelServiceName)
 	if err != nil {
 		_ = sub.Close()
-		_ = bundb.Close()
 		return nil, nil, fmt.Errorf("subscribe low: %w", err)
 	}
 
@@ -85,7 +74,6 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 	m, err := service.NewMetrics(rdb)
 	if err != nil {
 		_ = sub.Close()
-		_ = bundb.Close()
 		return nil, nil, fmt.Errorf("init metrics: %w", err)
 	}
 
@@ -101,23 +89,31 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 		attemptRepo,
 		m,
 	)
+	retryDispatcher := delivery.NewRetryDispatcher(attemptRepo, pub, cfg.RetryDispatchInterval, cfg.RetryDispatchBatchSize)
 
 	cleanup := func() {
 		_ = sub.Close()
-		_ = bundb.Close()
+		_ = rdb.Close()
 	}
 
 	return &App{
-		pipeline:    pipeline,
-		router:      router,
-		concurrency: cfg.WorkerConcurrency,
+		pipeline:        pipeline,
+		retryDispatcher: retryDispatcher,
+		router:          router,
+		concurrency:     cfg.WorkerConcurrency,
 	}, cleanup, nil
 }
 
-// Run starts the scheduler and consumer pool, blocks until ctx is cancelled,
+// Run starts the retry dispatcher and consumer pool, blocks until ctx is cancelled,
 // then waits for all consumers to finish their current message.
 func (a *App) Run(ctx context.Context) {
 	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		a.retryDispatcher.Run(ctx)
+	}()
+
 	for range a.concurrency {
 		wg.Add(1)
 		go func() {

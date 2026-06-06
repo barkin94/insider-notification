@@ -18,7 +18,7 @@ var defaultLimit = redis_rate.Limit{
 // Limiter checks whether a delivery attempt for a given channel is allowed.
 // RetryAfter is zero when the request is allowed; positive when rate-limited.
 type Limiter interface {
-	Allow(ctx context.Context, channel string) (allowed bool, retryAfter time.Duration, err error)
+	IsAllowed(ctx context.Context, channel string) (allowed bool, retryAfter time.Duration, err error)
 }
 
 type redisLimiter struct {
@@ -33,7 +33,7 @@ func NewLimiter(client *redis.Client, channelLimits map[string]redis_rate.Limit)
 	}
 }
 
-func (l *redisLimiter) Allow(ctx context.Context, channel string) (bool, time.Duration, error) {
+func (l *redisLimiter) IsAllowed(ctx context.Context, channel string) (bool, time.Duration, error) {
 	limit, ok := l.channelLimits[channel]
 	if !ok {
 		limit = defaultLimit

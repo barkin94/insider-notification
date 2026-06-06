@@ -3,6 +3,7 @@ package stream
 import (
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/ThreeDotsLabs/watermill-redisstream/pkg/redisstream"
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -23,8 +24,9 @@ func NewRedisPublisher(client *redis.Client) (Publisher, error) {
 func NewRedisSubscriber(client *redis.Client, consumerGroup string) (message.Subscriber, error) {
 	logger := NewSlogAdapter(slog.Default())
 	sub, err := redisstream.NewSubscriber(redisstream.SubscriberConfig{
-		Client:        client,
-		ConsumerGroup: consumerGroup,
+		Client:          client,
+		ConsumerGroup:   consumerGroup,
+		NackResendSleep: 5 * time.Second,
 	}, logger)
 	if err != nil {
 		return nil, fmt.Errorf("redis stream subscriber: %w", err)
