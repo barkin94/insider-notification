@@ -14,9 +14,9 @@ import (
 	"github.com/barkin/insider-notification/shared/stream"
 )
 
-// NotificationDeliveryPipelineWorker runs a single notification event through
+// NotificationDeliveryPipeline runs a single notification event through
 // each gate in sequence: locking, rate limiting, delivery, and outcome recording.
-type NotificationDeliveryPipelineWorker struct {
+type NotificationDeliveryPipeline struct {
 	pub            stream.Publisher
 	deliveryClient service.NtfnDeliveryClient
 	limiter        service.Limiter
@@ -25,15 +25,15 @@ type NotificationDeliveryPipelineWorker struct {
 	metrics        service.Metrics
 }
 
-func NewNotificationDeliveryPipelineWorker(
+func NewNotificationDeliveryPipeline(
 	pub stream.Publisher,
 	deliveryClient service.NtfnDeliveryClient,
 	limiter service.Limiter,
 	locker lock.Locker,
 	attempts processordb.DeliveryAttemptRepository,
 	m service.Metrics,
-) *NotificationDeliveryPipelineWorker {
-	return &NotificationDeliveryPipelineWorker{
+) *NotificationDeliveryPipeline {
+	return &NotificationDeliveryPipeline{
 		pub:            pub,
 		deliveryClient: deliveryClient,
 		limiter:        limiter,
@@ -45,7 +45,7 @@ func NewNotificationDeliveryPipelineWorker(
 
 // Run runs the notification through each gate in sequence.
 // Gates own their logging; Run owns Ack/Nack.
-func (p *NotificationDeliveryPipelineWorker) Run(ctx context.Context, result stream.Result[stream.NotificationReadyEvent]) {
+func (p *NotificationDeliveryPipeline) Run(ctx context.Context, result stream.Result[stream.NotificationReadyEvent]) {
 	ctx, span := otel.Tracer("processor").Start(ctx, "deliver")
 	defer span.End()
 
@@ -87,7 +87,7 @@ func (p *NotificationDeliveryPipelineWorker) Run(ctx context.Context, result str
 
 // savePayload persists the notification payload so the retry dispatcher can reconstruct the event.
 // Must be called before any Delay or Create. Idempotent: subsequent calls for the same notification are no-ops.
-func (p *NotificationDeliveryPipelineWorker) savePayload(ctx context.Context, evt stream.NotificationReadyEvent) error {
+func (p *NotificationDeliveryPipeline) savePayload(ctx context.Context, evt stream.NotificationReadyEvent) error {
 	err := p.attempts.SavePayload(ctx, &processordb.DeliveryAttempt{
 		NotificationID: evt.NotificationID,
 		Channel:        evt.Channel,
@@ -106,7 +106,7 @@ func (p *NotificationDeliveryPipelineWorker) savePayload(ctx context.Context, ev
 
 // getLastAttemptNumber returns the last recorded attempt number from Redis.
 // Returns 0 on error or when no attempt has been recorded yet (first delivery).
-func (p *NotificationDeliveryPipelineWorker) getLastAttemptNumber(ctx context.Context, id string) int {
+func (p *NotificationDeliveryPipeline) getLastAttemptNumber(ctx context.Context, id string) int {
 	n, err := p.attempts.GetAttemptNumber(ctx, id)
 	if err != nil {
 		slog.ErrorContext(ctx, "get last attempt number failed", "id", id, "error", err)
@@ -117,7 +117,7 @@ func (p *NotificationDeliveryPipelineWorker) getLastAttemptNumber(ctx context.Co
 
 // applyRateLimit checks the channel's token bucket. If exhausted, it defers
 // the event via the ZSET and returns limited=true so the caller can Ack.
-func (p *NotificationDeliveryPipelineWorker) applyRateLimit(ctx context.Context, evt stream.NotificationReadyEvent) (limited bool, err error) {
+func (p *NotificationDeliveryPipeline) applyRateLimit(ctx context.Context, evt stream.NotificationReadyEvent) (limited bool, err error) {
 	allowed, retryAfter, err := p.limiter.IsAllowed(ctx, evt.Channel)
 	if err != nil {
 		slog.ErrorContext(ctx, "rate limit error", "id", evt.NotificationID, "error", err)
@@ -143,7 +143,7 @@ func (p *NotificationDeliveryPipelineWorker) applyRateLimit(ctx context.Context,
 // recordOutcome schedules retryable delivery failures and publishes terminal
 // status events for the API. It returns an error only when retry state could not
 // be persisted, because the original stream message must remain unacked then.
-func (p *NotificationDeliveryPipelineWorker) recordOutcome(ctx context.Context, evt stream.NotificationReadyEvent, dr service.DeliveryResult, currentAttempt int) error {
+func (p *NotificationDeliveryPipeline) recordOutcome(ctx context.Context, evt stream.NotificationReadyEvent, dr service.DeliveryResult, currentAttempt int) error {
 	notifID := evt.NotificationID
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	maxAttempts := maxAttemptsFor(evt)
@@ -195,7 +195,7 @@ func (p *NotificationDeliveryPipelineWorker) recordOutcome(ctx context.Context, 
 	return nil
 }
 
-func (p *NotificationDeliveryPipelineWorker) publishStatus(ctx context.Context, evt stream.NotificationDeliveryResultEvent) error {
+func (p *NotificationDeliveryPipeline) publishStatus(ctx context.Context, evt stream.NotificationDeliveryResultEvent) error {
 	if err := p.pub.Publish(ctx, stream.TopicStatus, evt); err != nil {
 		slog.ErrorContext(ctx, "publish status failed", "id", evt.NotificationID, "error", err)
 		return err
@@ -203,7 +203,7 @@ func (p *NotificationDeliveryPipelineWorker) publishStatus(ctx context.Context, 
 	return nil
 }
 
-func (p *NotificationDeliveryPipelineWorker) clearAttempt(ctx context.Context, notifID string) {
+func (p *NotificationDeliveryPipeline) clearAttempt(ctx context.Context, notifID string) {
 	if err := p.attempts.Delete(ctx, notifID); err != nil {
 		slog.ErrorContext(ctx, "delete delivery attempt failed", "id", notifID, "error", err)
 	}

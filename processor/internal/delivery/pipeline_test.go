@@ -153,7 +153,7 @@ func (m *mockAttemptWriter) payloads() []*processordb.DeliveryAttempt {
 // --- helpers ---
 
 // runSingle delivers one event through p and returns the watermill message for Ack/Nack inspection.
-func runSingle(p *delivery.NotificationDeliveryPipelineWorker, evt stream.NotificationReadyEvent) *message.Message {
+func runSingle(p *delivery.NotificationDeliveryPipeline, evt stream.NotificationReadyEvent) *message.Message {
 	ctx := context.Background()
 	msg := message.NewMessage(watermill.NewUUID(), nil)
 	result := stream.Result[stream.NotificationReadyEvent]{
@@ -184,9 +184,9 @@ func baseEventWithID() stream.NotificationReadyEvent {
 	return evt
 }
 
-func newPipeline(pub *fakePublisher, dc service.NtfnDeliveryClient, lim service.Limiter, lockGranted bool, attempts processordb.DeliveryAttemptRepository) *delivery.NotificationDeliveryPipelineWorker {
+func newPipeline(pub *fakePublisher, dc service.NtfnDeliveryClient, lim service.Limiter, lockGranted bool, attempts processordb.DeliveryAttemptRepository) *delivery.NotificationDeliveryPipeline {
 	m, _ := service.NewMetrics(nil)
-	return delivery.NewNotificationDeliveryPipelineWorker(
+	return delivery.NewNotificationDeliveryPipeline(
 		pub,
 		dc,
 		lim,
@@ -208,7 +208,7 @@ func isAcked(msg *message.Message) bool {
 // --- tests ---
 
 // Lock miss: ACKs immediately, no status published.
-func TestProcessOne_LockMiss(t *testing.T) {
+func TestPipeline_LockMiss(t *testing.T) {
 	pub := &fakePublisher{}
 	c := newPipeline(pub, nil, nil, false, &mockAttemptWriter{})
 
@@ -223,7 +223,7 @@ func TestProcessOne_LockMiss(t *testing.T) {
 }
 
 // Full pipeline with terminal non-retryable failure: publishes failed only.
-func TestProcessOne_TerminalFailure(t *testing.T) {
+func TestPipeline_TerminalFailure(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: false}}
 	lim := &fakeLimiter{allowed: true}
@@ -248,7 +248,7 @@ func TestProcessOne_TerminalFailure(t *testing.T) {
 }
 
 // Success result: one status event with status=delivered, no DB write.
-func TestDelivery_delivered(t *testing.T) {
+func TestPipeline_Delivered(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: true, StatusCode: 202, LatencyMS: 50}}
 	lim := &fakeLimiter{allowed: true}
@@ -273,7 +273,7 @@ func TestDelivery_delivered(t *testing.T) {
 }
 
 // Retryable failure with attempts remaining: attempt written to DB with retry_after set; no stream publish.
-func TestDelivery_retryable_writesRetryAfter(t *testing.T) {
+func TestPipeline_Retryable_WritesRetryAfter(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: true, StatusCode: 503}}
 	lim := &fakeLimiter{allowed: true}
@@ -305,7 +305,7 @@ func TestDelivery_retryable_writesRetryAfter(t *testing.T) {
 }
 
 // Retryable failure at max attempts: status=failed published, attempt written without retry_after.
-func TestDelivery_exhausted_failed(t *testing.T) {
+func TestPipeline_Exhausted_Failed(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: true, StatusCode: 503}}
 	lim := &fakeLimiter{allowed: true}
@@ -340,7 +340,7 @@ func TestDelivery_exhausted_failed(t *testing.T) {
 }
 
 // Non-retryable failure: status=failed, no re-enqueue.
-func TestDelivery_nonRetryable_failed(t *testing.T) {
+func TestPipeline_NonRetryable_Failed(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: false, StatusCode: 400}}
 	lim := &fakeLimiter{allowed: true}
@@ -361,23 +361,8 @@ func TestDelivery_nonRetryable_failed(t *testing.T) {
 	}
 }
 
-// Lock miss: ACKs, no publishes.
-func TestDelivery_lockMiss(t *testing.T) {
-	pub := &fakePublisher{}
-	c := newPipeline(pub, nil, nil, false, &mockAttemptWriter{})
-
-	msg := runSingle(c, baseEvent())
-
-	if !isAcked(msg) {
-		t.Error("expected ACK")
-	}
-	if len(pub.calls()) != 0 {
-		t.Errorf("expected no publishes, got %d", len(pub.calls()))
-	}
-}
-
 // Rate limited: defers via Delay (not Create), no direct stream publish.
-func TestDelivery_rateLimited_requeued(t *testing.T) {
+func TestPipeline_RateLimited_Requeued(t *testing.T) {
 	pub := &fakePublisher{}
 	lim := &fakeLimiter{allowed: false}
 	aw := &mockAttemptWriter{}
@@ -406,7 +391,7 @@ func TestDelivery_rateLimited_requeued(t *testing.T) {
 // --- delivery attempt tests ---
 
 // Retryable failure path: attempt written with correct attempt number from count.
-func TestDelivery_attempts_retryable(t *testing.T) {
+func TestPipeline_Attempts_Retryable(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: true, StatusCode: 503}}
 	lim := &fakeLimiter{allowed: true}
@@ -427,7 +412,7 @@ func TestDelivery_attempts_retryable(t *testing.T) {
 }
 
 // Terminal failure path: no attempt written via Create; state cleaned up via Delete, status published.
-func TestDelivery_attempts_terminal(t *testing.T) {
+func TestPipeline_Attempts_Terminal(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: false, StatusCode: 400}}
 	lim := &fakeLimiter{allowed: true}
@@ -449,7 +434,7 @@ func TestDelivery_attempts_terminal(t *testing.T) {
 }
 
 // Write error on terminal failure: consumer still ACKs and publishes status.
-func TestDelivery_attempts_writeError_doesNotAbort(t *testing.T) {
+func TestPipeline_Attempts_WriteError_DoesNotAbort(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: false, StatusCode: 400}}
 	lim := &fakeLimiter{allowed: true}
@@ -468,7 +453,7 @@ func TestDelivery_attempts_writeError_doesNotAbort(t *testing.T) {
 }
 
 // Notification payload is persisted via SavePayload so the retry dispatcher can re-publish without a DB lookup.
-func TestDelivery_attempts_payloadPersisted(t *testing.T) {
+func TestPipeline_Attempts_PayloadPersisted(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: true, StatusCode: 503}}
 	lim := &fakeLimiter{allowed: true}

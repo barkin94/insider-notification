@@ -1,4 +1,4 @@
-package delivery
+package messaging
 
 import (
 	"context"
@@ -27,7 +27,7 @@ func NewRetryDispatcher(repo processordb.DeliveryAttemptRepository, pub stream.P
 		batch = 100
 	}
 	return &RetryDispatcher{
-		repo:    repo,
+		repo:     repo,
 		pub:      pub,
 		interval: interval,
 		batch:    batch,

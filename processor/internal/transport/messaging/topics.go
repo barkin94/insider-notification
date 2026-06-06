@@ -1,4 +1,4 @@
-package delivery
+package messaging
 
 import (
 	"github.com/barkin/insider-notification/shared/model"
