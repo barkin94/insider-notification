@@ -22,7 +22,7 @@ type DeliveryResult struct {
 
 // DeliveryClient delivers a notification to the webhook provider.
 type NtfnDeliveryClient interface {
-	Send(ctx context.Context, to, channel, content string) (DeliveryResult, error)
+	Send(ctx context.Context, to, channel, content string) DeliveryResult
 }
 
 type ntfnDeliveryClient struct {
@@ -42,7 +42,7 @@ type ntfnDeliveryRequestBody struct {
 	Content string `json:"content"`
 }
 
-func (c *ntfnDeliveryClient) Send(ctx context.Context, to, channel, content string) (DeliveryResult, error) {
+func (c *ntfnDeliveryClient) Send(ctx context.Context, to, channel, content string) DeliveryResult {
 	start := time.Now()
 	resp, err := c.http.Request(ctx, http.MethodPost, "", ntfnDeliveryRequestBody{
 		To:      to,
@@ -52,7 +52,7 @@ func (c *ntfnDeliveryClient) Send(ctx context.Context, to, channel, content stri
 	latency := time.Since(start).Milliseconds()
 
 	if err != nil {
-		return DeliveryResult{Retryable: true, LatencyMS: latency, ErrorMessage: err.Error()}, nil
+		return DeliveryResult{Retryable: true, LatencyMS: latency, ErrorMessage: err.Error()}
 	}
 	defer resp.Body.Close() //nolint:errcheck
 
@@ -77,5 +77,5 @@ func (c *ntfnDeliveryClient) Send(ctx context.Context, to, channel, content stri
 		"success", result.Success,
 		"retryable", result.Retryable,
 	)
-	return result, nil
+	return result
 }

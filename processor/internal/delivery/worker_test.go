@@ -61,27 +61,40 @@ func (f *fakeLocker) Unlock(_ context.Context, _ string) error          { return
 
 type fakeDeliveryClient struct {
 	result service.DeliveryResult
-	err    error
 }
 
-func (f *fakeDeliveryClient) Send(_ context.Context, _, _, _ string) (service.DeliveryResult, error) {
-	return f.result, f.err
+func (f *fakeDeliveryClient) Send(_ context.Context, _, _, _ string) service.DeliveryResult {
+	return f.result
 }
 
 type fakeLimiter struct{ allowed bool }
 
-func (f *fakeLimiter) Allow(_ context.Context, _ string) (bool, time.Duration, error) {
+func (f *fakeLimiter) IsAllowed(_ context.Context, _ string) (bool, time.Duration, error) {
 	return f.allowed, 0, nil
 }
 
+type delayCall struct {
+	notifID    string
+	retryAfter time.Time
+}
+
 type mockAttemptWriter struct {
-	mu          sync.Mutex
-	calls       []*processordb.DeliveryAttempt
-	err         error
-	countResult int
+	mu           sync.Mutex
+	calls        []*processordb.DeliveryAttempt
+	delayCalls   []delayCall
+	payloadCalls []*processordb.DeliveryAttempt
+	err          error
+	countResult  int
 }
 
 var _ processordb.DeliveryAttemptRepository = (*mockAttemptWriter)(nil)
+
+func (m *mockAttemptWriter) SavePayload(_ context.Context, a *processordb.DeliveryAttempt) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.payloadCalls = append(m.payloadCalls, a)
+	return nil
+}
 
 func (m *mockAttemptWriter) Create(_ context.Context, a *processordb.DeliveryAttempt) error {
 	m.mu.Lock()
@@ -90,12 +103,27 @@ func (m *mockAttemptWriter) Create(_ context.Context, a *processordb.DeliveryAtt
 	return m.err
 }
 
-func (m *mockAttemptWriter) CountByNotificationID(_ context.Context, _ uuid.UUID) (int, error) {
+func (m *mockAttemptWriter) Delay(_ context.Context, notifID string, retryAfter time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.delayCalls = append(m.delayCalls, delayCall{notifID, retryAfter})
+	return m.err
+}
+
+func (m *mockAttemptWriter) GetAttemptNumber(_ context.Context, _ string) (int, error) {
 	return m.countResult, nil
 }
 
-func (m *mockAttemptWriter) FindDueRetries(_ context.Context) ([]*processordb.DeliveryAttempt, error) {
+func (m *mockAttemptWriter) Delete(_ context.Context, _ string) error {
+	return nil
+}
+
+func (m *mockAttemptWriter) GetDue(_ context.Context, _ time.Time, _ int) ([]*processordb.DeliveryAttempt, error) {
 	return nil, nil
+}
+
+func (m *mockAttemptWriter) RemoveDue(_ context.Context, _ string) error {
+	return nil
 }
 
 func (m *mockAttemptWriter) recorded() []*processordb.DeliveryAttempt {
@@ -103,6 +131,22 @@ func (m *mockAttemptWriter) recorded() []*processordb.DeliveryAttempt {
 	defer m.mu.Unlock()
 	out := make([]*processordb.DeliveryAttempt, len(m.calls))
 	copy(out, m.calls)
+	return out
+}
+
+func (m *mockAttemptWriter) delayed() []delayCall {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]delayCall, len(m.delayCalls))
+	copy(out, m.delayCalls)
+	return out
+}
+
+func (m *mockAttemptWriter) payloads() []*processordb.DeliveryAttempt {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]*processordb.DeliveryAttempt, len(m.payloadCalls))
+	copy(out, m.payloadCalls)
 	return out
 }
 
@@ -166,7 +210,7 @@ func isAcked(msg *message.Message) bool {
 // Lock miss: ACKs immediately, no status published.
 func TestProcessOne_LockMiss(t *testing.T) {
 	pub := &fakePublisher{}
-	c := newPipeline(pub, nil, nil, false, nil)
+	c := newPipeline(pub, nil, nil, false, &mockAttemptWriter{})
 
 	msg := runSingle(c, baseEvent())
 
@@ -183,7 +227,7 @@ func TestProcessOne_TerminalFailure(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: false}}
 	lim := &fakeLimiter{allowed: true}
-	c := newPipeline(pub, dc, lim, true, nil)
+	c := newPipeline(pub, dc, lim, true, &mockAttemptWriter{})
 
 	msg := runSingle(c, baseEvent())
 
@@ -208,7 +252,7 @@ func TestDelivery_delivered(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: true, StatusCode: 202, LatencyMS: 50}}
 	lim := &fakeLimiter{allowed: true}
-	c := newPipeline(pub, dc, lim, true, nil)
+	c := newPipeline(pub, dc, lim, true, &mockAttemptWriter{})
 
 	msg := runSingle(c, baseEvent())
 
@@ -248,12 +292,15 @@ func TestDelivery_retryable_writesRetryAfter(t *testing.T) {
 	if len(attempts) != 1 {
 		t.Fatalf("expected 1 attempt write, got %d", len(attempts))
 	}
-	a := attempts[0]
-	if a.RetryAfter == nil {
+	if attempts[0].RetryAfter == nil {
 		t.Error("expected retry_after to be set")
 	}
-	if a.Priority != string(model.PriorityHigh) {
-		t.Errorf("priority = %q, want high", a.Priority)
+	payloads := aw.payloads()
+	if len(payloads) != 1 {
+		t.Fatalf("expected 1 payload write, got %d", len(payloads))
+	}
+	if payloads[0].Priority != string(model.PriorityHigh) {
+		t.Errorf("priority = %q, want high", payloads[0].Priority)
 	}
 }
 
@@ -287,12 +334,8 @@ func TestDelivery_exhausted_failed(t *testing.T) {
 	if last.AttemptNumber != 4 {
 		t.Errorf("expected attempt_number 4, got %d", last.AttemptNumber)
 	}
-	written := aw.recorded()
-	if len(written) != 1 {
-		t.Fatalf("expected 1 attempt write (terminal tombstone), got %d", len(written))
-	}
-	if written[0].RetryAfter != nil {
-		t.Error("expected retry_after to be nil for terminal attempt")
+	if len(aw.recorded()) != 0 {
+		t.Errorf("expected no attempt writes on exhaustion (cleanup via Delete), got %d", len(aw.recorded()))
 	}
 }
 
@@ -301,7 +344,7 @@ func TestDelivery_nonRetryable_failed(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: false, StatusCode: 400}}
 	lim := &fakeLimiter{allowed: true}
-	c := newPipeline(pub, dc, lim, true, nil)
+	c := newPipeline(pub, dc, lim, true, &mockAttemptWriter{})
 
 	msg := runSingle(c, baseEvent())
 
@@ -321,7 +364,7 @@ func TestDelivery_nonRetryable_failed(t *testing.T) {
 // Lock miss: ACKs, no publishes.
 func TestDelivery_lockMiss(t *testing.T) {
 	pub := &fakePublisher{}
-	c := newPipeline(pub, nil, nil, false, nil)
+	c := newPipeline(pub, nil, nil, false, &mockAttemptWriter{})
 
 	msg := runSingle(c, baseEvent())
 
@@ -333,26 +376,30 @@ func TestDelivery_lockMiss(t *testing.T) {
 	}
 }
 
-// Rate limited: re-enqueues the event unchanged, no status event.
+// Rate limited: defers via Delay (not Create), no direct stream publish.
 func TestDelivery_rateLimited_requeued(t *testing.T) {
 	pub := &fakePublisher{}
 	lim := &fakeLimiter{allowed: false}
-	c := newPipeline(pub, nil, lim, true, nil)
+	aw := &mockAttemptWriter{}
+	c := newPipeline(pub, nil, lim, true, aw)
 
 	msg := runSingle(c, baseEvent())
 
 	if !isAcked(msg) {
 		t.Error("expected ACK")
 	}
-	calls := pub.calls()
-	if len(calls) != 1 {
-		t.Fatalf("expected 1 publish (re-enqueue), got %d", len(calls))
+	if len(pub.calls()) != 0 {
+		t.Errorf("expected no direct publishes, got %v", pub.topicsPublished())
 	}
-	if calls[0].topic != stream.TopicHigh {
-		t.Errorf("expected re-enqueue to %s, got %s", stream.TopicHigh, calls[0].topic)
+	if len(aw.recorded()) != 0 {
+		t.Errorf("expected no Create calls for rate-limited retry, got %d", len(aw.recorded()))
 	}
-	if _, ok := calls[0].payload.(stream.NotificationReadyEvent); !ok {
-		t.Fatal("expected re-enqueue payload to be NotificationReadyEvent")
+	delayed := aw.delayed()
+	if len(delayed) != 1 {
+		t.Fatalf("expected 1 Delay call for rate-limited retry, got %d", len(delayed))
+	}
+	if delayed[0].retryAfter.IsZero() {
+		t.Error("expected retry_after to be set for rate-limited retry")
 	}
 }
 
@@ -379,7 +426,7 @@ func TestDelivery_attempts_retryable(t *testing.T) {
 	}
 }
 
-// Terminal failure path: attempt written with retry_after nil.
+// Terminal failure path: no attempt written via Create; state cleaned up via Delete, status published.
 func TestDelivery_attempts_terminal(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: false, StatusCode: 400}}
@@ -387,14 +434,17 @@ func TestDelivery_attempts_terminal(t *testing.T) {
 	aw := &mockAttemptWriter{}
 	c := newPipeline(pub, dc, lim, true, aw)
 
-	runSingle(c, baseEventWithID())
+	msg := runSingle(c, baseEventWithID())
 
-	attempts := aw.recorded()
-	if len(attempts) != 1 {
-		t.Fatalf("expected 1 attempt write, got %d", len(attempts))
+	if !isAcked(msg) {
+		t.Error("expected ACK")
 	}
-	if attempts[0].RetryAfter != nil {
-		t.Error("expected retry_after to be nil for terminal attempt")
+	if len(aw.recorded()) != 0 {
+		t.Errorf("expected no attempt writes for terminal failure, got %d", len(aw.recorded()))
+	}
+	calls := pub.calls()
+	if len(calls) != 1 || calls[0].topic != stream.TopicStatus {
+		t.Errorf("expected status publish, got %v", pub.topicsPublished())
 	}
 }
 
@@ -417,7 +467,7 @@ func TestDelivery_attempts_writeError_doesNotAbort(t *testing.T) {
 	}
 }
 
-// Attempt payload is populated from the event so the retry scheduler can re-dispatch without DB lookup.
+// Notification payload is persisted via SavePayload so the retry dispatcher can re-publish without a DB lookup.
 func TestDelivery_attempts_payloadPersisted(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: true, StatusCode: 503}}
@@ -432,22 +482,22 @@ func TestDelivery_attempts_payloadPersisted(t *testing.T) {
 	evt.MaxAttempts = 3
 	runSingle(c, evt)
 
-	attempts := aw.recorded()
-	if len(attempts) != 1 {
-		t.Fatalf("expected 1 attempt write, got %d", len(attempts))
+	payloads := aw.payloads()
+	if len(payloads) != 1 {
+		t.Fatalf("expected 1 payload write (SavePayload), got %d", len(payloads))
 	}
-	a := attempts[0]
-	if a.Channel != string(model.ChannelSMS) {
-		t.Errorf("channel = %q, want sms", a.Channel)
+	p := payloads[0]
+	if p.Channel != string(model.ChannelSMS) {
+		t.Errorf("channel = %q, want sms", p.Channel)
 	}
-	if a.Recipient != "+905550001" {
-		t.Errorf("recipient = %q, want +905550001", a.Recipient)
+	if p.Recipient != "+905550001" {
+		t.Errorf("recipient = %q, want +905550001", p.Recipient)
 	}
-	if a.Content != "hello" {
-		t.Errorf("content = %q, want hello", a.Content)
+	if p.Content != "hello" {
+		t.Errorf("content = %q, want hello", p.Content)
 	}
-	if a.MaxAttempts != 3 {
-		t.Errorf("max_attempts = %d, want 3", a.MaxAttempts)
+	if p.MaxAttempts != 3 {
+		t.Errorf("max_attempts = %d, want 3", p.MaxAttempts)
 	}
 }
 

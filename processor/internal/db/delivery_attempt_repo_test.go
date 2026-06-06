@@ -2,6 +2,7 @@ package db_test
 
 import (
 	"context"
+	"strconv"
 	"testing"
 	"time"
 
@@ -21,44 +22,41 @@ func mustUUID(t *testing.T) uuid.UUID {
 
 func newAttempt(t *testing.T) *processordb.DeliveryAttempt {
 	t.Helper()
-	now := time.Now().UTC().Truncate(time.Millisecond)
-	a := &processordb.DeliveryAttempt{
-		NotificationID: mustUUID(t),
+	return &processordb.DeliveryAttempt{
+		NotificationID: mustUUID(t).String(),
 		AttemptNumber:  1,
 	}
-	a.ID = mustUUID(t)
-	a.CreatedAt = now
-	a.UpdatedAt = now
-	return a
 }
 
 func TestCreate_insertsRow(t *testing.T) {
+	requireRedis(t)
 	ctx := context.Background()
-	repo := processordb.NewDeliveryAttemptRepository(testDB)
+	client := newRedisClient()
+	defer client.Close() //nolint:errcheck
+	repo := processordb.NewDeliveryAttemptRepository(client)
 
 	a := newAttempt(t)
 	if err := repo.Create(ctx, a); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
-	var got processordb.DeliveryAttempt
-	err := testDB.NewSelect().Model(&got).Where("id = ?", a.ID).Scan(ctx)
+	got, err := client.HGetAll(ctx, deliveryAttemptKey(a.NotificationID)).Result()
 	if err != nil {
-		t.Fatalf("select: %v", err)
+		t.Fatalf("hgetall: %v", err)
 	}
 
-	if got.NotificationID != a.NotificationID {
-		t.Errorf("notification_id: got %v, want %v", got.NotificationID, a.NotificationID)
-	}
-	if got.AttemptNumber != a.AttemptNumber {
-		t.Errorf("attempt_number: got %d, want %d", got.AttemptNumber, a.AttemptNumber)
+	if got["attempt_number"] != strconv.Itoa(a.AttemptNumber) {
+		t.Errorf("attempt_number: got %s, want %d", got["attempt_number"], a.AttemptNumber)
 	}
 }
 
-// Second Create for the same notification_id upserts: updates attempt_number, status, retry_after.
+// Second Create for the same notification_id upserts the stored attempt fields.
 func TestCreate_upserts(t *testing.T) {
+	requireRedis(t)
 	ctx := context.Background()
-	repo := processordb.NewDeliveryAttemptRepository(testDB)
+	client := newRedisClient()
+	defer client.Close() //nolint:errcheck
+	repo := processordb.NewDeliveryAttemptRepository(client)
 
 	a := newAttempt(t)
 	a.AttemptNumber = 1
@@ -75,41 +73,31 @@ func TestCreate_upserts(t *testing.T) {
 		t.Fatalf("second Create (upsert): %v", err)
 	}
 
-	var count int
-	err := testDB.NewSelect().
-		TableExpr("delivery_attempts").
-		ColumnExpr("count(*)").
-		Where("notification_id = ?", a.NotificationID).
-		Scan(ctx, &count)
+	got, err := client.HGetAll(ctx, deliveryAttemptKey(a.NotificationID)).Result()
 	if err != nil {
-		t.Fatalf("count: %v", err)
+		t.Fatalf("hgetall: %v", err)
 	}
-	if count != 1 {
-		t.Errorf("expected 1 row after upsert, got %d", count)
+	if got["attempt_number"] != "2" {
+		t.Errorf("attempt_number after upsert: got %s, want 2", got["attempt_number"])
 	}
-
-	var got processordb.DeliveryAttempt
-	if err := testDB.NewSelect().Model(&got).Where("notification_id = ?", a.NotificationID).Scan(ctx); err != nil {
-		t.Fatalf("select after upsert: %v", err)
-	}
-	if got.AttemptNumber != 2 {
-		t.Errorf("attempt_number after upsert: got %d, want 2", got.AttemptNumber)
-	}
-	if got.RetryAfter == nil {
+	if got["retry_after"] == "" {
 		t.Error("expected retry_after to be set after upsert")
 	}
 }
 
-func TestCountByNotificationID_returnsAttemptNumber(t *testing.T) {
+func TestGetAttemptNumber_returnsStoredAttemptNumber(t *testing.T) {
+	requireRedis(t)
 	ctx := context.Background()
-	repo := processordb.NewDeliveryAttemptRepository(testDB)
+	client := newRedisClient()
+	defer client.Close() //nolint:errcheck
+	repo := processordb.NewDeliveryAttemptRepository(client)
 
-	notifID := mustUUID(t)
+	notifID := mustUUID(t).String()
 
 	// No row yet → 0.
-	n, err := repo.CountByNotificationID(ctx, notifID)
+	n, err := repo.GetAttemptNumber(ctx, notifID)
 	if err != nil {
-		t.Fatalf("CountByNotificationID (empty): %v", err)
+		t.Fatalf("GetAttemptNumber (empty): %v", err)
 	}
 	if n != 0 {
 		t.Errorf("expected 0 before any attempt, got %d", n)
@@ -122,11 +110,15 @@ func TestCountByNotificationID_returnsAttemptNumber(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	n, err = repo.CountByNotificationID(ctx, notifID)
+	n, err = repo.GetAttemptNumber(ctx, notifID)
 	if err != nil {
-		t.Fatalf("CountByNotificationID: %v", err)
+		t.Fatalf("GetAttemptNumber: %v", err)
 	}
 	if n != 3 {
 		t.Errorf("expected 3, got %d", n)
 	}
+}
+
+func deliveryAttemptKey(id string) string {
+	return "processor:delivery_attempt:{" + id + "}"
 }

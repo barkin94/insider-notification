@@ -20,10 +20,7 @@ func TestSend_202_success(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	result, err := newTestDeliveryClient(srv.URL).Send(context.Background(), "+1", "sms", "test")
-	if err != nil {
-		t.Fatal(err)
-	}
+	result := newTestDeliveryClient(srv.URL).Send(context.Background(), "+1", "sms", "test")
 	if !result.Success {
 		t.Error("expected Success=true")
 	}
@@ -38,10 +35,7 @@ func TestSend_400_nonRetryable(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	result, err := newTestDeliveryClient(srv.URL).Send(context.Background(), "+1", "sms", "test")
-	if err != nil {
-		t.Fatal(err)
-	}
+	result := newTestDeliveryClient(srv.URL).Send(context.Background(), "+1", "sms", "test")
 	if result.Success {
 		t.Error("expected Success=false")
 	}
@@ -56,10 +50,7 @@ func TestSend_401_nonRetryable(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	result, err := newTestDeliveryClient(srv.URL).Send(context.Background(), "+1", "sms", "test")
-	if err != nil {
-		t.Fatal(err)
-	}
+	result := newTestDeliveryClient(srv.URL).Send(context.Background(), "+1", "sms", "test")
 	if result.Retryable {
 		t.Error("expected Retryable=false for 401")
 	}
@@ -71,10 +62,7 @@ func TestSend_403_nonRetryable(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	result, err := newTestDeliveryClient(srv.URL).Send(context.Background(), "+1", "sms", "test")
-	if err != nil {
-		t.Fatal(err)
-	}
+	result := newTestDeliveryClient(srv.URL).Send(context.Background(), "+1", "sms", "test")
 	if result.Retryable {
 		t.Error("expected Retryable=false for 403")
 	}
@@ -86,10 +74,7 @@ func TestSend_503_retryable(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	result, err := newTestDeliveryClient(srv.URL).Send(context.Background(), "+1", "sms", "test")
-	if err != nil {
-		t.Fatal(err)
-	}
+	result := newTestDeliveryClient(srv.URL).Send(context.Background(), "+1", "sms", "test")
 	if !result.Retryable {
 		t.Error("expected Retryable=true for 503")
 	}
@@ -101,10 +86,7 @@ func TestSend_429_retryable(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	result, err := newTestDeliveryClient(srv.URL).Send(context.Background(), "+1", "sms", "test")
-	if err != nil {
-		t.Fatal(err)
-	}
+	result := newTestDeliveryClient(srv.URL).Send(context.Background(), "+1", "sms", "test")
 	if !result.Retryable {
 		t.Error("expected Retryable=true for 429")
 	}
@@ -117,10 +99,7 @@ func TestSend_timeout_retryable(t *testing.T) {
 	defer srv.Close()
 
 	client := service.NewNtfnDeliveryClient(srv.URL, 50*time.Millisecond)
-	result, err := client.Send(context.Background(), "+1", "sms", "test")
-	if err != nil {
-		t.Fatal(err)
-	}
+	result := client.Send(context.Background(), "+1", "sms", "test")
 	if !result.Retryable {
 		t.Error("expected Retryable=true on timeout")
 	}
@@ -133,10 +112,7 @@ func TestSend_latency_measured(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	result, err := newTestDeliveryClient(srv.URL).Send(context.Background(), "+1", "sms", "test")
-	if err != nil {
-		t.Fatal(err)
-	}
+	result := newTestDeliveryClient(srv.URL).Send(context.Background(), "+1", "sms", "test")
 	if result.LatencyMS <= 0 {
 		t.Errorf("expected LatencyMS > 0, got %d", result.LatencyMS)
 	}
