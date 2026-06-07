@@ -44,6 +44,7 @@ type Notification struct {
 	priority     Priority
 	status       Status
 	deliverAfter *time.Time
+	maxAttempts  int
 }
 
 func (n *Notification) SetChannel(ch Channel) error {
@@ -113,9 +114,23 @@ func (n *Notification) Transition(to Status) error {
 	return fmt.Errorf("%w: %s → %s", ErrInvalidTransition(), n.status, to)
 }
 
+func (n *Notification) SetMaxAttempts(v int) error {
+	if v <= 0 {
+		return ErrInvalidMaxAttempts()
+	}
+	n.maxAttempts = v
+	return nil
+}
+
 func (n Notification) GetChannel() Channel         { return n.channel }
 func (n Notification) GetRecipient() string        { return n.recipient }
 func (n Notification) GetContent() string          { return n.content }
 func (n Notification) GetPriority() Priority       { return n.priority }
 func (n Notification) GetStatus() Status           { return n.status }
 func (n Notification) GetDeliverAfter() *time.Time { return n.deliverAfter }
+func (n Notification) GetMaxAttempts() int {
+	if n.maxAttempts == 0 {
+		return 1
+	}
+	return n.maxAttempts
+}

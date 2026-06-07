@@ -13,6 +13,7 @@ type createRequest struct {
 	Channel      string  `json:"channel"`
 	Content      string  `json:"content"`
 	Priority     string  `json:"priority"`
+	MaxAttempts  *int    `json:"max_attempts"`
 	DeliverAfter *string `json:"deliver_after"`
 }
 
@@ -30,6 +31,11 @@ func (r createRequest) ToNotification() (notification.Notification, error) {
 	}
 	if err := n.SetPriority(notification.Priority(r.Priority)); err != nil {
 		return n, err
+	}
+	if r.MaxAttempts != nil {
+		if err := n.SetMaxAttempts(*r.MaxAttempts); err != nil {
+			return n, err
+		}
 	}
 	if r.DeliverAfter != nil {
 		t, err := time.Parse(time.RFC3339, *r.DeliverAfter)
@@ -50,7 +56,6 @@ type notificationResponse struct {
 	Content      string  `json:"content"`
 	Priority     string  `json:"priority"`
 	Status       string  `json:"status"`
-	Attempts     int     `json:"attempts"`
 	MaxAttempts  int     `json:"max_attempts"`
 	DeliverAfter *string `json:"deliver_after"`
 	CreatedAt    string  `json:"created_at"`
@@ -111,7 +116,6 @@ func toNotificationResponse(n *repository.Notification) notificationResponse {
 		Content:      n.Content,
 		Priority:     n.Priority,
 		Status:       n.Status,
-		Attempts:     n.Attempts,
 		MaxAttempts:  n.MaxAttempts,
 		DeliverAfter: deliverAfter,
 		CreatedAt:    n.CreatedAt.Format(time.RFC3339),

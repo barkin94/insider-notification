@@ -1,0 +1,1 @@
+ALTER TABLE notifications ADD COLUMN attempts INT NOT NULL DEFAULT 0;

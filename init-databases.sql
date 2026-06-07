@@ -1,1 +1,2 @@
+CREATE DATABASE api;
 CREATE DATABASE processor;

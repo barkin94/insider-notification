@@ -82,9 +82,9 @@ func seedNotification(t *testing.T, id uuid.UUID, status string) {
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	_, err := testDB.NewRaw(`
 		INSERT INTO notifications
-			(id, recipient, channel, content, priority, status, attempts, max_attempts, metadata, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		id, "+1", "sms", "hello", "normal", status, 0, 4, `{}`, now, now,
+			(id, recipient, channel, content, priority, status, max_attempts, metadata, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, "+1", "sms", "hello", "normal", status, 4, `{}`, now, now,
 	).Exec(context.Background())
 	if err != nil {
 		t.Fatalf("seed notification: %v", err)

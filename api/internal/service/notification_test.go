@@ -20,7 +20,6 @@ type mockNotifRepo struct {
 	getByIDFn      func(ctx context.Context, id uuid.UUID) (*repository.Notification, error)
 	listFn         func(ctx context.Context, f repository.ListFilter) ([]*repository.Notification, int, *uuid.UUID, error)
 	transitionFn   func(ctx context.Context, id uuid.UUID, from, to string) (*repository.Notification, error)
-	incrFn         func(ctx context.Context, id uuid.UUID) error
 	updateStatusFn func(ctx context.Context, id uuid.UUID, status string) error
 }
 
@@ -35,9 +34,6 @@ func (m *mockNotifRepo) List(ctx context.Context, f repository.ListFilter) ([]*r
 }
 func (m *mockNotifRepo) Transition(ctx context.Context, id uuid.UUID, from, to string) (*repository.Notification, error) {
 	return m.transitionFn(ctx, id, from, to)
-}
-func (m *mockNotifRepo) IncrementAttempts(ctx context.Context, id uuid.UUID) error {
-	return m.incrFn(ctx, id)
 }
 func (m *mockNotifRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status string) error {
 	if m.updateStatusFn != nil {

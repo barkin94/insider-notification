@@ -40,19 +40,12 @@ func (r *bunNotificationRepo) Transition(ctx context.Context, id uuid.UUID, from
 		UPDATE notifications SET status = ?, updated_at = NOW()
 		WHERE id = ? AND status = ?
 		RETURNING id, batch_id, recipient, channel, content, priority, status,
-		          deliver_after, attempts, max_attempts, created_at, updated_at`,
+		          deliver_after, max_attempts, created_at, updated_at`,
 		to, id, from).Scan(ctx, n)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, repository.ErrTransitionFailed
 	}
 	return n, err
-}
-
-func (r *bunNotificationRepo) IncrementAttempts(ctx context.Context, id uuid.UUID) error {
-	_, err := r.db.NewRaw(
-		`UPDATE notifications SET attempts = attempts + 1, updated_at = NOW() WHERE id = ?`, id,
-	).Exec(ctx)
-	return err
 }
 
 func (r *bunNotificationRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status string) error {

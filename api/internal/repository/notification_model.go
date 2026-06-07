@@ -18,7 +18,6 @@ type Notification struct {
 	Priority           string     `bun:"priority"`
 	Status             string     `bun:"status"`
 	DeliverAfter       *time.Time `bun:"deliver_after"`
-	Attempts           int        `bun:"attempts"`
 	MaxAttempts        int        `bun:"max_attempts"`
 }
 
@@ -35,7 +34,7 @@ func (Notification) From(n notification.Notification, batchID *uuid.UUID) (*Noti
 		Content:      n.GetContent(),
 		Priority:     string(n.GetPriority()),
 		Status:       string(notification.StatusPending),
-		MaxAttempts:  4,
+		MaxAttempts:  n.GetMaxAttempts(),
 		DeliverAfter: n.GetDeliverAfter(),
 	}, nil
 }

@@ -19,7 +19,6 @@ func newNotification() *repository.Notification {
 		Content:     "test content",
 		Priority:    string(model.PriorityNormal),
 		Status:      string(model.StatusPending),
-		Attempts:    0,
 		MaxAttempts: 4,
 	}
 	n.ID = mustV7()
@@ -103,24 +102,6 @@ func TestNotificationRepo_Transition_wrongFrom(t *testing.T) {
 	}
 }
 
-func TestNotificationRepo_IncrementAttempts(t *testing.T) {
-	ctx := context.Background()
-	repo := NewNotificationRepository(testDB)
-
-	n := newNotification()
-	if err := repo.Create(ctx, n); err != nil {
-		t.Fatalf("create notification: %v", err)
-	}
-
-	if err := repo.IncrementAttempts(ctx, n.ID); err != nil {
-		t.Fatalf("IncrementAttempts: %v", err)
-	}
-
-	got, _ := repo.GetByID(ctx, n.ID)
-	if got.Attempts != 1 {
-		t.Errorf("Attempts = %d, want 1", got.Attempts)
-	}
-}
 
 func TestList_offset_pagination(t *testing.T) {
 	ctx := context.Background()

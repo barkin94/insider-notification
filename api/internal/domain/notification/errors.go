@@ -38,6 +38,10 @@ func ErrInvalidDeliverAfter() DomainError {
 	return DomainError{Code: "INVALID_DELIVER_AFTER", Message: "must be ISO 8601 format"}
 }
 
+func ErrInvalidMaxAttempts() DomainError {
+	return DomainError{Code: "INVALID_MAX_ATTEMPTS", Message: "must be greater than 0"}
+}
+
 func ErrUnknownStatus() DomainError {
 	return DomainError{Code: "UNKNOWN_STATUS", Message: "unknown status"}
 }
