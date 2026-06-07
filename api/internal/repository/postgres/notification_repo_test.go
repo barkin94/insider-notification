@@ -102,7 +102,6 @@ func TestNotificationRepo_Transition_wrongFrom(t *testing.T) {
 	}
 }
 
-
 func TestList_offset_pagination(t *testing.T) {
 	ctx := context.Background()
 	repo := NewNotificationRepository(testDB)
