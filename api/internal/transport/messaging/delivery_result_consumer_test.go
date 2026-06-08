@@ -118,7 +118,6 @@ func TestDeliveryResultConsumer_delivered(t *testing.T) {
 		AttemptNumber:  1,
 		HTTPStatusCode: 200,
 		LatencyMS:      120,
-		UpdatedAt:      time.Now().UTC().Format(time.RFC3339),
 	}
 	runConsumer(notifRepo, makeResult(evt))
 
@@ -143,7 +142,6 @@ func TestDeliveryResultConsumer_failed(t *testing.T) {
 		AttemptNumber:  4,
 		ErrorMessage:   "provider timeout",
 		LatencyMS:      500,
-		UpdatedAt:      time.Now().UTC().Format(time.RFC3339),
 	}
 	runConsumer(notifRepo, makeResult(evt))
 
@@ -168,7 +166,6 @@ func TestDeliveryResultConsumer_idempotent(t *testing.T) {
 		AttemptNumber:  1,
 		HTTPStatusCode: 200,
 		LatencyMS:      80,
-		UpdatedAt:      time.Now().UTC().Format(time.RFC3339),
 	}
 
 	runConsumer(notifRepo, makeResult(evt))

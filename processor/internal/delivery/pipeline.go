@@ -145,7 +145,6 @@ func (p *NotificationDeliveryPipeline) applyRateLimit(ctx context.Context, evt s
 // be persisted, because the original stream message must remain unacked then.
 func (p *NotificationDeliveryPipeline) recordOutcome(ctx context.Context, evt stream.NotificationReadyEvent, dr service.DeliveryResult, currentAttempt int) error {
 	notifID := evt.NotificationID
-	now := time.Now().UTC().Format(time.RFC3339Nano)
 	maxAttempts := maxAttemptsFor(evt)
 	switch {
 	case dr.Success:
@@ -157,7 +156,6 @@ func (p *NotificationDeliveryPipeline) recordOutcome(ctx context.Context, evt st
 			HTTPStatusCode:    dr.StatusCode,
 			ProviderMessageID: dr.ProviderMsgID,
 			LatencyMS:         int(dr.LatencyMS),
-			UpdatedAt:         now,
 		}); err != nil {
 			return err
 		}
@@ -186,7 +184,6 @@ func (p *NotificationDeliveryPipeline) recordOutcome(ctx context.Context, evt st
 			HTTPStatusCode: dr.StatusCode,
 			ErrorMessage:   dr.ErrorMessage,
 			LatencyMS:      int(dr.LatencyMS),
-			UpdatedAt:      now,
 		}); err != nil {
 			return err
 		}

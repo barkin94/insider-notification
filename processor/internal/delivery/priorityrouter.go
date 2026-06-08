@@ -2,7 +2,7 @@ package delivery
 
 import (
 	"context"
-	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -21,8 +21,7 @@ type WeightedSource[T any] struct {
 type PriorityRouter[T any] struct {
 	sources []<-chan T
 	slots   []int // pre-expanded weights; each entry is an index into sources
-	mu      sync.Mutex
-	cursor  int
+	cursor  atomic.Int64
 }
 
 // NewPriorityRouter constructs a router from an ordered slice of weighted sources.
@@ -62,14 +61,11 @@ func NewPriorityRouter[T any](sources []WeightedSource[T]) *PriorityRouter[T] {
 // Returns (value, true) when a value is available.
 // Returns (zero, false) when ctx is cancelled or the idle timeout fires.
 func (r *PriorityRouter[T]) Next(ctx context.Context) (T, bool) {
-	r.mu.Lock()
-	slot := r.slots[r.cursor%len(r.slots)]
-	r.cursor++
-	r.mu.Unlock()
+	activeSourceIndex := r.slots[r.cursor.Add(1)%int64(len(r.slots))]
 
 	// Step 1: non-blocking receive from the scheduled slot.
 	select {
-	case v, ok := <-r.sources[slot]:
+	case v, ok := <-r.sources[activeSourceIndex]:
 		if ok {
 			return v, true
 		}
@@ -91,19 +87,16 @@ func (r *PriorityRouter[T]) Next(ctx context.Context) (T, bool) {
 	// with a 1s idle timeout, then return so the caller can retry.
 	// We always block on sources[0] (highest priority) to avoid starvation;
 	// the weighted loop above already drained lower-priority channels.
+	t := time.NewTimer(idleTimeout)
+	defer t.Stop()
 	select {
 	case v, ok := <-r.sources[0]:
 		if ok {
 			return v, true
 		}
 	case <-ctx.Done():
-		var zero T
-		return zero, false
-	case <-time.After(idleTimeout):
-		var zero T
-		return zero, false
+	case <-t.C:
 	}
-
 	var zero T
 	return zero, false
 }

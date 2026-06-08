@@ -121,7 +121,6 @@ func TestPublisher_deliveryResult(t *testing.T) {
 		AttemptNumber:  1,
 		HTTPStatusCode: 200,
 		LatencyMS:      100,
-		UpdatedAt:      time.Now().Format(time.RFC3339),
 	}
 	if err := pub.Publish(ctx, stream.TopicStatus, evt); err != nil {
 		t.Fatalf("publish: %v", err)

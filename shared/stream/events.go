@@ -43,5 +43,4 @@ type NotificationDeliveryResultEvent struct {
 	ErrorMessage      string
 	ProviderMessageID string
 	LatencyMS         int
-	UpdatedAt         string // RFC3339
 }

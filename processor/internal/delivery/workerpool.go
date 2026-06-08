@@ -9,9 +9,9 @@ import (
 
 // WorkerPool fans out stream messages from the router to N concurrent pipeline workers.
 type NotificationDeliveryWorkerPool struct {
-	notificationSelector         *PriorityRouter[stream.Result[stream.NotificationReadyEvent]]
-	notificationDeliveryPipeline *NotificationDeliveryPipeline
-	concurrency                  int
+	notificationSelectorByPriority *PriorityRouter[stream.Result[stream.NotificationReadyEvent]]
+	notificationDeliveryPipeline   *NotificationDeliveryPipeline
+	concurrency                    int
 }
 
 func NewNotificationDeliveryWorkerPool(
@@ -19,7 +19,7 @@ func NewNotificationDeliveryWorkerPool(
 	notificationDeliveryPipeline *NotificationDeliveryPipeline,
 	concurrency int,
 ) *NotificationDeliveryWorkerPool {
-	return &NotificationDeliveryWorkerPool{notificationSelector: notificationSelector, notificationDeliveryPipeline: notificationDeliveryPipeline, concurrency: concurrency}
+	return &NotificationDeliveryWorkerPool{notificationSelectorByPriority: notificationSelector, notificationDeliveryPipeline: notificationDeliveryPipeline, concurrency: concurrency}
 }
 
 func (c *NotificationDeliveryWorkerPool) Run(ctx context.Context) {
@@ -29,11 +29,11 @@ func (c *NotificationDeliveryWorkerPool) Run(ctx context.Context) {
 		go func() {
 			defer wg.Done()
 			for ctx.Err() == nil {
-				result, ok := c.notificationSelector.Next(ctx)
+				nextNtfnChannelToProcess, ok := c.notificationSelectorByPriority.Next(ctx)
 				if !ok {
 					continue
 				}
-				c.notificationDeliveryPipeline.Run(result.Ctx, result)
+				c.notificationDeliveryPipeline.Run(nextNtfnChannelToProcess.Ctx, nextNtfnChannelToProcess)
 			}
 		}()
 	}
