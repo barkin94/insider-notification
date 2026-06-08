@@ -8,12 +8,11 @@ import (
 	"github.com/uptrace/bun/driver/pgdriver"
 )
 
-func Open(databaseURL string) (*bun.DB, error) {
+func Open(databaseURL string) *bun.DB {
 	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(databaseURL)))
 	bundb := bun.NewDB(sqldb, pgdialect.New())
 	if err := bundb.Ping(); err != nil {
-		bundb.Close() //nolint:errcheck,gosec
-		return nil, err
+		panic("connect to postgres: " + err.Error())
 	}
-	return bundb, nil
+	return bundb
 }

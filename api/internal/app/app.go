@@ -28,39 +28,16 @@ type App struct {
 }
 
 // New constructs all dependencies and returns a ready-to-run App.
-// The returned cleanup func closes infrastructure (DB, subscriber) and must be deferred by the caller.
-func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
-	bundb, err := shareddb.Open(cfg.DatabaseURL)
-	if err != nil {
-		return nil, nil, fmt.Errorf("connect to postgres: %w", err)
-	}
+// Panics if any infrastructure dependency is unreachable.
+func New(ctx context.Context, cfg *config.Config) (*App, func()) {
+	bundb := shareddb.Open(cfg.DatabaseURL)
+	rdb := sharedredis.NewClient(ctx, cfg.RedisAddr)
 
-	rdb, err := sharedredis.NewClient(ctx, cfg.RedisAddr)
-	if err != nil {
-		_ = bundb.Close()
-		return nil, nil, fmt.Errorf("connect to redis: %w", err)
-	}
-
-	pub, err := stream.NewRedisPublisher(rdb)
-	if err != nil {
-		_ = bundb.Close()
-		return nil, nil, fmt.Errorf("create stream publisher: %w", err)
-	}
-
-	sub, err := stream.NewRedisSubscriber(rdb, "notify:cg:api")
-	if err != nil {
-		_ = bundb.Close()
-		return nil, nil, fmt.Errorf("create stream subscriber: %w", err)
-	}
-
-	statusMsgs, err := stream.Subscribe[stream.NotificationDeliveryResultEvent](
+	pub := stream.NewRedisPublisher(rdb)
+	sub := stream.NewRedisSubscriber(rdb, "notify:cg:api")
+	statusMsgs := stream.Subscribe[stream.NotificationDeliveryResultEvent](
 		ctx, sub, stream.TopicStatus, cfg.OTelServiceName,
 	)
-	if err != nil {
-		_ = sub.Close()
-		_ = bundb.Close()
-		return nil, nil, fmt.Errorf("subscribe to status stream: %w", err)
-	}
 
 	notifRepo := postgres.NewNotificationRepository(bundb)
 	svc := service.NewNotificationService(notifRepo, pub)
@@ -74,6 +51,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 
 	cleanup := func() {
 		_ = sub.Close()
+		_ = rdb.Close()
 		_ = bundb.Close()
 	}
 
@@ -82,7 +60,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 		scheduler:  apischeduler.New(notifRepo, pub, cfg.SchedulerInterval),
 		consumer:   messaging.NewStatusConsumer(notifRepo),
 		statusMsgs: statusMsgs,
-	}, cleanup, nil
+	}, cleanup
 }
 
 // Run starts the HTTP server, scheduler, and status consumer, blocks until ctx

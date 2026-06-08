@@ -9,8 +9,6 @@ package main
 
 import (
 	"context"
-	"log/slog"
-	"os"
 	"os/signal"
 	"syscall"
 
@@ -32,11 +30,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	a, cleanup, err := app.New(ctx, cfg)
-	if err != nil {
-		slog.Error("init app", "error", err)
-		os.Exit(1)
-	}
+	a, cleanup := app.New(ctx, cfg)
 	defer cleanup()
 
 	a.Run(ctx)

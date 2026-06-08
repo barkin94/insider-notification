@@ -29,22 +29,12 @@ type App struct {
 // New constructs all dependencies and returns a ready-to-run App.
 // The returned cleanup func closes infrastructure and must be deferred by the caller.
 func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
-	rdb, err := sharedredis.NewClient(ctx, cfg.RedisAddr)
-	if err != nil {
-		return nil, nil, fmt.Errorf("connect to redis: %w", err)
-	}
+	rdb := sharedredis.NewClient(ctx, cfg.RedisAddr)
 
 	attemptRepo := processordb.NewDeliveryAttemptRepository(rdb)
 
-	pub, err := stream.NewRedisPublisher(rdb)
-	if err != nil {
-		return nil, nil, fmt.Errorf("create stream publisher: %w", err)
-	}
-
-	sub, err := stream.NewRedisSubscriber(rdb, "notify:cg:processor")
-	if err != nil {
-		return nil, nil, fmt.Errorf("create stream subscriber: %w", err)
-	}
+	pub := stream.NewRedisPublisher(rdb)
+	sub := stream.NewRedisSubscriber(rdb, "notify:cg:processor")
 
 	m, err := service.NewMetrics(rdb)
 	if err != nil {
@@ -71,11 +61,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 		_ = rdb.Close()
 	}
 
-	router, err := messaging.NewNotificationRouter(ctx, sub, cfg.OTelServiceName, cfg.HighWeight, cfg.NormalWeight, cfg.LowWeight)
-	if err != nil {
-		_ = sub.Close()
-		return nil, nil, fmt.Errorf("create notification router: %w", err)
-	}
+	router := messaging.NewNotificationRouter(ctx, sub, cfg.OTelServiceName, cfg.HighWeight, cfg.NormalWeight, cfg.LowWeight)
 
 	return &App{
 		workerPool:      delivery.NewNotificationDeliveryWorkerPool(router, pipeline, cfg.WorkerConcurrency),

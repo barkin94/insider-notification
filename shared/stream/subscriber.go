@@ -14,10 +14,11 @@ import (
 
 // Subscribe returns a channel of decoded events for the given topic. The caller
 // is responsible for calling msg.Ack() or msg.Nack() on each received message.
-func Subscribe[T any](ctx context.Context, sub message.Subscriber, topic, tracerName string) (<-chan Result[T], error) {
+// Panics if the underlying subscription cannot be established.
+func Subscribe[T any](ctx context.Context, sub message.Subscriber, topic, tracerName string) <-chan Result[T] {
 	msgs, err := sub.Subscribe(ctx, topic)
 	if err != nil {
-		return nil, fmt.Errorf("subscribe to %s: %w", topic, err)
+		panic(fmt.Sprintf("subscribe to %s: %s", topic, err))
 	}
 
 	out := make(chan Result[T])
@@ -29,7 +30,7 @@ func Subscribe[T any](ctx context.Context, sub message.Subscriber, topic, tracer
 			}
 		}
 	}()
-	return out, nil
+	return out
 }
 
 // consumeMsg handles a single message: extracts trace context, opens a consumer

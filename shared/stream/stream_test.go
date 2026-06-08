@@ -84,10 +84,7 @@ func TestPublisher_routesToCorrectTopic(t *testing.T) {
 		pub := newPublisher(t)
 		sub := newSubscriber(t, "test-cg-"+tc.priority)
 
-		msgs, err := stream.Subscribe[stream.NotificationReadyEvent](ctx, sub, tc.topic, "test")
-		if err != nil {
-			t.Fatalf("subscribe: %v", err)
-		}
+		msgs := stream.Subscribe[stream.NotificationReadyEvent](ctx, sub, tc.topic, "test")
 
 		evt := stream.NotificationReadyEvent{
 			NotificationID: "id-" + tc.priority,
@@ -119,10 +116,7 @@ func TestPublisher_deliveryResult(t *testing.T) {
 	pub := newPublisher(t)
 	sub := newSubscriber(t, "test-status-cg")
 
-	msgs, err := stream.Subscribe[stream.NotificationDeliveryResultEvent](ctx, sub, stream.TopicStatus, "test")
-	if err != nil {
-		t.Fatalf("subscribe: %v", err)
-	}
+	msgs := stream.Subscribe[stream.NotificationDeliveryResultEvent](ctx, sub, stream.TopicStatus, "test")
 
 	evt := stream.NotificationDeliveryResultEvent{
 		NotificationID: "notif-1",
