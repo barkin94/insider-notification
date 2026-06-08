@@ -11,36 +11,33 @@ import (
 	"github.com/barkin/insider-notification/shared/stream"
 )
 
-// StatusConsumer processes NotificationDeliveryResultEvent messages from the status stream.
-type StatusConsumer struct {
+// DeliveryResultConsumer processes NotificationDeliveryResultEvent messages from the status stream.
+type DeliveryResultConsumer struct {
 	notifRepo repository.NotificationRepository
+	msgs      <-chan stream.Result[stream.NotificationDeliveryResultEvent]
 }
 
-func NewStatusConsumer(notifRepo repository.NotificationRepository) *StatusConsumer {
-	return &StatusConsumer{notifRepo: notifRepo}
+func NewDeliveryResultConsumer(notifRepo repository.NotificationRepository, msgs <-chan stream.Result[stream.NotificationDeliveryResultEvent]) *DeliveryResultConsumer {
+	return &DeliveryResultConsumer{notifRepo: notifRepo, msgs: msgs}
 }
 
 // Run reads from msgs until the channel is closed or ctx is cancelled.
-func (c *StatusConsumer) Run(ctx context.Context, msgs <-chan stream.Result[stream.NotificationDeliveryResultEvent]) {
+func (c *DeliveryResultConsumer) Run(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case result, ok := <-msgs:
+		case result, ok := <-c.msgs:
 			if !ok {
 				return
-			}
-			if result.Err != nil {
-				slog.ErrorContext(result.Ctx, "status stream read error", "error", result.Err)
-				continue
 			}
 			c.processOne(result.Ctx, result)
 		}
 	}
 }
 
-func (c *StatusConsumer) processOne(ctx context.Context, result stream.Result[stream.NotificationDeliveryResultEvent]) {
-	ctx, span := otel.Tracer("api").Start(ctx, "statusConsumer.processOne")
+func (c *DeliveryResultConsumer) processOne(ctx context.Context, result stream.Result[stream.NotificationDeliveryResultEvent]) {
+	ctx, span := otel.Tracer("api").Start(ctx, "deliveryResultConsumer.processOne")
 	defer span.End()
 
 	evt := result.Event

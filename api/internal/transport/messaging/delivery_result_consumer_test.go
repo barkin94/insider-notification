@@ -20,6 +20,7 @@ import (
 	"github.com/uptrace/bun/dialect/pgdialect"
 	"github.com/uptrace/bun/driver/pgdriver"
 
+	"github.com/barkin/insider-notification/api/internal/repository"
 	repopostgres "github.com/barkin/insider-notification/api/internal/repository/postgres"
 	"github.com/barkin/insider-notification/api/internal/transport/messaging"
 	"github.com/barkin/insider-notification/shared/model"
@@ -96,21 +97,20 @@ func makeResult(evt stream.NotificationDeliveryResultEvent) stream.Result[stream
 	return stream.Result[stream.NotificationDeliveryResultEvent]{Ctx: context.Background(), Event: evt, Msg: msg}
 }
 
-func runConsumer(c *messaging.StatusConsumer, result stream.Result[stream.NotificationDeliveryResultEvent]) {
+func runConsumer(notifRepo repository.NotificationRepository, result stream.Result[stream.NotificationDeliveryResultEvent]) {
 	ch := make(chan stream.Result[stream.NotificationDeliveryResultEvent], 1)
 	ch <- result
 	close(ch)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	c.Run(ctx, ch)
+	messaging.NewDeliveryResultConsumer(notifRepo, ch).Run(ctx)
 }
 
-func TestStatusConsumer_delivered(t *testing.T) {
+func TestDeliveryResultConsumer_delivered(t *testing.T) {
 	notifID := mustV7()
 	seedNotification(t, notifID, string(model.StatusPending))
 
 	notifRepo := repopostgres.NewNotificationRepository(testDB)
-	c := messaging.NewStatusConsumer(notifRepo)
 
 	evt := stream.NotificationDeliveryResultEvent{
 		NotificationID: notifID.String(),
@@ -120,7 +120,7 @@ func TestStatusConsumer_delivered(t *testing.T) {
 		LatencyMS:      120,
 		UpdatedAt:      time.Now().UTC().Format(time.RFC3339),
 	}
-	runConsumer(c, makeResult(evt))
+	runConsumer(notifRepo, makeResult(evt))
 
 	got, err := notifRepo.GetByID(context.Background(), notifID)
 	if err != nil {
@@ -131,12 +131,11 @@ func TestStatusConsumer_delivered(t *testing.T) {
 	}
 }
 
-func TestStatusConsumer_failed(t *testing.T) {
+func TestDeliveryResultConsumer_failed(t *testing.T) {
 	notifID := mustV7()
 	seedNotification(t, notifID, string(model.StatusPending))
 
 	notifRepo := repopostgres.NewNotificationRepository(testDB)
-	c := messaging.NewStatusConsumer(notifRepo)
 
 	evt := stream.NotificationDeliveryResultEvent{
 		NotificationID: notifID.String(),
@@ -146,7 +145,7 @@ func TestStatusConsumer_failed(t *testing.T) {
 		LatencyMS:      500,
 		UpdatedAt:      time.Now().UTC().Format(time.RFC3339),
 	}
-	runConsumer(c, makeResult(evt))
+	runConsumer(notifRepo, makeResult(evt))
 
 	got, err := notifRepo.GetByID(context.Background(), notifID)
 	if err != nil {
@@ -157,12 +156,11 @@ func TestStatusConsumer_failed(t *testing.T) {
 	}
 }
 
-func TestStatusConsumer_idempotent(t *testing.T) {
+func TestDeliveryResultConsumer_idempotent(t *testing.T) {
 	notifID := mustV7()
 	seedNotification(t, notifID, string(model.StatusPending))
 
 	notifRepo := repopostgres.NewNotificationRepository(testDB)
-	c := messaging.NewStatusConsumer(notifRepo)
 
 	evt := stream.NotificationDeliveryResultEvent{
 		NotificationID: notifID.String(),
@@ -173,8 +171,8 @@ func TestStatusConsumer_idempotent(t *testing.T) {
 		UpdatedAt:      time.Now().UTC().Format(time.RFC3339),
 	}
 
-	runConsumer(c, makeResult(evt))
-	runConsumer(c, makeResult(evt))
+	runConsumer(notifRepo, makeResult(evt))
+	runConsumer(notifRepo, makeResult(evt))
 
 	got, err := notifRepo.GetByID(context.Background(), notifID)
 	if err != nil {

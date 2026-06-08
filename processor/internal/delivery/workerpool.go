@@ -2,7 +2,6 @@ package delivery
 
 import (
 	"context"
-	"log/slog"
 	"sync"
 
 	"github.com/barkin/insider-notification/shared/stream"
@@ -32,10 +31,6 @@ func (c *NotificationDeliveryWorkerPool) Run(ctx context.Context) {
 			for ctx.Err() == nil {
 				result, ok := c.notificationSelector.Next(ctx)
 				if !ok {
-					continue
-				}
-				if result.Err != nil {
-					slog.ErrorContext(result.Ctx, "stream read error", "error", result.Err)
 					continue
 				}
 				c.notificationDeliveryPipeline.Run(result.Ctx, result)

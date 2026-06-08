@@ -21,10 +21,9 @@ import (
 
 // App wires and runs the API service.
 type App struct {
-	server     *http.Server
-	scheduler  *apischeduler.Scheduler
-	consumer   *messaging.StatusConsumer
-	statusMsgs <-chan stream.Result[stream.NotificationDeliveryResultEvent]
+	server                 *http.Server
+	scheduler              *apischeduler.Scheduler
+	deliveryResultConsumer *messaging.DeliveryResultConsumer
 }
 
 // New constructs all dependencies and returns a ready-to-run App.
@@ -56,14 +55,13 @@ func New(ctx context.Context, cfg *config.Config) (*App, func()) {
 	}
 
 	return &App{
-		server:     srv,
-		scheduler:  apischeduler.New(notifRepo, pub, cfg.SchedulerInterval),
-		consumer:   messaging.NewStatusConsumer(notifRepo),
-		statusMsgs: statusMsgs,
+		server:                 srv,
+		scheduler:              apischeduler.New(notifRepo, pub, cfg.SchedulerInterval),
+		deliveryResultConsumer: messaging.NewDeliveryResultConsumer(notifRepo, statusMsgs),
 	}, cleanup
 }
 
-// Run starts the HTTP server, scheduler, and status consumer, blocks until ctx
+// Run starts the HTTP server, scheduler, and delivery result consumer, blocks until ctx
 // is cancelled, then gracefully shuts down.
 func (a *App) Run(ctx context.Context) {
 	var wg sync.WaitGroup
@@ -71,7 +69,7 @@ func (a *App) Run(ctx context.Context) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		a.consumer.Run(ctx, a.statusMsgs)
+		a.deliveryResultConsumer.Run(ctx)
 	}()
 
 	go a.scheduler.Run(ctx)

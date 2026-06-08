@@ -50,13 +50,9 @@ func consumeMsg[T any](ctx context.Context, msg *message.Message, topic, tracerN
 
 	var e T
 	if err := json.Unmarshal(msg.Payload, &e); err != nil {
+		slog.ErrorContext(msgCtx, "unmarshal failed, skipping message", "topic", topic, "error", err)
 		msg.Nack()
-		select {
-		case out <- Result[T]{Ctx: msgCtx, Err: fmt.Errorf("unmarshal: %w", err)}:
-			return true
-		case <-ctx.Done():
-			return false
-		}
+		return true
 	}
 
 	select {
@@ -74,5 +70,4 @@ type Result[T any] struct {
 	Ctx   context.Context
 	Event T
 	Msg   *message.Message
-	Err   error
 }

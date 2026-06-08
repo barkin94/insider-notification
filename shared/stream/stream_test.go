@@ -99,9 +99,6 @@ func TestPublisher_routesToCorrectTopic(t *testing.T) {
 		}
 
 		result := <-msgs
-		if result.Err != nil {
-			t.Fatalf("receive: %v", result.Err)
-		}
 		if result.Event.NotificationID != evt.NotificationID {
 			t.Errorf("got id %s, want %s", result.Event.NotificationID, evt.NotificationID)
 		}
@@ -131,9 +128,6 @@ func TestPublisher_deliveryResult(t *testing.T) {
 	}
 
 	result := <-msgs
-	if result.Err != nil {
-		t.Fatalf("receive: %v", result.Err)
-	}
 	if result.Event.NotificationID != evt.NotificationID {
 		t.Errorf("got id %s, want %s", result.Event.NotificationID, evt.NotificationID)
 	}
