@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 )
 
@@ -29,7 +28,6 @@ func NewDeliveryAttemptRepository(db *bun.DB) DeliveryAttemptRepository {
 
 func (r *pgDeliveryAttemptRepo) Upsert(ctx context.Context, a *DeliveryAttempt) error {
 	row := *a
-	row.ID = uuid.New()
 	_, err := r.db.NewInsert().
 		Model(&row).
 		On("CONFLICT (notification_id) DO UPDATE").

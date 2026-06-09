@@ -3,15 +3,13 @@ package db
 import (
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 )
 
 type DeliveryAttempt struct {
 	bun.BaseModel `bun:"table:delivery_attempts"`
 
-	ID             uuid.UUID  `bun:"id,pk,type:uuid"`
-	NotificationID string     `bun:"notification_id,type:uuid,notnull,unique"`
+	NotificationID string     `bun:"notification_id,pk,type:uuid,notnull"`
 	AttemptNumber  int        `bun:"attempt_number,notnull"`
 	RetryAfter     *time.Time `bun:"retry_after"`
 	Priority       string     `bun:"priority"`
