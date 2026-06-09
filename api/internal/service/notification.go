@@ -2,12 +2,14 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
 
 	"github.com/barkin/insider-notification/api/internal/domain/notification"
 	"github.com/barkin/insider-notification/api/internal/repository"
+	sharedErrors "github.com/barkin/insider-notification/shared/errors"
 	"github.com/barkin/insider-notification/shared/stream"
 )
 
@@ -25,6 +27,7 @@ type NotificationService interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*repository.Notification, error)
 	List(ctx context.Context, filter repository.ListFilter) ([]*repository.Notification, int, *uuid.UUID, error)
 	Cancel(ctx context.Context, id uuid.UUID) (*repository.Notification, error)
+	UpdateStatus(ctx context.Context, id uuid.UUID, status string) error
 	CreateBatch(ctx context.Context, ns []notification.Notification) (uuid.UUID, []BatchResult, error)
 }
 
@@ -66,7 +69,35 @@ func (s *notificationService) List(ctx context.Context, filter repository.ListFi
 }
 
 func (s *notificationService) Cancel(ctx context.Context, id uuid.UUID) (*repository.Notification, error) {
-	return s.repo.Transition(ctx, id, string(notification.StatusPending), string(notification.StatusCancelled))
+	entity, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, &sharedErrors.NotFoundError{Message: "notification not found"}
+		}
+		return nil, err
+	}
+
+	dn := entity.ToDomain()
+	if err := dn.Transition(notification.StatusCancelled); err != nil {
+		return nil, &sharedErrors.ConflictError{Message: err.Error()}
+	}
+
+	return s.repo.UpdateStatus(ctx, id, string(notification.StatusCancelled))
+}
+
+func (s *notificationService) UpdateStatus(ctx context.Context, id uuid.UUID, status string) error {
+	entity, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	dn := entity.ToDomain()
+	if err := dn.Transition(notification.Status(status)); err != nil {
+		return err
+	}
+
+	_, err = s.repo.UpdateStatus(ctx, id, status)
+	return err
 }
 
 func (s *notificationService) CreateBatch(ctx context.Context, ns []notification.Notification) (uuid.UUID, []BatchResult, error) {

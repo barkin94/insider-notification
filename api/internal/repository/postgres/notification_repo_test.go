@@ -69,7 +69,7 @@ func TestNotificationRepo_GetByID_notFound(t *testing.T) {
 	}
 }
 
-func TestNotificationRepo_Transition(t *testing.T) {
+func TestNotificationRepo_UpdateStatus(t *testing.T) {
 	ctx := context.Background()
 	repo := NewNotificationRepository(testDB)
 
@@ -78,27 +78,12 @@ func TestNotificationRepo_Transition(t *testing.T) {
 		t.Fatalf("create notification: %v", err)
 	}
 
-	updated, err := repo.Transition(ctx, n.ID, string(model.StatusPending), string(model.StatusCancelled))
+	updated, err := repo.UpdateStatus(ctx, n.ID, string(model.StatusCancelled))
 	if err != nil {
-		t.Fatalf("Transition: %v", err)
+		t.Fatalf("UpdateStatus: %v", err)
 	}
 	if updated.Status != string(model.StatusCancelled) {
 		t.Errorf("Status = %q, want cancelled", updated.Status)
-	}
-}
-
-func TestNotificationRepo_Transition_wrongFrom(t *testing.T) {
-	ctx := context.Background()
-	repo := NewNotificationRepository(testDB)
-
-	n := newNotification()
-	if err := repo.Create(ctx, n); err != nil {
-		t.Fatalf("create notification: %v", err)
-	}
-
-	_, err := repo.Transition(ctx, n.ID, string(model.StatusDelivered), string(model.StatusCancelled))
-	if err != repository.ErrTransitionFailed {
-		t.Errorf("expected ErrTransitionFailed, got %v", err)
 	}
 }
 
@@ -107,7 +92,7 @@ func TestList_offset_pagination(t *testing.T) {
 	repo := NewNotificationRepository(testDB)
 
 	batchID := mustV7()
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		n := newNotification()
 		n.BatchID = &batchID
 		if err := repo.Create(ctx, n); err != nil {
@@ -135,7 +120,7 @@ func TestList_offset_filterByStatus(t *testing.T) {
 	repo := NewNotificationRepository(testDB)
 
 	batchID := mustV7()
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		n := newNotification()
 		n.BatchID = &batchID
 		if err := repo.Create(ctx, n); err != nil {
@@ -165,7 +150,7 @@ func TestList_offset_filterByStatus(t *testing.T) {
 func seed5(t *testing.T, repo repository.NotificationRepository, batchID uuid.UUID) []*repository.Notification {
 	t.Helper()
 	ctx := context.Background()
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		n := newNotification()
 		n.BatchID = &batchID
 		if err := repo.Create(ctx, n); err != nil {
@@ -278,7 +263,7 @@ func TestList_cursor_filtersPreserved(t *testing.T) {
 	repo := NewNotificationRepository(testDB)
 
 	batchID := mustV7()
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		n := newNotification()
 		n.BatchID = &batchID
 		n.Channel = string(model.ChannelSMS)
@@ -286,7 +271,7 @@ func TestList_cursor_filtersPreserved(t *testing.T) {
 			t.Fatalf("create notification: %v", err)
 		}
 	}
-	for i := 0; i < 4; i++ {
+	for range 4 {
 		n := newNotification()
 		n.BatchID = &batchID
 		n.Channel = string(model.ChannelEmail)

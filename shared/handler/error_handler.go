@@ -25,6 +25,18 @@ func errHandler(h AppHandler) http.HandlerFunc {
 		if err := h(w, r); err != nil {
 			slog.ErrorContext(r.Context(), "error", "error", err.Error())
 
+			var notFoundErr *sharedErrors.NotFoundError
+			if errors.As(err, &notFoundErr) {
+				writeError(w, http.StatusNotFound, "NOT_FOUND", notFoundErr.Message, nil)
+				return
+			}
+
+			var conflictErr *sharedErrors.ConflictError
+			if errors.As(err, &conflictErr) {
+				writeError(w, http.StatusConflict, "CONFLICT", conflictErr.Message, nil)
+				return
+			}
+
 			var domainErr sharedErrors.DomainError
 			if errors.As(err, &domainErr) {
 				writeError(w, http.StatusUnprocessableEntity, domainErr.Code, domainErr.Message, nil)

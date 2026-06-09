@@ -57,7 +57,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, func()) {
 	return &App{
 		server:                 srv,
 		scheduler:              apischeduler.New(notifRepo, pub, cfg.SchedulerInterval),
-		deliveryResultConsumer: messaging.NewDeliveryResultConsumer(notifRepo, statusMsgs),
+		deliveryResultConsumer: messaging.NewDeliveryResultConsumer(svc, statusMsgs),
 	}, cleanup
 }
 

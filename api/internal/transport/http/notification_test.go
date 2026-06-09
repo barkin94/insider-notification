@@ -17,16 +17,18 @@ import (
 	"github.com/barkin/insider-notification/api/internal/repository"
 	"github.com/barkin/insider-notification/api/internal/service"
 	handler "github.com/barkin/insider-notification/api/internal/transport/http"
+	sharedErrors "github.com/barkin/insider-notification/shared/errors"
 )
 
 // --- mock service ---
 
 type mockService struct {
-	createFn      func(ctx context.Context, n notification.Notification) (*repository.Notification, error)
-	getByIDFn     func(ctx context.Context, id uuid.UUID) (*repository.Notification, error)
-	listFn        func(ctx context.Context, f repository.ListFilter) ([]*repository.Notification, int, *uuid.UUID, error)
-	cancelFn      func(ctx context.Context, id uuid.UUID) (*repository.Notification, error)
-	createBatchFn func(ctx context.Context, ns []notification.Notification) (uuid.UUID, []service.BatchResult, error)
+	createFn       func(ctx context.Context, n notification.Notification) (*repository.Notification, error)
+	getByIDFn      func(ctx context.Context, id uuid.UUID) (*repository.Notification, error)
+	listFn         func(ctx context.Context, f repository.ListFilter) ([]*repository.Notification, int, *uuid.UUID, error)
+	cancelFn       func(ctx context.Context, id uuid.UUID) (*repository.Notification, error)
+	updateStatusFn func(ctx context.Context, id uuid.UUID, status string) error
+	createBatchFn  func(ctx context.Context, ns []notification.Notification) (uuid.UUID, []service.BatchResult, error)
 }
 
 func (m *mockService) Create(ctx context.Context, n notification.Notification) (*repository.Notification, error) {
@@ -40,6 +42,12 @@ func (m *mockService) List(ctx context.Context, f repository.ListFilter) ([]*rep
 }
 func (m *mockService) Cancel(ctx context.Context, id uuid.UUID) (*repository.Notification, error) {
 	return m.cancelFn(ctx, id)
+}
+func (m *mockService) UpdateStatus(ctx context.Context, id uuid.UUID, status string) error {
+	if m.updateStatusFn != nil {
+		return m.updateStatusFn(ctx, id, status)
+	}
+	return nil
 }
 func (m *mockService) CreateBatch(ctx context.Context, ns []notification.Notification) (uuid.UUID, []service.BatchResult, error) {
 	return m.createBatchFn(ctx, ns)
@@ -252,7 +260,7 @@ func TestCancelNotification_200(t *testing.T) {
 
 func TestCancelNotification_409(t *testing.T) {
 	svc := &mockService{cancelFn: func(_ context.Context, _ uuid.UUID) (*repository.Notification, error) {
-		return nil, repository.ErrTransitionFailed
+		return nil, &sharedErrors.ConflictError{Message: "invalid status transition"}
 	}}
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/notifications/"+uuid.New().String()+"/cancel", nil)
@@ -260,8 +268,8 @@ func TestCancelNotification_409(t *testing.T) {
 
 	newRouter(svc).ServeHTTP(w, req)
 
-	if w.Code != http.StatusInternalServerError {
-		t.Fatalf("status = %d, want 500", w.Code)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409", w.Code)
 	}
 }
 

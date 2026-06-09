@@ -15,3 +15,13 @@ func (e DomainError) Is(target error) bool {
 	t, ok := target.(DomainError)
 	return ok && t.Code == e.Code
 }
+
+// NotFoundError signals that a requested resource does not exist (HTTP 404).
+type NotFoundError struct{ Message string }
+
+func (e *NotFoundError) Error() string { return e.Message }
+
+// ConflictError signals a state conflict, such as an invalid status transition (HTTP 409).
+type ConflictError struct{ Message string }
+
+func (e *ConflictError) Error() string { return e.Message }

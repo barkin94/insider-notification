@@ -2,7 +2,4 @@ package repository
 
 import "errors"
 
-var (
-	ErrNotFound         = errors.New("not found")
-	ErrTransitionFailed = errors.New("status transition failed: unexpected current status")
-)
+var ErrNotFound = errors.New("not found")

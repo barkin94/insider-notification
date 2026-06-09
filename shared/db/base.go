@@ -23,3 +23,8 @@ func NewBaseModel() (BaseModel, error) {
 	}
 	return BaseModel{ID: id}, nil
 }
+
+// func (m *BaseModel) BeforeUpdate(_ context.Context, _ *bun.UpdateQuery) error {
+// 	m.UpdatedAt = time.Now().UTC()
+// 	return nil
+// }

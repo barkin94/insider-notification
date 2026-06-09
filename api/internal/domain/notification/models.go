@@ -103,6 +103,10 @@ func (n *Notification) SetDeliverAfter(t *time.Time) {
 }
 
 func (n *Notification) Transition(to Status) error {
+	if n.status == to {
+		return nil
+	}
+
 	allowed, ok := validTransitions[n.status]
 	if !ok {
 		return fmt.Errorf("%w: %q", ErrUnknownStatus(), n.status)
@@ -120,6 +124,19 @@ func (n *Notification) SetMaxAttempts(v int) error {
 	}
 	n.maxAttempts = v
 	return nil
+}
+
+// New creates a Notification directly from its field values, bypassing setter validation.
+func New(channel Channel, recipient, content string, priority Priority, status Status, deliverAfter *time.Time, maxAttempts int) *Notification {
+	return &Notification{
+		channel:      channel,
+		recipient:    recipient,
+		content:      content,
+		priority:     priority,
+		status:       status,
+		deliverAfter: deliverAfter,
+		maxAttempts:  maxAttempts,
+	}
 }
 
 func (n Notification) GetChannel() Channel         { return n.channel }

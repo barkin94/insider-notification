@@ -39,6 +39,18 @@ func (Notification) From(n notification.Notification, batchID *uuid.UUID) (*Noti
 	}, nil
 }
 
+func (n *Notification) ToDomain() *notification.Notification {
+	return notification.New(
+		notification.Channel(n.Channel),
+		n.Recipient,
+		n.Content,
+		notification.Priority(n.Priority),
+		notification.Status(n.Status),
+		n.DeliverAfter,
+		n.MaxAttempts,
+	)
+}
+
 func (n *Notification) GetID() string        { return n.ID.String() }
 func (n *Notification) GetChannel() string   { return n.Channel }
 func (n *Notification) GetRecipient() string { return n.Recipient }

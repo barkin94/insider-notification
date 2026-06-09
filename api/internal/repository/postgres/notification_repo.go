@@ -26,33 +26,31 @@ func (r *bunNotificationRepo) Create(ctx context.Context, n *repository.Notifica
 }
 
 func (r *bunNotificationRepo) GetByID(ctx context.Context, id uuid.UUID) (*repository.Notification, error) {
-	n := new(repository.Notification)
-	err := r.db.NewSelect().Model(n).Where("id = ?", id).Scan(ctx)
+	n := &repository.Notification{}
+	n.ID = id
+
+	err := r.db.NewSelect().Model(n).WherePK().Scan(ctx)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, repository.ErrNotFound
 	}
 	return n, err
 }
 
-func (r *bunNotificationRepo) Transition(ctx context.Context, id uuid.UUID, from, to string) (*repository.Notification, error) {
-	n := new(repository.Notification)
-	err := r.db.NewRaw(`
-		UPDATE notifications SET status = ?, updated_at = NOW()
-		WHERE id = ? AND status = ?
-		RETURNING id, batch_id, recipient, channel, content, priority, status,
-		          deliver_after, max_attempts, created_at, updated_at`,
-		to, id, from).Scan(ctx, n)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, repository.ErrTransitionFailed
-	}
-	return n, err
-}
+func (r *bunNotificationRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status string) (*repository.Notification, error) {
+	n := &repository.Notification{}
+	n.ID = id
+	n.Status = status
 
-func (r *bunNotificationRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status string) error {
-	_, err := r.db.NewRaw(
-		`UPDATE notifications SET status = ?, updated_at = NOW() WHERE id = ?`, status, id,
-	).Exec(ctx)
-	return err
+	err := r.db.NewUpdate().
+		Model(n).
+		OmitZero().
+		WherePK().
+		Returning("*").
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return n, nil
 }
 
 func (r *bunNotificationRepo) FindScheduledDue(ctx context.Context) ([]*repository.Notification, error) {
