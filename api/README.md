@@ -222,14 +222,41 @@ Copy `.env.example` to `.env` and fill in the required values.
 
 ---
 
-## Running
+## Prerequisites
+
+- [Go 1.23+](https://go.dev/dl/) — only needed when running directly
+- Docker and Docker Compose — for the containerised setup
+
+Run `make help` from the repo root to see all available commands.
+
+---
+
+## Running the system
+
+### 1. Configure environment
+
+Copy `.env.example` to `.env` inside the `api/` folder. The example file is pre-filled for Docker Compose.
 
 ```bash
-# With Docker Compose (recommended for local development)
+cp api/.env.example api/.env
+```
+
+### 2. Start the service
+
+```bash
+# With Docker Compose (recommended — runs migrations automatically)
 docker compose up api
 
-# Directly
+# Directly (requires PostgreSQL and Redis reachable on localhost)
 go run ./cmd/main.go
 ```
 
-Database migrations are applied automatically on startup via the `migrations/` directory.
+When using Docker Compose, the `migrate-api` container runs the SQL migrations and exits before the service starts.
+
+### 3. Verify
+
+```bash
+curl http://localhost:8080/api/v1/liveness
+```
+
+Swagger UI: `http://localhost:8080/api/v1/docs/index.html`

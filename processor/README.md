@@ -257,14 +257,37 @@ Copy `.env.example` to `.env` and fill in the required values.
 
 ---
 
-## Running
+## Prerequisites
+
+- [Go 1.23+](https://go.dev/dl/) — only needed when running directly
+- Docker and Docker Compose — for the containerised setup
+
+Run `make help` from the repo root to see all available commands.
+
+---
+
+## Running the system
+
+### 1. Configure environment
+
+Copy `.env.example` to `.env` inside the `processor/` folder. The example file is pre-filled for Docker Compose.
 
 ```bash
-# With Docker Compose (recommended for local development)
+cp processor/.env.example processor/.env
+```
+
+### 2. Start the service
+
+```bash
+# With Docker Compose (recommended — runs migrations automatically)
 docker compose up processor
 
-# Directly
+# Directly (requires PostgreSQL, Redis, and mock-ntfn-provider reachable on localhost)
 go run ./cmd/main.go
 ```
 
-Database migrations are applied automatically on startup via the `migrations/` directory.
+When using Docker Compose, the `migrate-processor` container runs the SQL migrations and exits before the service starts.
+
+### 3. Verify
+
+The processor exposes metrics at `http://localhost:8081/metrics` and can be observed via Grafana at `http://localhost:3000`.

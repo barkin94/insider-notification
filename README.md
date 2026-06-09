@@ -1,6 +1,6 @@
 # Insider Notification Service
 
-A notification delivery system built in Go. The API accepts notification requests, publishes them to Redis Streams by priority, the Processor picks them up for delivery via webhook, and publishes delivery results back to Redis Streams.
+A notification delivery system built in Go. The API Service accepts notification requests, publishes them to Redis Streams by priority, the Processor Service picks them up for delivery, delivers them via external notification provider, and publishes delivery results back to Redis Streams.
 
 ## Architecture
 
@@ -12,7 +12,7 @@ HTTP Client
      ▼
 API Service
 │
-├─── [ 1: Store notification (PostgreSQL) ]
+├─── [ 1: Persist notification as <b>pending</b> ]
 │
 ├─── [ 2: Dispatch NotificationReadyEvent to Topics By Priority]
 │           │
@@ -21,7 +21,7 @@ API Service
 │           └──► <low_priority_topic>    ──┘    │
 │                                               ├─── [ 3: Lock/Rate Limit Notifications ]
 │                                               │
-│                                               ├─── [ 4: Ntfn Delivery API (Mockoon) ]
+│                                               ├─── [ 4: Ntfn Delivery API (Mockoon server) ]
 │                                               │
 │                                               └─── [ 5: Dispatch NotificationDeliveryResultEvent ]       
 |                                                            |
@@ -29,7 +29,7 @@ API Service
 |                                                                                         │
 │     ┌───────────────────────────────────────────────────────────────────────────────────┘
 ▼     ▼
-└─── [ 5: Update notification status ]
+└─── [ 5: Update notification status as <b>delivered</b>/<b>failed</b> ]
 ```
 
 ### Scheduled Notification Delivery Flow
@@ -40,12 +40,12 @@ HTTP Client
      ▼
 API Service
 │
-├─── [ 1: Store scheduled notification (PostgreSQL) ]
+├─── [ 1: Persist scheduled notification as <b>pending</b> ]
 │
-├─── [ 2: DB polling ticker eventually finds due notification ]
+├─── [ 2: DB polling ticker finds due notification ]
 │           │
 │           ▼
-├─── [ 3: Dispatch NotificationReadyEvent to Topics By Priority ]
+│    [ 3: Dispatch NotificationReadyEvent to Topics By Priority ]
 │            │
 │            ├──► <high_priority_topic>   ──┐
 │            ├──► <normal_priority_topic> ──┼──► Processor Service
@@ -60,9 +60,10 @@ API Service
 │                                                                                         │
 │     ┌───────────────────────────────────────────────────────────────────────────────────┘
 ▼     ▼
-└─── [ 7: Update notification status ]
+└─── [ 7: Update notification status as <b>delivered</b>/<b>failed</b>]
+```
 
-### Services
+### Containers
 
 | Service | Role |
 |---------|------|
@@ -73,8 +74,11 @@ API Service
 | `otel-collector` | Receives OTLP traces, forwards to Tempo |
 | `tempo` | Trace storage, queried by Grafana |
 | `prometheus` | Scrapes `/metrics` from OTel Collector |
-| `loki` | Logs storage, queried by Grafana
+| `loki` | Logs storage, queried by Grafana |
 | `grafana` | Dashboards — metrics (Prometheus) + traces (Tempo) + logs (Loki) |
+| `mock-ntfn-provider` | Mockoon-based stub webhook endpoint for local delivery testing |
+| `migrate-api` | One-shot container that runs `api` DB migrations on startup |
+| `migrate-processor` | One-shot container that runs `processor` DB migrations on startup |
 
 ## Prerequisites
 
@@ -100,10 +104,8 @@ Migrations run automatically as part of `make up` — dedicated `migrate-api` an
 ### 3. Verify
 
 ```bash
-curl http://localhost:8080/api/v1/health
+curl http://localhost:8080/api/v1/liveness
 ```
-
-Expected: `{"status":"ok"}`
 
 ## API
 
@@ -182,7 +184,7 @@ Change `REDIS_ADDR` and `DATABASE_URL` in the `.env` files to `localhost` for lo
 ### Observability
 
 - [x] Real-time metrics endpoint (OpenTelemetry exports metrics to Prometheus)
-- [x] Structured logging with correlation IDs (Correlation is achieved with OpenTelemetry)
+- [x] Structured logging with correlation IDs (OpenTelemetry injects trace ids to logs)
 - [x] Health check endpoint
 
 ### Bonus Features
@@ -192,4 +194,4 @@ Change `REDIS_ADDR` and `DATABASE_URL` in the `.env` files to `localhost` for lo
 - [ ] Template System: Support message templates with variable substitution
 - [ ] WebSocket Updates: Real-time status updates via WebSocket
 - [x] Distributed Tracing
-- [ ] GitHub Actions CI/CD: Automated testing and linting pipeline
+- [x] GitHub Actions CI/CD: Automated testing and linting pipeline
