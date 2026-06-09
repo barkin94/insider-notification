@@ -14,6 +14,7 @@ import (
 	"github.com/barkin/insider-notification/processor/internal/delivery"
 	"github.com/barkin/insider-notification/processor/internal/service"
 	"github.com/barkin/insider-notification/processor/internal/transport/messaging"
+	shareddb "github.com/barkin/insider-notification/shared/db"
 	"github.com/barkin/insider-notification/shared/lock"
 	"github.com/barkin/insider-notification/shared/model"
 	sharedredis "github.com/barkin/insider-notification/shared/redis"
@@ -31,7 +32,8 @@ type App struct {
 func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 	rdb := sharedredis.NewClient(ctx, cfg.RedisAddr)
 
-	attemptRepo := processordb.NewDeliveryAttemptRepository(rdb)
+	bunDB := shareddb.Open(cfg.DatabaseURL)
+	attemptRepo := processordb.NewDeliveryAttemptRepository(bunDB)
 
 	pub := stream.NewRedisPublisher(rdb)
 	sub := stream.NewRedisSubscriber(rdb, "notify:cg:processor")
@@ -59,6 +61,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 	cleanup := func() {
 		_ = sub.Close()
 		_ = rdb.Close()
+		_ = bunDB.Close()
 	}
 
 	router := messaging.NewNotificationRouter(ctx, sub, cfg.OTelServiceName, cfg.HighWeight, cfg.NormalWeight, cfg.LowWeight)

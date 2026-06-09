@@ -2,53 +2,63 @@ package db_test
 
 import (
 	"context"
+	"database/sql"
 	"log"
 	"os"
 	"testing"
 	"time"
 
-	"github.com/redis/go-redis/v9"
+	"github.com/golang-migrate/migrate/v4"
+	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/testcontainers/testcontainers-go"
-	tcredis "github.com/testcontainers/testcontainers-go/modules/redis"
+	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
+	"github.com/uptrace/bun"
+	"github.com/uptrace/bun/dialect/pgdialect"
+	"github.com/uptrace/bun/driver/pgdriver"
 )
 
-var redisAddr string
+var testDB *bun.DB
 
 func TestMain(m *testing.M) {
 	ctx := context.Background()
 
-	container, err := tcredis.Run(ctx,
-		"redis:7-alpine",
+	pgContainer, err := tcpostgres.Run(ctx,
+		"postgres:16-alpine",
+		tcpostgres.WithDatabase("testdb"),
+		tcpostgres.WithUsername("test"),
+		tcpostgres.WithPassword("test"),
 		testcontainers.WithWaitStrategy(
-			wait.ForListeningPort("6379/tcp").WithStartupTimeout(60*time.Second),
+			wait.ForListeningPort("5432/tcp").WithStartupTimeout(120*time.Second),
 		),
 	)
 	if err != nil {
-		log.Printf("Redis container unavailable, skipping db integration tests: %v", err)
+		log.Printf("Postgres container unavailable, skipping db integration tests: %v", err)
 		os.Exit(m.Run())
 	}
 	defer func() {
-		if err := container.Terminate(ctx); err != nil {
-			log.Printf("terminate redis container: %v", err)
+		if err := pgContainer.Terminate(ctx); err != nil {
+			log.Printf("terminate postgres container: %v", err)
 		}
 	}()
 
-	redisAddr, err = container.Endpoint(ctx, "")
+	connStr, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
 	if err != nil {
-		log.Fatalf("get redis endpoint: %v", err)
+		log.Fatalf("get connection string: %v", err)
 	}
+
+	mig, err := migrate.New("file://../../../processor/migrations", "pgx5://"+connStr[len("postgres://"):])
+	if err != nil {
+		log.Fatalf("create migrator: %v", err)
+	}
+	if err := mig.Up(); err != nil && err != migrate.ErrNoChange {
+		log.Fatalf("run migrations: %v", err)
+	}
+
+	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(connStr)))
+	testDB = bun.NewDB(sqldb, pgdialect.New())
+	defer testDB.Close() //nolint:errcheck
 
 	os.Exit(m.Run())
-}
-
-func requireRedis(t *testing.T) {
-	t.Helper()
-	if redisAddr == "" {
-		t.Skip("Redis not available (Docker not running)")
-	}
-}
-
-func newRedisClient() *redis.Client {
-	return redis.NewClient(&redis.Options{Addr: redisAddr})
 }

@@ -8,7 +8,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-const lockTTL = 60 * time.Second
+const lockTTL = 10 * time.Second
 
 type RedisLocker struct {
 	client *redis.Client
