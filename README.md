@@ -4,17 +4,65 @@ A notification delivery system built in Go. The API accepts notification request
 
 ## Architecture
 
-```
-          ┌─────────────┐        Redis Streams         ┌─────────────────┐
- Client ──▶   API        ├──(high / normal / low)──────▶   Processor      │
-          │  :8080       │                              │                  │
-          │              │◀────(delivery results)───────│  worker pool     │
-          └──────┬───────┘                              └────────┬─────────┘
-                 │                                               │
-            PostgreSQL                                     Webhook target
+### Non-Scheduled Notification Delivery Flow
+
+``` text
+HTTP Client
+     │
+     ▼
+API Service
+│
+├─── [ 1: Store notification (PostgreSQL) ]
+│
+├─── [ 2: Dispatch NotificationReadyEvent to Topics By Priority]
+│           │
+│           ├──► <high_priority_topic>   ──┐
+│           ├──► <normal_priority_topic> ──┼──► Processor Service
+│           └──► <low_priority_topic>    ──┘    │
+│                                               ├─── [ 3: Lock/Rate Limit Notifications ]
+│                                               │
+│                                               ├─── [ 4: Ntfn Delivery API (Mockoon) ]
+│                                               │
+│                                               └─── [ 5: Dispatch NotificationDeliveryResultEvent ]       
+|                                                            |
+|                                                            └──► <status_update_topic> ──┐                   
+|                                                                                         │
+│     ┌───────────────────────────────────────────────────────────────────────────────────┘
+▼     ▼
+└─── [ 5: Update notification status ]
 ```
 
-**Services**
+### Scheduled Notification Delivery Flow
+
+```text
+HTTP Client
+     │
+     ▼
+API Service
+│
+├─── [ 1: Store scheduled notification (PostgreSQL) ]
+│
+├─── [ 2: DB polling ticker eventually finds due notification ]
+│           │
+│           ▼
+├─── [ 3: Dispatch NotificationReadyEvent to Topics By Priority ]
+│            │
+│            ├──► <high_priority_topic>   ──┐
+│            ├──► <normal_priority_topic> ──┼──► Processor Service
+│            └──► <low_priority_topic>    ──┘    │
+│                                                ├─── [ 4: Lock/Rate Limit Notifications ]
+│                                                │
+│                                                ├─── [ 5: Ntfn Delivery API (Mockoon) ]
+│                                                │
+│                                                └─── [ 6: Dispatch NotificationDeliveryResultEvent ]       
+│                                                            |
+│                                                            └──► <status_update_topic> ──┐                   
+│                                                                                         │
+│     ┌───────────────────────────────────────────────────────────────────────────────────┘
+▼     ▼
+└─── [ 7: Update notification status ]
+
+### Services
 
 | Service | Role |
 |---------|------|
