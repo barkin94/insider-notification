@@ -67,8 +67,8 @@ API Service
 
 | Service | Role |
 |---------|------|
-| `api` | HTTP API — create, list, cancel notifications |
-| `processor` | Consumes streams, delivers via webhook, writes results back |
+| [`api`](api/README.md) | HTTP API — create, list, cancel notifications |
+| [`processor`](processor/README.md) | Consumes streams, delivers via webhook, writes results back |
 | `postgres` | Persistent store for notifications and delivery attempts |
 | `redis` | Redis Streams for async message passing |
 | `otel-collector` | Receives OTLP traces, forwards to Tempo |
@@ -80,6 +80,11 @@ API Service
 | `migrate-api` | One-shot container that runs `api` DB migrations on startup |
 | `migrate-processor` | One-shot container that runs `processor` DB migrations on startup |
 
+### Service Documentation
+
+- [api/README.md](api/README.md) — HTTP API reference, request lifecycle, pagination, scheduler, and delivery result consumer
+- [processor/README.md](processor/README.md) — Priority router, delivery pipeline, retry mechanism, and rate limiting
+
 ## Prerequisites
 
 - Docker and Docker Compose
@@ -90,7 +95,7 @@ Run `make help` to see all available commands.
 
 ### 1. Configure environment
 
-Before running the services, `api/` and `processor/` folders need `.env` files inside. Each contains `.env.example` files that are pre-filled for docker-compose, which you can simply create a copy of and then rename to `.env`.
+Before running the services, `api/` and `processor/` folders need a `.env` file inside each. Each folder contains `.env.example` files that are pre-filled for docker-compose, which you can simply create a copy of and then rename to `.env`.
 
 
 ### 2. Start all services
