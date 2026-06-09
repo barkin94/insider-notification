@@ -52,7 +52,7 @@ func (d *RetryDispatcher) Run(ctx context.Context) {
 }
 
 func (d *RetryDispatcher) Tick(ctx context.Context) {
-	attempts, err := d.repo.GetDue(ctx, time.Now().UTC(), d.batch)
+	attempts, err := d.repo.FindDueBefore(ctx, time.Now().UTC(), d.batch)
 	if err != nil {
 		slog.ErrorContext(ctx, "retry dispatcher: read due attempts", "error", err)
 		return
@@ -65,14 +65,15 @@ func (d *RetryDispatcher) Tick(ctx context.Context) {
 			Content:        a.Content,
 			Priority:       a.Priority,
 			MaxAttempts:    a.MaxAttempts,
+			AttemptNumber:  a.AttemptNumber,
 		}
 		topic := topicForPriority(a.Priority)
 		if err := d.pub.Publish(ctx, topic, evt); err != nil {
 			slog.ErrorContext(ctx, "retry dispatcher: publish retry", "id", a.NotificationID, "error", err)
 			continue
 		}
-		if err := d.repo.RemoveDue(ctx, a.NotificationID); err != nil {
-			slog.ErrorContext(ctx, "retry dispatcher: remove due marker", "id", a.NotificationID, "error", err)
+		if err := d.repo.DeleteByID(ctx, a.NotificationID); err != nil {
+			slog.ErrorContext(ctx, "retry dispatcher: delete attempt", "id", a.NotificationID, "error", err)
 		}
 	}
 }

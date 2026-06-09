@@ -2,7 +2,6 @@ package db_test
 
 import (
 	"context"
-	"strconv"
 	"testing"
 	"time"
 
@@ -11,114 +10,131 @@ import (
 	processordb "github.com/barkin/insider-notification/processor/internal/db"
 )
 
-func mustUUID(t *testing.T) uuid.UUID {
+func mustNotifID(t *testing.T) string {
 	t.Helper()
 	id, err := uuid.NewV7()
 	if err != nil {
 		t.Fatal(err)
 	}
-	return id
+	return id.String()
 }
 
-func newAttempt(t *testing.T) *processordb.DeliveryAttempt {
+func newPayload(t *testing.T, notifID string) *processordb.DeliveryAttempt {
 	t.Helper()
 	return &processordb.DeliveryAttempt{
-		NotificationID: mustUUID(t).String(),
-		AttemptNumber:  1,
+		NotificationID: notifID,
+		Channel:        "email",
+		Recipient:      "test@example.com",
+		Content:        "hello",
+		Priority:       "normal",
+		MaxAttempts:    4,
 	}
 }
 
-func TestCreate_insertsRow(t *testing.T) {
-	requireRedis(t)
+func TestSavePayload_isIdempotent(t *testing.T) {
 	ctx := context.Background()
-	client := newRedisClient()
-	defer client.Close() //nolint:errcheck
-	repo := processordb.NewDeliveryAttemptRepository(client)
+	repo := processordb.NewDeliveryAttemptRepository(testDB)
+	notifID := mustNotifID(t)
 
-	a := newAttempt(t)
-	if err := repo.Create(ctx, a); err != nil {
-		t.Fatalf("Create: %v", err)
+	payload := newPayload(t, notifID)
+	if err := repo.Upsert(ctx, payload); err != nil {
+		t.Fatalf("first SavePayload: %v", err)
+	}
+	if err := repo.Upsert(ctx, payload); err != nil {
+		t.Fatalf("second SavePayload (idempotent): %v", err)
 	}
 
-	got, err := client.HGetAll(ctx, deliveryAttemptKey(a.NotificationID)).Result()
-	if err != nil {
-		t.Fatalf("hgetall: %v", err)
-	}
-
-	if got["attempt_number"] != strconv.Itoa(a.AttemptNumber) {
-		t.Errorf("attempt_number: got %s, want %d", got["attempt_number"], a.AttemptNumber)
-	}
+	t.Cleanup(func() { repo.DeleteByID(ctx, notifID) }) //nolint:errcheck,gosec
 }
 
-// Second Create for the same notification_id upserts the stored attempt fields.
-func TestCreate_upserts(t *testing.T) {
-	requireRedis(t)
+func TestSavePayload_upsertUpdatesRetryAfter(t *testing.T) {
 	ctx := context.Background()
-	client := newRedisClient()
-	defer client.Close() //nolint:errcheck
-	repo := processordb.NewDeliveryAttemptRepository(client)
+	repo := processordb.NewDeliveryAttemptRepository(testDB)
+	notifID := mustNotifID(t)
 
-	a := newAttempt(t)
-	a.AttemptNumber = 1
-	if err := repo.Create(ctx, a); err != nil {
-		t.Fatalf("first Create: %v", err)
+	if err := repo.Upsert(ctx, newPayload(t, notifID)); err != nil {
+		t.Fatalf("first SavePayload: %v", err)
 	}
 
-	retryAfter := time.Now().Add(time.Minute).UTC().Truncate(time.Millisecond)
-	a2 := newAttempt(t)
-	a2.NotificationID = a.NotificationID // same notification
-	a2.AttemptNumber = 2
-	a2.RetryAfter = &retryAfter
-	if err := repo.Create(ctx, a2); err != nil {
-		t.Fatalf("second Create (upsert): %v", err)
+	retryAt := time.Now().Add(30 * time.Second).UTC().Truncate(time.Second)
+	p := newPayload(t, notifID)
+	p.RetryAfter = &retryAt
+	p.AttemptNumber = 2
+	if err := repo.Upsert(ctx, p); err != nil {
+		t.Fatalf("second SavePayload with retry_after: %v", err)
 	}
 
-	got, err := client.HGetAll(ctx, deliveryAttemptKey(a.NotificationID)).Result()
+	due, err := repo.FindDueBefore(ctx, retryAt.Add(time.Millisecond), 10)
 	if err != nil {
-		t.Fatalf("hgetall: %v", err)
+		t.Fatalf("GetDue: %v", err)
 	}
-	if got["attempt_number"] != "2" {
-		t.Errorf("attempt_number after upsert: got %s, want 2", got["attempt_number"])
+	var found *processordb.DeliveryAttempt
+	for _, a := range due {
+		if a.NotificationID == notifID {
+			found = a
+			break
+		}
 	}
-	if got["retry_after"] == "" {
-		t.Error("expected retry_after to be set after upsert")
+	if found == nil {
+		t.Fatal("expected row to be due after SavePayload upsert, got none")
 	}
+	if found.AttemptNumber != 2 {
+		t.Errorf("attempt_number = %d, want 2", found.AttemptNumber)
+	}
+
+	t.Cleanup(func() { repo.DeleteByID(ctx, notifID) }) //nolint:errcheck,gosec
 }
 
-func TestGetAttemptNumber_returnsStoredAttemptNumber(t *testing.T) {
-	requireRedis(t)
+func TestDelete_removesRow(t *testing.T) {
 	ctx := context.Background()
-	client := newRedisClient()
-	defer client.Close() //nolint:errcheck
-	repo := processordb.NewDeliveryAttemptRepository(client)
+	repo := processordb.NewDeliveryAttemptRepository(testDB)
+	notifID := mustNotifID(t)
 
-	notifID := mustUUID(t).String()
+	retryAt := time.Now().Add(-time.Second).UTC()
+	p := newPayload(t, notifID)
+	p.RetryAfter = &retryAt
+	if err := repo.Upsert(ctx, p); err != nil {
+		t.Fatalf("SavePayload: %v", err)
+	}
+	if err := repo.DeleteByID(ctx, notifID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
 
-	// No row yet → 0.
-	n, err := repo.GetAttemptNumber(ctx, notifID)
+	due, err := repo.FindDueBefore(ctx, time.Now().Add(time.Minute), 10)
 	if err != nil {
-		t.Fatalf("GetAttemptNumber (empty): %v", err)
+		t.Fatalf("GetDue after Delete: %v", err)
 	}
-	if n != 0 {
-		t.Errorf("expected 0 before any attempt, got %d", n)
-	}
-
-	a := newAttempt(t)
-	a.NotificationID = notifID
-	a.AttemptNumber = 3
-	if err := repo.Create(ctx, a); err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-
-	n, err = repo.GetAttemptNumber(ctx, notifID)
-	if err != nil {
-		t.Fatalf("GetAttemptNumber: %v", err)
-	}
-	if n != 3 {
-		t.Errorf("expected 3, got %d", n)
+	for _, a := range due {
+		if a.NotificationID == notifID {
+			t.Error("row still appears in GetDue after Delete")
+		}
 	}
 }
 
-func deliveryAttemptKey(id string) string {
-	return "processor:delivery_attempt:{" + id + "}"
+func TestGetDue_respectsLimit(t *testing.T) {
+	ctx := context.Background()
+	repo := processordb.NewDeliveryAttemptRepository(testDB)
+
+	ids := make([]string, 3)
+	retryAt := time.Now().Add(-time.Second).UTC()
+	for i := range ids {
+		ids[i] = mustNotifID(t)
+		p := newPayload(t, ids[i])
+		p.RetryAfter = &retryAt
+		if err := repo.Upsert(ctx, p); err != nil {
+			t.Fatalf("SavePayload[%d]: %v", i, err)
+		}
+	}
+
+	due, err := repo.FindDueBefore(ctx, time.Now(), 2)
+	if err != nil {
+		t.Fatalf("GetDue: %v", err)
+	}
+	if len(due) > 2 {
+		t.Errorf("expected at most 2 due entries, got %d", len(due))
+	}
+
+	for _, id := range ids {
+		repo.DeleteByID(ctx, id) //nolint:errcheck,gosec
+	}
 }

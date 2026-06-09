@@ -73,73 +73,27 @@ func (f *fakeLimiter) IsAllowed(_ context.Context, _ string) (bool, time.Duratio
 	return f.allowed, 0, nil
 }
 
-type delayCall struct {
-	notifID    string
-	retryAfter time.Time
-}
-
 type mockAttemptWriter struct {
 	mu           sync.Mutex
-	calls        []*processordb.DeliveryAttempt
-	delayCalls   []delayCall
 	payloadCalls []*processordb.DeliveryAttempt
 	err          error
-	countResult  int
 }
 
 var _ processordb.DeliveryAttemptRepository = (*mockAttemptWriter)(nil)
 
-func (m *mockAttemptWriter) SavePayload(_ context.Context, a *processordb.DeliveryAttempt) error {
+func (m *mockAttemptWriter) Upsert(_ context.Context, a *processordb.DeliveryAttempt) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.payloadCalls = append(m.payloadCalls, a)
-	return nil
-}
-
-func (m *mockAttemptWriter) Create(_ context.Context, a *processordb.DeliveryAttempt) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.calls = append(m.calls, a)
 	return m.err
 }
 
-func (m *mockAttemptWriter) Delay(_ context.Context, notifID string, retryAfter time.Time) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.delayCalls = append(m.delayCalls, delayCall{notifID, retryAfter})
-	return m.err
-}
-
-func (m *mockAttemptWriter) GetAttemptNumber(_ context.Context, _ string) (int, error) {
-	return m.countResult, nil
-}
-
-func (m *mockAttemptWriter) Delete(_ context.Context, _ string) error {
+func (m *mockAttemptWriter) DeleteByID(_ context.Context, _ string) error {
 	return nil
 }
 
-func (m *mockAttemptWriter) GetDue(_ context.Context, _ time.Time, _ int) ([]*processordb.DeliveryAttempt, error) {
+func (m *mockAttemptWriter) FindDueBefore(_ context.Context, _ time.Time, _ int) ([]*processordb.DeliveryAttempt, error) {
 	return nil, nil
-}
-
-func (m *mockAttemptWriter) RemoveDue(_ context.Context, _ string) error {
-	return nil
-}
-
-func (m *mockAttemptWriter) recorded() []*processordb.DeliveryAttempt {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	out := make([]*processordb.DeliveryAttempt, len(m.calls))
-	copy(out, m.calls)
-	return out
-}
-
-func (m *mockAttemptWriter) delayed() []delayCall {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	out := make([]delayCall, len(m.delayCalls))
-	copy(out, m.delayCalls)
-	return out
 }
 
 func (m *mockAttemptWriter) payloads() []*processordb.DeliveryAttempt {
@@ -161,7 +115,7 @@ func runSingle(p *delivery.NotificationDeliveryPipeline, evt stream.Notification
 		Event: evt,
 		Msg:   msg,
 	}
-	p.Run(ctx, result)
+	_ = p.Run(ctx, result)
 	return msg
 }
 
@@ -277,7 +231,7 @@ func TestPipeline_Retryable_WritesRetryAfter(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: true, StatusCode: 503}}
 	lim := &fakeLimiter{allowed: true}
-	aw := &mockAttemptWriter{countResult: 0} // first attempt
+	aw := &mockAttemptWriter{}
 	c := newPipeline(pub, dc, lim, true, aw)
 
 	msg := runSingle(c, baseEventWithID())
@@ -288,16 +242,15 @@ func TestPipeline_Retryable_WritesRetryAfter(t *testing.T) {
 	if len(pub.calls()) != 0 {
 		t.Errorf("expected no stream publishes, got %v", pub.topicsPublished())
 	}
-	attempts := aw.recorded()
-	if len(attempts) != 1 {
-		t.Fatalf("expected 1 attempt write, got %d", len(attempts))
-	}
-	if attempts[0].RetryAfter == nil {
-		t.Error("expected retry_after to be set")
-	}
 	payloads := aw.payloads()
 	if len(payloads) != 1 {
-		t.Fatalf("expected 1 payload write, got %d", len(payloads))
+		t.Fatalf("expected 1 SavePayload call, got %d", len(payloads))
+	}
+	if payloads[0].RetryAfter == nil {
+		t.Error("expected retry_after to be set")
+	}
+	if payloads[0].AttemptNumber != 1 {
+		t.Errorf("attempt_number = %d, want 1", payloads[0].AttemptNumber)
 	}
 	if payloads[0].Priority != string(model.PriorityHigh) {
 		t.Errorf("priority = %q, want high", payloads[0].Priority)
@@ -309,12 +262,13 @@ func TestPipeline_Exhausted_Failed(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: true, StatusCode: 503}}
 	lim := &fakeLimiter{allowed: true}
-	// 3 prior attempts → currentAttempt=4=MaxAttempts → terminal
-	aw := &mockAttemptWriter{countResult: 3}
+	aw := &mockAttemptWriter{}
 	c := newPipeline(pub, dc, lim, true, aw)
 
+	// 3 prior attempts → currentAttempt=4=MaxAttempts → terminal
 	evt := baseEventWithID()
 	evt.MaxAttempts = 4
+	evt.AttemptNumber = 3
 	msg := runSingle(c, evt)
 
 	if !isAcked(msg) {
@@ -334,8 +288,8 @@ func TestPipeline_Exhausted_Failed(t *testing.T) {
 	if last.AttemptNumber != 4 {
 		t.Errorf("expected attempt_number 4, got %d", last.AttemptNumber)
 	}
-	if len(aw.recorded()) != 0 {
-		t.Errorf("expected no attempt writes on exhaustion (cleanup via Delete), got %d", len(aw.recorded()))
+	if len(aw.payloads()) != 0 {
+		t.Errorf("expected no SavePayload calls on exhaustion, got %d", len(aw.payloads()))
 	}
 }
 
@@ -361,7 +315,7 @@ func TestPipeline_NonRetryable_Failed(t *testing.T) {
 	}
 }
 
-// Rate limited: defers via Delay (not Create), no direct stream publish.
+// Rate limited: SavePayload with retry_after set (not Create), no direct stream publish.
 func TestPipeline_RateLimited_Requeued(t *testing.T) {
 	pub := &fakePublisher{}
 	lim := &fakeLimiter{allowed: false}
@@ -376,38 +330,35 @@ func TestPipeline_RateLimited_Requeued(t *testing.T) {
 	if len(pub.calls()) != 0 {
 		t.Errorf("expected no direct publishes, got %v", pub.topicsPublished())
 	}
-	if len(aw.recorded()) != 0 {
-		t.Errorf("expected no Create calls for rate-limited retry, got %d", len(aw.recorded()))
+	payloads := aw.payloads()
+	if len(payloads) != 1 {
+		t.Fatalf("expected 1 SavePayload call for rate-limited retry, got %d", len(payloads))
 	}
-	delayed := aw.delayed()
-	if len(delayed) != 1 {
-		t.Fatalf("expected 1 Delay call for rate-limited retry, got %d", len(delayed))
-	}
-	if delayed[0].retryAfter.IsZero() {
-		t.Error("expected retry_after to be set for rate-limited retry")
+	if payloads[0].RetryAfter == nil || payloads[0].RetryAfter.IsZero() {
+		t.Error("expected retry_after to be set on saved payload")
 	}
 }
 
 // --- delivery attempt tests ---
 
-// Retryable failure path: attempt written with correct attempt number from count.
+// Retryable failure path: attempt written with correct attempt number from event.
 func TestPipeline_Attempts_Retryable(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: true, StatusCode: 503}}
 	lim := &fakeLimiter{allowed: true}
-	aw := &mockAttemptWriter{countResult: 0} // first attempt
+	aw := &mockAttemptWriter{}
 	c := newPipeline(pub, dc, lim, true, aw)
 
 	evt := baseEventWithID()
 	evt.MaxAttempts = 4
 	runSingle(c, evt)
 
-	attempts := aw.recorded()
-	if len(attempts) != 1 {
-		t.Fatalf("expected 1 attempt write, got %d", len(attempts))
+	payloads := aw.payloads()
+	if len(payloads) != 1 {
+		t.Fatalf("expected 1 SavePayload call, got %d", len(payloads))
 	}
-	if attempts[0].AttemptNumber != 1 {
-		t.Errorf("attempt number = %d, want 1", attempts[0].AttemptNumber)
+	if payloads[0].AttemptNumber != 1 {
+		t.Errorf("attempt_number = %d, want 1", payloads[0].AttemptNumber)
 	}
 }
 
@@ -424,8 +375,8 @@ func TestPipeline_Attempts_Terminal(t *testing.T) {
 	if !isAcked(msg) {
 		t.Error("expected ACK")
 	}
-	if len(aw.recorded()) != 0 {
-		t.Errorf("expected no attempt writes for terminal failure, got %d", len(aw.recorded()))
+	if len(aw.payloads()) != 0 {
+		t.Errorf("expected no SavePayload calls for terminal failure, got %d", len(aw.payloads()))
 	}
 	calls := pub.calls()
 	if len(calls) != 1 || calls[0].topic != stream.TopicStatus {
@@ -457,7 +408,7 @@ func TestPipeline_Attempts_PayloadPersisted(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: true, StatusCode: 503}}
 	lim := &fakeLimiter{allowed: true}
-	aw := &mockAttemptWriter{countResult: 0}
+	aw := &mockAttemptWriter{}
 	c := newPipeline(pub, dc, lim, true, aw)
 
 	evt := baseEventWithID()
