@@ -106,10 +106,10 @@ services:
   migrate-processor:
     image: migrate/migrate
     volumes:
-      - ./processor/migrations:/migrations:ro
+      - ./retryscheduler/migrations:/migrations:ro
     entrypoint: ["/bin/sh", "-c"]
     command: ["migrate -path=/migrations -database $$MIGRATE_DATABASE_URL up"]
-    env_file: processor/.env
+    env_file: retryscheduler/.env
     depends_on:
       postgres:
         condition: service_healthy
@@ -137,11 +137,24 @@ services:
     ports:
       - "8081:8081"
     depends_on:
-      migrate-processor:
-        condition: service_completed_successfully
       redis:
         condition: service_healthy
       mock-ntfn-provider:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+
+  retryscheduler:
+    build:
+      context: .
+      dockerfile: retryscheduler/Dockerfile
+    env_file: retryscheduler/.env
+    depends_on:
+      migrate-processor:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       otel-collector:
         condition: service_started

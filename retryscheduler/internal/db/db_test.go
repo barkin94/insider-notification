@@ -48,7 +48,7 @@ func TestMain(m *testing.M) {
 		log.Fatalf("get connection string: %v", err)
 	}
 
-	mig, err := migrate.New("file://../../../processor/migrations", "pgx5://"+connStr[len("postgres://"):])
+	mig, err := migrate.New("file://../../../retryscheduler/migrations", "pgx5://"+connStr[len("postgres://"):])
 	if err != nil {
 		log.Fatalf("create migrator: %v", err)
 	}

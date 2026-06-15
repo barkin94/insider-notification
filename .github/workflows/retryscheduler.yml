@@ -1,0 +1,73 @@
+name: Retry Scheduler
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "retryscheduler/**"
+      - "shared/**"
+      - ".golangci.yml"
+      - ".github/workflows/retryscheduler.yml"
+  pull_request:
+    branches: [master]
+    paths:
+      - "retryscheduler/**"
+      - "shared/**"
+      - ".golangci.yml"
+      - ".github/workflows/retryscheduler.yml"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: retryscheduler/go.mod
+          cache: false
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-retryscheduler-${{ runner.os }}-${{ hashFiles('retryscheduler/go.sum', 'shared/go.sum') }}
+          restore-keys: go-retryscheduler-${{ runner.os }}-
+
+      - run: make install-tools
+      - run: make lint-retryscheduler
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: retryscheduler/go.mod
+          cache: false
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-retryscheduler-${{ runner.os }}-${{ hashFiles('retryscheduler/go.sum', 'shared/go.sum') }}
+          restore-keys: go-retryscheduler-${{ runner.os }}-
+
+      - run: make install-tools
+      - run: make test-retryscheduler
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - run: make build-retryscheduler

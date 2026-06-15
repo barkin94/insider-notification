@@ -1,5 +1,7 @@
 package stream
 
+import "time"
+
 // NotificationReadyEvent is published to a priority stream when a notification
 // is ready to be delivered immediately. Trace context travels in message.Metadata.
 // AttemptNumber is 0 for first-time delivery (API-originated); the retry dispatcher
@@ -46,4 +48,18 @@ type NotificationDeliveryResultEvent struct {
 	ErrorMessage      string
 	ProviderMessageID string
 	LatencyMS         int
+}
+
+// NotificationRetryScheduleEvent is published to TopicRetry by the processor
+// whenever a delivery attempt should be retried after a delay.
+// ScheduledAt is the absolute UTC time at which the attempt should be retried.
+type NotificationRetryScheduleEvent struct {
+	NotificationID string
+	Channel        string
+	Recipient      string
+	Content        string
+	Priority       string
+	MaxAttempts    int
+	AttemptNumber  int
+	ScheduledAt    time.Time
 }

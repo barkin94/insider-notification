@@ -7,7 +7,6 @@ import (
 
 	"go.opentelemetry.io/otel"
 
-	processordb "github.com/barkin/insider-notification/processor/internal/db"
 	"github.com/barkin/insider-notification/processor/internal/service"
 	"github.com/barkin/insider-notification/shared/lock"
 	"github.com/barkin/insider-notification/shared/model"
@@ -21,7 +20,6 @@ type NotificationDeliveryPipeline struct {
 	deliveryClient service.NtfnDeliveryClient
 	limiter        service.Limiter
 	locker         lock.Locker
-	attempts       processordb.DeliveryAttemptRepository
 	metrics        service.Metrics
 }
 
@@ -30,7 +28,6 @@ func NewNotificationDeliveryPipeline(
 	deliveryClient service.NtfnDeliveryClient,
 	limiter service.Limiter,
 	locker lock.Locker,
-	attempts processordb.DeliveryAttemptRepository,
 	m service.Metrics,
 ) *NotificationDeliveryPipeline {
 	return &NotificationDeliveryPipeline{
@@ -38,7 +35,6 @@ func NewNotificationDeliveryPipeline(
 		deliveryClient: deliveryClient,
 		limiter:        limiter,
 		locker:         locker,
-		attempts:       attempts,
 		metrics:        m,
 	}
 }
@@ -88,8 +84,8 @@ func (p *NotificationDeliveryPipeline) Run(ctx context.Context, result stream.Re
 	return nil
 }
 
-func (p *NotificationDeliveryPipeline) savePayload(ctx context.Context, evt stream.NotificationReadyEvent, attemptNumber int, retryAfter *time.Time) error {
-	err := p.attempts.Upsert(ctx, &processordb.DeliveryAttempt{
+func (p *NotificationDeliveryPipeline) publishRetry(ctx context.Context, evt stream.NotificationReadyEvent, attemptNumber int, scheduledAt time.Time) error {
+	retryEvt := stream.NotificationRetryScheduleEvent{
 		NotificationID: evt.NotificationID,
 		Channel:        evt.Channel,
 		Recipient:      evt.Recipient,
@@ -97,14 +93,13 @@ func (p *NotificationDeliveryPipeline) savePayload(ctx context.Context, evt stre
 		Priority:       evt.Priority,
 		MaxAttempts:    maxAttemptsFor(evt),
 		AttemptNumber:  attemptNumber,
-		RetryAfter:     retryAfter,
-	})
-
-	if err != nil {
-		slog.ErrorContext(ctx, "save payload failed", "id", evt.NotificationID, "error", err)
+		ScheduledAt:    scheduledAt,
 	}
-
-	return err
+	if err := p.pub.Publish(ctx, stream.TopicRetry, retryEvt); err != nil {
+		slog.ErrorContext(ctx, "publish retry failed", "id", evt.NotificationID, "error", err)
+		return err
+	}
+	return nil
 }
 
 // applyRateLimit checks the channel's token bucket. If exhausted, it defers
@@ -123,7 +118,7 @@ func (p *NotificationDeliveryPipeline) applyRateLimit(ctx context.Context, evt s
 	}
 	slog.InfoContext(ctx, "rate limited, scheduling retry", "id", evt.NotificationID, "channel", evt.Channel, "retry_after", retryAfter)
 	retryAt := time.Now().Add(retryAfter).UTC()
-	if err := p.savePayload(ctx, evt, evt.AttemptNumber, &retryAt); err != nil {
+	if err := p.publishRetry(ctx, evt, evt.AttemptNumber, retryAt); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -149,8 +144,8 @@ func (p *NotificationDeliveryPipeline) handleDeliveryResult(ctx context.Context,
 		}
 
 	case dr.Retryable && currentAttempt < maxAttempts:
-		retryAfter := time.Now().Add(service.RetryDelay(currentAttempt + 1)).UTC()
-		if err := p.savePayload(ctx, evt, currentAttempt, &retryAfter); err != nil {
+		scheduledAt := time.Now().Add(service.RetryDelay(currentAttempt + 1)).UTC()
+		if err := p.publishRetry(ctx, evt, currentAttempt, scheduledAt); err != nil {
 			return err
 		}
 

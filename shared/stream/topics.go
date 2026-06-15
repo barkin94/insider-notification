@@ -5,4 +5,5 @@ const (
 	TopicNormal = "notify:stream:normal"
 	TopicLow    = "notify:stream:low"
 	TopicStatus = "notify:stream:status"
+	TopicRetry  = "notify:stream:retry"
 )

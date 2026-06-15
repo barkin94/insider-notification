@@ -1,6 +1,6 @@
 # Insider Notification Service
 
-A notification delivery system built in Go. The API Service accepts notification requests, publishes them to Redis Streams by priority, the Processor Service picks them up for delivery, delivers them via external notification provider, and publishes delivery results back to Redis Streams.
+A notification delivery system built in Go. The API Service accepts notification requests, publishes them to Redis Streams by priority, the Processor Service picks them up for delivery and publishes delivery results back to Redis Streams, and the Retry Scheduler Service manages retry timing for rate-limited and failed deliveries.
 
 ## Architecture
 
@@ -23,13 +23,17 @@ API Service
 │                                               │
 │                                               ├─── [ 4: Ntfn Delivery API (Mockoon server) ]
 │                                               │
-│                                               └─── [ 5: Dispatch NotificationDeliveryResultEvent ]       
-|                                                            |
-|                                                            └──► <status_update_topic> ──┐                   
-|                                                                                         │
+│                                               ├─── [ 5: Dispatch NotificationDeliveryResultEvent ]       
+|                                               |            |
+|                                               |            └──► <status_update_topic> ──┐                   
+|                                               |                                         │
+│                                               └─── [ 5b: Dispatch NotificationRetryScheduleEvent ]
+│                                                            │
+│                                                            └──► <retry_topic> ──► Retry Scheduler Service
+│                                                                                         │ (persists + republishes when due)
 │     ┌───────────────────────────────────────────────────────────────────────────────────┘
 ▼     ▼
-└─── [ 5: Update notification status as <b>delivered</b>/<b>failed</b> ]
+└─── [ 6: Update notification status as <b>delivered</b>/<b>failed</b> ]
 ```
 
 ### Scheduled Notification Delivery Flow
@@ -68,7 +72,8 @@ API Service
 | Service | Role |
 |---------|------|
 | [`api`](api/README.md) | HTTP API — create, list, cancel notifications |
-| [`processor`](processor/README.md) | Consumes streams, delivers via webhook, writes results back |
+| [`processor`](processor/README.md) | Consumes delivery streams, delivers via webhook, publishes results |
+| [`retryscheduler`](retryscheduler/README.md) | Consumes retry topic, schedules retries in Postgres, republishes when due |
 | `postgres` | Persistent store for notifications and delivery attempts |
 | `redis` | Redis Streams for async message passing |
 | `otel-collector` | Receives OTLP traces, forwards to Tempo |
@@ -78,12 +83,13 @@ API Service
 | `grafana` | Dashboards — metrics (Prometheus) + traces (Tempo) + logs (Loki) |
 | `mock-ntfn-provider` | Mockoon-based stub webhook endpoint for local delivery testing |
 | `migrate-api` | One-shot container that runs `api` DB migrations on startup |
-| `migrate-processor` | One-shot container that runs `processor` DB migrations on startup |
+| `migrate-processor` | One-shot container that runs `retryscheduler` DB migrations on startup |
 
 ### Service Documentation
 
 - [api/README.md](api/README.md) — HTTP API reference, request lifecycle, pagination, scheduler, and delivery result consumer
 - [processor/README.md](processor/README.md) — Priority router, delivery pipeline, retry mechanism, and rate limiting
+- [retryscheduler/README.md](retryscheduler/README.md) — Retry consumer, dispatcher, and scheduling logic
 
 ## Prerequisites
 
@@ -95,7 +101,7 @@ Run `make help` to see all available commands.
 
 ### 1. Configure environment
 
-Before running the services, `api/` and `processor/` folders need a `.env` file inside each. Each folder contains `.env.example` files that are pre-filled for docker-compose, which you can simply create a copy of and then rename to `.env`.
+Before running the services, `api/`, `processor/`, and `retryscheduler/` folders each need a `.env` file. Each folder contains an `.env.example` pre-filled for docker-compose — copy and rename it to `.env`.
 
 
 ### 2. Start all services

@@ -10,3 +10,11 @@ var topicByPriority = map[string]string{
 	string(model.PriorityNormal): stream.TopicNormal,
 	string(model.PriorityLow):    stream.TopicLow,
 }
+
+func topicForPriority(priority string) string {
+	topic := topicByPriority[priority]
+	if topic != "" {
+		return topic
+	}
+	return topicByPriority[string(model.PriorityNormal)]
+}

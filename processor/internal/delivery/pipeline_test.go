@@ -11,7 +11,6 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/google/uuid"
 
-	processordb "github.com/barkin/insider-notification/processor/internal/db"
 	"github.com/barkin/insider-notification/processor/internal/delivery"
 	"github.com/barkin/insider-notification/processor/internal/service"
 	"github.com/barkin/insider-notification/shared/model"
@@ -21,8 +20,9 @@ import (
 // --- fakes ---
 
 type fakePublisher struct {
-	mu   sync.Mutex
-	sent []publishedMsg
+	mu    sync.Mutex
+	sent  []publishedMsg
+	errOn string // return errTest when publishing to this topic
 }
 
 type publishedMsg struct {
@@ -31,6 +31,9 @@ type publishedMsg struct {
 }
 
 func (f *fakePublisher) Publish(_ context.Context, topic string, payload any) error {
+	if f.errOn != "" && topic == f.errOn {
+		return errTest
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.sent = append(f.sent, publishedMsg{topic, payload})
@@ -73,40 +76,8 @@ func (f *fakeLimiter) IsAllowed(_ context.Context, _ string) (bool, time.Duratio
 	return f.allowed, 0, nil
 }
 
-type mockAttemptWriter struct {
-	mu           sync.Mutex
-	payloadCalls []*processordb.DeliveryAttempt
-	err          error
-}
-
-var _ processordb.DeliveryAttemptRepository = (*mockAttemptWriter)(nil)
-
-func (m *mockAttemptWriter) Upsert(_ context.Context, a *processordb.DeliveryAttempt) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.payloadCalls = append(m.payloadCalls, a)
-	return m.err
-}
-
-func (m *mockAttemptWriter) DeleteByID(_ context.Context, _ string) error {
-	return nil
-}
-
-func (m *mockAttemptWriter) FindDueBefore(_ context.Context, _ time.Time, _ int) ([]*processordb.DeliveryAttempt, error) {
-	return nil, nil
-}
-
-func (m *mockAttemptWriter) payloads() []*processordb.DeliveryAttempt {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	out := make([]*processordb.DeliveryAttempt, len(m.payloadCalls))
-	copy(out, m.payloadCalls)
-	return out
-}
-
 // --- helpers ---
 
-// runSingle delivers one event through p and returns the watermill message for Ack/Nack inspection.
 func runSingle(p *delivery.NotificationDeliveryPipeline, evt stream.NotificationReadyEvent) *message.Message {
 	ctx := context.Background()
 	msg := message.NewMessage(watermill.NewUUID(), nil)
@@ -124,7 +95,7 @@ const baseNotifID = "00000000-0000-0000-0000-000000000001"
 func baseEvent() stream.NotificationReadyEvent {
 	return stream.NotificationReadyEvent{
 		NotificationID: baseNotifID,
-		Priority:       string(string(model.PriorityHigh)),
+		Priority:       string(model.PriorityHigh),
 		Channel:        string(model.ChannelEmail),
 		Recipient:      "+905551234567",
 		Content:        "Your message",
@@ -138,14 +109,13 @@ func baseEventWithID() stream.NotificationReadyEvent {
 	return evt
 }
 
-func newPipeline(pub *fakePublisher, dc service.NtfnDeliveryClient, lim service.Limiter, lockGranted bool, attempts processordb.DeliveryAttemptRepository) *delivery.NotificationDeliveryPipeline {
+func newPipeline(pub *fakePublisher, dc service.NtfnDeliveryClient, lim service.Limiter, lockGranted bool) *delivery.NotificationDeliveryPipeline {
 	m, _ := service.NewMetrics(nil)
 	return delivery.NewNotificationDeliveryPipeline(
 		pub,
 		dc,
 		lim,
 		&fakeLocker{locked: lockGranted},
-		attempts,
 		m,
 	)
 }
@@ -164,7 +134,7 @@ func isAcked(msg *message.Message) bool {
 // Lock miss: ACKs immediately, no status published.
 func TestPipeline_LockMiss(t *testing.T) {
 	pub := &fakePublisher{}
-	c := newPipeline(pub, nil, nil, false, &mockAttemptWriter{})
+	c := newPipeline(pub, nil, nil, false)
 
 	msg := runSingle(c, baseEvent())
 
@@ -176,12 +146,12 @@ func TestPipeline_LockMiss(t *testing.T) {
 	}
 }
 
-// Full pipeline with terminal non-retryable failure: publishes failed only.
+// Full pipeline with terminal non-retryable failure: publishes failed status only.
 func TestPipeline_TerminalFailure(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: false}}
 	lim := &fakeLimiter{allowed: true}
-	c := newPipeline(pub, dc, lim, true, &mockAttemptWriter{})
+	c := newPipeline(pub, dc, lim, true)
 
 	msg := runSingle(c, baseEvent())
 
@@ -201,12 +171,12 @@ func TestPipeline_TerminalFailure(t *testing.T) {
 	}
 }
 
-// Success result: one status event with status=delivered, no DB write.
+// Success result: one status event with status=delivered, no retry publish.
 func TestPipeline_Delivered(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: true, StatusCode: 202, LatencyMS: 50}}
 	lim := &fakeLimiter{allowed: true}
-	c := newPipeline(pub, dc, lim, true, &mockAttemptWriter{})
+	c := newPipeline(pub, dc, lim, true)
 
 	msg := runSingle(c, baseEvent())
 
@@ -226,44 +196,44 @@ func TestPipeline_Delivered(t *testing.T) {
 	}
 }
 
-// Retryable failure with attempts remaining: attempt written to DB with retry_after set; no stream publish.
-func TestPipeline_Retryable_WritesRetryAfter(t *testing.T) {
+// Retryable failure with attempts remaining: publishes NotificationRetryScheduleEvent to TopicRetry.
+func TestPipeline_Retryable_PublishesRetry(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: true, StatusCode: 503}}
 	lim := &fakeLimiter{allowed: true}
-	aw := &mockAttemptWriter{}
-	c := newPipeline(pub, dc, lim, true, aw)
+	c := newPipeline(pub, dc, lim, true)
 
+	before := time.Now()
 	msg := runSingle(c, baseEventWithID())
 
 	if !isAcked(msg) {
 		t.Error("expected ACK")
 	}
-	if len(pub.calls()) != 0 {
-		t.Errorf("expected no stream publishes, got %v", pub.topicsPublished())
+	calls := pub.calls()
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 publish (retry), got %d: %v", len(calls), pub.topicsPublished())
 	}
-	payloads := aw.payloads()
-	if len(payloads) != 1 {
-		t.Fatalf("expected 1 SavePayload call, got %d", len(payloads))
+	if calls[0].topic != stream.TopicRetry {
+		t.Errorf("expected publish to %s, got %s", stream.TopicRetry, calls[0].topic)
 	}
-	if payloads[0].RetryAfter == nil {
-		t.Error("expected retry_after to be set")
+	retryEvt := calls[0].payload.(stream.NotificationRetryScheduleEvent)
+	if retryEvt.ScheduledAt.Before(before) {
+		t.Error("expected ScheduledAt to be in the future")
 	}
-	if payloads[0].AttemptNumber != 1 {
-		t.Errorf("attempt_number = %d, want 1", payloads[0].AttemptNumber)
+	if retryEvt.AttemptNumber != 1 {
+		t.Errorf("AttemptNumber = %d, want 1", retryEvt.AttemptNumber)
 	}
-	if payloads[0].Priority != string(model.PriorityHigh) {
-		t.Errorf("priority = %q, want high", payloads[0].Priority)
+	if retryEvt.Priority != string(model.PriorityHigh) {
+		t.Errorf("Priority = %q, want high", retryEvt.Priority)
 	}
 }
 
-// Retryable failure at max attempts: status=failed published, attempt written without retry_after.
+// Retryable failure at max attempts: status=failed published, no retry publish.
 func TestPipeline_Exhausted_Failed(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: true, StatusCode: 503}}
 	lim := &fakeLimiter{allowed: true}
-	aw := &mockAttemptWriter{}
-	c := newPipeline(pub, dc, lim, true, aw)
+	c := newPipeline(pub, dc, lim, true)
 
 	// 3 prior attempts → currentAttempt=4=MaxAttempts → terminal
 	evt := baseEventWithID()
@@ -286,19 +256,16 @@ func TestPipeline_Exhausted_Failed(t *testing.T) {
 		t.Errorf("expected status %s, got %s", string(model.StatusFailed), last.Status)
 	}
 	if last.AttemptNumber != 4 {
-		t.Errorf("expected attempt_number 4, got %d", last.AttemptNumber)
-	}
-	if len(aw.payloads()) != 0 {
-		t.Errorf("expected no SavePayload calls on exhaustion, got %d", len(aw.payloads()))
+		t.Errorf("expected AttemptNumber 4, got %d", last.AttemptNumber)
 	}
 }
 
-// Non-retryable failure: status=failed, no re-enqueue.
+// Non-retryable failure: status=failed, no retry publish.
 func TestPipeline_NonRetryable_Failed(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: false, StatusCode: 400}}
 	lim := &fakeLimiter{allowed: true}
-	c := newPipeline(pub, dc, lim, true, &mockAttemptWriter{})
+	c := newPipeline(pub, dc, lim, true)
 
 	msg := runSingle(c, baseEvent())
 
@@ -315,101 +282,96 @@ func TestPipeline_NonRetryable_Failed(t *testing.T) {
 	}
 }
 
-// Rate limited: SavePayload with retry_after set (not Create), no direct stream publish.
-func TestPipeline_RateLimited_Requeued(t *testing.T) {
+// Rate limited: publishes NotificationRetryScheduleEvent to TopicRetry, no delivery attempted.
+func TestPipeline_RateLimited_PublishesRetry(t *testing.T) {
 	pub := &fakePublisher{}
 	lim := &fakeLimiter{allowed: false}
-	aw := &mockAttemptWriter{}
-	c := newPipeline(pub, nil, lim, true, aw)
+	c := newPipeline(pub, nil, lim, true)
 
+	before := time.Now()
 	msg := runSingle(c, baseEvent())
 
 	if !isAcked(msg) {
 		t.Error("expected ACK")
 	}
-	if len(pub.calls()) != 0 {
-		t.Errorf("expected no direct publishes, got %v", pub.topicsPublished())
+	calls := pub.calls()
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 retry publish for rate-limited event, got %d", len(calls))
 	}
-	payloads := aw.payloads()
-	if len(payloads) != 1 {
-		t.Fatalf("expected 1 SavePayload call for rate-limited retry, got %d", len(payloads))
+	if calls[0].topic != stream.TopicRetry {
+		t.Errorf("expected publish to %s, got %s", stream.TopicRetry, calls[0].topic)
 	}
-	if payloads[0].RetryAfter == nil || payloads[0].RetryAfter.IsZero() {
-		t.Error("expected retry_after to be set on saved payload")
+	retryEvt := calls[0].payload.(stream.NotificationRetryScheduleEvent)
+	if retryEvt.ScheduledAt.Before(before) {
+		t.Error("expected ScheduledAt to be in the future")
+	}
+	// Rate limit does not increment AttemptNumber — the attempt hasn't happened yet.
+	if retryEvt.AttemptNumber != 0 {
+		t.Errorf("AttemptNumber = %d, want 0 (no delivery was attempted)", retryEvt.AttemptNumber)
 	}
 }
 
 // --- delivery attempt tests ---
 
-// Retryable failure path: attempt written with correct attempt number from event.
+// Retryable failure path: retry event carries correct AttemptNumber.
 func TestPipeline_Attempts_Retryable(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: true, StatusCode: 503}}
 	lim := &fakeLimiter{allowed: true}
-	aw := &mockAttemptWriter{}
-	c := newPipeline(pub, dc, lim, true, aw)
+	c := newPipeline(pub, dc, lim, true)
 
 	evt := baseEventWithID()
 	evt.MaxAttempts = 4
 	runSingle(c, evt)
 
-	payloads := aw.payloads()
-	if len(payloads) != 1 {
-		t.Fatalf("expected 1 SavePayload call, got %d", len(payloads))
+	calls := pub.calls()
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 retry publish, got %d", len(calls))
 	}
-	if payloads[0].AttemptNumber != 1 {
-		t.Errorf("attempt_number = %d, want 1", payloads[0].AttemptNumber)
+	retryEvt := calls[0].payload.(stream.NotificationRetryScheduleEvent)
+	if retryEvt.AttemptNumber != 1 {
+		t.Errorf("AttemptNumber = %d, want 1", retryEvt.AttemptNumber)
 	}
 }
 
-// Terminal failure path: no attempt written via Create; state cleaned up via Delete, status published.
+// Terminal failure path: no retry publish, status published.
 func TestPipeline_Attempts_Terminal(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: false, StatusCode: 400}}
 	lim := &fakeLimiter{allowed: true}
-	aw := &mockAttemptWriter{}
-	c := newPipeline(pub, dc, lim, true, aw)
+	c := newPipeline(pub, dc, lim, true)
 
 	msg := runSingle(c, baseEventWithID())
 
 	if !isAcked(msg) {
 		t.Error("expected ACK")
 	}
-	if len(aw.payloads()) != 0 {
-		t.Errorf("expected no SavePayload calls for terminal failure, got %d", len(aw.payloads()))
-	}
 	calls := pub.calls()
 	if len(calls) != 1 || calls[0].topic != stream.TopicStatus {
-		t.Errorf("expected status publish, got %v", pub.topicsPublished())
+		t.Errorf("expected status publish only, got %v", pub.topicsPublished())
 	}
 }
 
-// Write error on terminal failure: consumer still ACKs and publishes status.
-func TestPipeline_Attempts_WriteError_DoesNotAbort(t *testing.T) {
-	pub := &fakePublisher{}
-	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: false, StatusCode: 400}}
+// Retry publish error causes Nack so the message is redelivered.
+func TestPipeline_RetryPublishError_Nacks(t *testing.T) {
+	pub := &fakePublisher{errOn: stream.TopicRetry}
+	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: true, StatusCode: 503}}
 	lim := &fakeLimiter{allowed: true}
-	aw := &mockAttemptWriter{err: errTest}
-	c := newPipeline(pub, dc, lim, true, aw)
+	c := newPipeline(pub, dc, lim, true)
 
 	msg := runSingle(c, baseEventWithID())
 
-	if !isAcked(msg) {
-		t.Error("expected ACK even when attempt write fails")
-	}
-	calls := pub.calls()
-	if len(calls) != 1 || calls[0].topic != stream.TopicStatus {
-		t.Errorf("expected status publish after write error, got %v", pub.topicsPublished())
+	if isAcked(msg) {
+		t.Error("expected Nack when retry publish fails")
 	}
 }
 
-// Notification payload is persisted via SavePayload so the retry dispatcher can re-publish without a DB lookup.
-func TestPipeline_Attempts_PayloadPersisted(t *testing.T) {
+// Retry event carries the full notification payload so retryscheduler can republish without a DB lookup.
+func TestPipeline_Attempts_PayloadCarried(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: true, StatusCode: 503}}
 	lim := &fakeLimiter{allowed: true}
-	aw := &mockAttemptWriter{}
-	c := newPipeline(pub, dc, lim, true, aw)
+	c := newPipeline(pub, dc, lim, true)
 
 	evt := baseEventWithID()
 	evt.Channel = string(model.ChannelSMS)
@@ -418,23 +380,23 @@ func TestPipeline_Attempts_PayloadPersisted(t *testing.T) {
 	evt.MaxAttempts = 3
 	runSingle(c, evt)
 
-	payloads := aw.payloads()
-	if len(payloads) != 1 {
-		t.Fatalf("expected 1 payload write (SavePayload), got %d", len(payloads))
+	calls := pub.calls()
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 retry publish, got %d", len(calls))
 	}
-	p := payloads[0]
-	if p.Channel != string(model.ChannelSMS) {
-		t.Errorf("channel = %q, want sms", p.Channel)
+	retryEvt := calls[0].payload.(stream.NotificationRetryScheduleEvent)
+	if retryEvt.Channel != string(model.ChannelSMS) {
+		t.Errorf("Channel = %q, want sms", retryEvt.Channel)
 	}
-	if p.Recipient != "+905550001" {
-		t.Errorf("recipient = %q, want +905550001", p.Recipient)
+	if retryEvt.Recipient != "+905550001" {
+		t.Errorf("Recipient = %q, want +905550001", retryEvt.Recipient)
 	}
-	if p.Content != "hello" {
-		t.Errorf("content = %q, want hello", p.Content)
+	if retryEvt.Content != "hello" {
+		t.Errorf("Content = %q, want hello", retryEvt.Content)
 	}
-	if p.MaxAttempts != 3 {
-		t.Errorf("max_attempts = %d, want 3", p.MaxAttempts)
+	if retryEvt.MaxAttempts != 3 {
+		t.Errorf("MaxAttempts = %d, want 3", retryEvt.MaxAttempts)
 	}
 }
 
-var errTest = errors.New("simulated write error")
+var errTest = errors.New("simulated error")

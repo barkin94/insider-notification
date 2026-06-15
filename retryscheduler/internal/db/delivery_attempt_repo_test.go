@@ -7,7 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
-	processordb "github.com/barkin/insider-notification/processor/internal/db"
+	schedulerdb "github.com/barkin/insider-notification/retryscheduler/internal/db"
 )
 
 func mustNotifID(t *testing.T) string {
@@ -19,9 +19,9 @@ func mustNotifID(t *testing.T) string {
 	return id.String()
 }
 
-func newPayload(t *testing.T, notifID string) *processordb.DeliveryAttempt {
+func newPayload(t *testing.T, notifID string) *schedulerdb.DeliveryAttempt {
 	t.Helper()
-	return &processordb.DeliveryAttempt{
+	return &schedulerdb.DeliveryAttempt{
 		NotificationID: notifID,
 		Channel:        "email",
 		Recipient:      "test@example.com",
@@ -33,7 +33,7 @@ func newPayload(t *testing.T, notifID string) *processordb.DeliveryAttempt {
 
 func TestSavePayload_isIdempotent(t *testing.T) {
 	ctx := context.Background()
-	repo := processordb.NewDeliveryAttemptRepository(testDB)
+	repo := schedulerdb.NewDeliveryAttemptRepository(testDB)
 	notifID := mustNotifID(t)
 
 	payload := newPayload(t, notifID)
@@ -49,7 +49,7 @@ func TestSavePayload_isIdempotent(t *testing.T) {
 
 func TestSavePayload_upsertUpdatesRetryAfter(t *testing.T) {
 	ctx := context.Background()
-	repo := processordb.NewDeliveryAttemptRepository(testDB)
+	repo := schedulerdb.NewDeliveryAttemptRepository(testDB)
 	notifID := mustNotifID(t)
 
 	if err := repo.Upsert(ctx, newPayload(t, notifID)); err != nil {
@@ -68,7 +68,7 @@ func TestSavePayload_upsertUpdatesRetryAfter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetDue: %v", err)
 	}
-	var found *processordb.DeliveryAttempt
+	var found *schedulerdb.DeliveryAttempt
 	for _, a := range due {
 		if a.NotificationID == notifID {
 			found = a
@@ -87,7 +87,7 @@ func TestSavePayload_upsertUpdatesRetryAfter(t *testing.T) {
 
 func TestDelete_removesRow(t *testing.T) {
 	ctx := context.Background()
-	repo := processordb.NewDeliveryAttemptRepository(testDB)
+	repo := schedulerdb.NewDeliveryAttemptRepository(testDB)
 	notifID := mustNotifID(t)
 
 	retryAt := time.Now().Add(-time.Second).UTC()
@@ -113,7 +113,7 @@ func TestDelete_removesRow(t *testing.T) {
 
 func TestGetDue_respectsLimit(t *testing.T) {
 	ctx := context.Background()
-	repo := processordb.NewDeliveryAttemptRepository(testDB)
+	repo := schedulerdb.NewDeliveryAttemptRepository(testDB)
 
 	ids := make([]string, 3)
 	retryAt := time.Now().Add(-time.Second).UTC()

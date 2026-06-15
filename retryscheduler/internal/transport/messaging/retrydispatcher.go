@@ -5,21 +5,20 @@ import (
 	"log/slog"
 	"time"
 
-	processordb "github.com/barkin/insider-notification/processor/internal/db"
-	"github.com/barkin/insider-notification/shared/model"
+	schedulerdb "github.com/barkin/insider-notification/retryscheduler/internal/db"
 	"github.com/barkin/insider-notification/shared/stream"
 )
 
 // RetryDispatcher republishes due retry attempts without occupying delivery workers
 // during backoff waits.
 type RetryDispatcher struct {
-	repo     processordb.DeliveryAttemptRepository
+	repo     schedulerdb.DeliveryAttemptRepository
 	pub      stream.Publisher
 	interval time.Duration
 	batch    int
 }
 
-func NewRetryDispatcher(repo processordb.DeliveryAttemptRepository, pub stream.Publisher, interval time.Duration, batch int) *RetryDispatcher {
+func NewRetryDispatcher(repo schedulerdb.DeliveryAttemptRepository, pub stream.Publisher, interval time.Duration, batch int) *RetryDispatcher {
 	if interval <= 0 {
 		interval = time.Second
 	}
@@ -76,12 +75,4 @@ func (d *RetryDispatcher) Tick(ctx context.Context) {
 			slog.ErrorContext(ctx, "retry dispatcher: delete attempt", "id", a.NotificationID, "error", err)
 		}
 	}
-}
-
-func topicForPriority(priority string) string {
-	topic := topicByPriority[priority]
-	if topic != "" {
-		return topic
-	}
-	return topicByPriority[string(model.PriorityNormal)]
 }

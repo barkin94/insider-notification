@@ -15,9 +15,6 @@ processor/
 │   │   └── app.go                                       # Dependency wiring and lifecycle
 │   ├── config/
 │   │   └── config.go                                    # Environment variable loading
-│   ├── db/
-│   │   ├── model.go                                     # DeliveryAttempt entity
-│   │   └── delivery_attempt_repo.go                     # PostgreSQL repository
 │   ├── delivery/
 │   │   ├── priorityrouter.go                            # Weighted round-robin scheduler
 │   │   ├── pipeline.go                                  # Four-gate delivery pipeline
@@ -25,14 +22,11 @@ processor/
 │   ├── service/
 │   │   ├── ntfndeliveryclient.go                        # HTTP client for the delivery provider
 │   │   ├── ratelimit.go                                 # Per-channel token-bucket rate limiter
-│   │   ├── retry.go                                     # Retry logic and backoff
+│   │   ├── retry.go                                     # Retry backoff formula
 │   │   └── metrics.go                                   # OpenTelemetry metrics
 │   └── transport/
 │       └── messaging/
-│           ├── router.go                                # Redis Stream consumer setup
-│           ├── topics.go                                # Stream / consumer-group constants
-│           └── retrydispatcher.go                       # Background retry re-enqueuer
-└── migrations/                                          # SQL migration files
+│           └── router.go                                # Redis Stream consumer setup
 ```
 
 ---
@@ -51,11 +45,10 @@ WorkerPool (N concurrent workers)
     ▼
 Delivery Pipeline (lock → rate-limit → send → record)
     ├──► Notification Provider (HTTP POST)
-    └──► PostgreSQL (DeliveryAttempt state)
-
-Background Goroutines
-    └── RetryDispatcher  — polls DB every 1s, re-enqueues due retries to Redis
+    └──► TopicRetry (NotificationRetryScheduleEvent — handled by retryscheduler)
 ```
+
+Retry scheduling is handled by the [`retryscheduler`](../retryscheduler/README.md) service. The processor is stateless — it only reads from and writes to Redis.
 
 ### Layers
 
@@ -63,8 +56,7 @@ Background Goroutines
 | --- | --- | --- |
 | Delivery | `internal/delivery` | Priority routing, worker pool, four-gate pipeline |
 | Service | `internal/service` | HTTP delivery client, rate limiting, retry backoff |
-| DB | `internal/db` | DeliveryAttempt persistence (PostgreSQL via Bun ORM) |
-| Messaging | `internal/transport/messaging` | Redis Stream consumer and retry dispatcher |
+| Messaging | `internal/transport/messaging` | Redis Stream consumer setup |
 
 ---
 
@@ -126,7 +118,7 @@ NotificationReadyEvent
 │
 ├─ 2. Rate limit    IsAllowed(channel)
 │                   allowed  → continue
-│                   limited  → save payload, write delay to ZSET, Ack
+│                   limited  → publish NotificationRetryScheduleEvent to TopicRetry, Ack
 │                   error    → Nack
 │
 ├─ 3. Send          HTTP POST to notification provider
@@ -135,9 +127,9 @@ NotificationReadyEvent
 │                   anything else / err → retryable failure
 │
 └─ 4. Record outcome
-        success           → publish delivered status, clear attempt state
-        retryable failure → save payload, create retry record with retry_after
-        terminal failure  → publish failed status, clear attempt state
+        success           → publish delivered status
+        retryable failure → publish NotificationRetryScheduleEvent to TopicRetry
+        terminal failure  → publish failed status
 ```
 
 The pipeline Acks the message at the end of a successful gate sequence. It Nacks only when state could not be persisted (so the message is redelivered by the broker).
@@ -146,7 +138,7 @@ The pipeline Acks the message at the end of a successful gate sequence. It Nacks
 
 ## Published Events
 
-Terminal outcomes (success or exhausted retries) are published to the status topic as `NotificationDeliveryResultEvent`:
+Terminal outcomes (success or exhausted retries) are published to the status topic as `NotificationDeliveryResultEvent`. Retry-eligible outcomes are published to the retry topic as `NotificationRetryScheduleEvent` and consumed by the [`retryscheduler`](../retryscheduler/README.md) service.
 
 | Field                 | Notes                              |
 |-----------------------|------------------------------------|
@@ -162,13 +154,7 @@ Terminal outcomes (success or exhausted retries) are published to the status top
 
 ## Retry Mechanism
 
-There are two independent retry paths.
-
-### Delivery failure — exponential backoff
-
-When a send fails with a retryable error and the attempt limit has not been reached, the pipeline writes a `DeliveryAttempt` record with a `retry_after` timestamp.
-
-Backoff formula (1-indexed attempt number):
+When a delivery attempt is rate-limited or fails with a retryable error, the processor publishes a `NotificationRetryScheduleEvent` to `TopicRetry` with a `ScheduledAt` timestamp computed from the backoff formula:
 
 ```text
 delay = min(60s × 2^(attempt−1), 480s) + uniform jitter in [0, delay × 0.2]
@@ -182,42 +168,7 @@ delay = min(60s × 2^(attempt−1), 480s) + uniform jitter in [0, delay × 0.2]
 
 Default max attempts is **4** (3 retries). A per-notification `max_attempts` override is accepted at creation time.
 
-### Rate limit — delay queue
-
-When the channel's token bucket is exhausted, the event is not retried immediately. Instead the payload is saved and a delay is written to a ZSET with `retry_after = now + retryAfter` (minimum 1s). The RetryDispatcher picks it up once the window expires.
-
-### RetryDispatcher — `internal/transport/messaging/retrydispatcher.go`
-
-A background ticker (default: every 1s) that polls for due attempts and re-enqueues them:
-
-```text
-every interval:
-  GetDue(now, batch=100)
-  → for each due attempt:
-      republish NotificationReadyEvent to the original priority topic
-      RemoveDue(notificationID)
-```
-
-Re-enqueuing to the original priority topic means retried messages go through the same weighted router as new messages — high-priority retries are not penalised.
-
----
-
-## Persistence
-
-**Database:** PostgreSQL via [Bun ORM](https://bun.uptrace.dev/)
-
-**Table:** `delivery_attempts`
-
-| Column            | Type        | Notes                                             |
-|-------------------|-------------|---------------------------------------------------|
-| `notification_id` | UUID        | Primary key (one active attempt per notification) |
-| `attempt_number`  | INT         | Current attempt count                             |
-| `priority`        | VARCHAR     | `high`, `normal`, `low`                           |
-| `channel`         | VARCHAR     | `sms`, `email`, `push`                            |
-| `recipient`       | VARCHAR     | Delivery target                                   |
-| `content`         | TEXT        | Notification body                                 |
-| `max_attempts`    | INT         | Upper limit on retries                            |
-| `retry_after`     | TIMESTAMPTZ | Nullable — set when a retry is scheduled          |
+The [`retryscheduler`](../retryscheduler/README.md) service consumes `TopicRetry`, persists the scheduled attempt to Postgres, and republishes it to the appropriate priority topic once `ScheduledAt` is past.
 
 ---
 
@@ -232,13 +183,10 @@ Re-enqueuing to the original priority topic means retried messages go through th
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `DATABASE_URL` | — | PostgreSQL DSN (required) |
 | `REDIS_ADDR` | — | Redis address, e.g. `localhost:6379` (required) |
 | `WORKER_CONCURRENCY` | `10` | Number of concurrent delivery workers |
 | `NTFN_DELIVERY_CLIENT_URL` | `http://localhost:8080` | Notification provider base URL |
 | `NTFN_DELIVERY_CLIENT_TIMEOUT` | `10s` | HTTP client timeout |
-| `RETRY_DISPATCH_INTERVAL` | `1s` | How often the RetryDispatcher polls for due retries |
-| `RETRY_DISPATCH_BATCH_SIZE` | `100` | Max retries re-enqueued per tick |
 | `HIGH_WEIGHT` | `3` | Router weight for the high-priority stream |
 | `NORMAL_WEIGHT` | `2` | Router weight for the normal-priority stream |
 | `LOW_WEIGHT` | `1` | Router weight for the low-priority stream |
@@ -279,14 +227,14 @@ cp processor/.env.example processor/.env
 ### 2. Start the service
 
 ```bash
-# With Docker Compose (recommended — runs migrations automatically)
+# With Docker Compose (recommended)
 docker compose up processor
 
-# Directly (requires PostgreSQL, Redis, and mock-ntfn-provider reachable on localhost)
+# Directly (requires Redis and mock-ntfn-provider reachable on localhost)
 go run ./cmd/main.go
 ```
 
-When using Docker Compose, the `migrate-processor` container runs the SQL migrations and exits before the service starts.
+The processor has no database dependency. Retry scheduling is handled by the `retryscheduler` service.
 
 ### 3. Verify
 
