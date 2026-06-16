@@ -5,8 +5,6 @@ import (
 	"log/slog"
 	"time"
 
-	"go.opentelemetry.io/otel"
-
 	"github.com/barkin/insider-notification/processor/internal/service"
 	"github.com/barkin/insider-notification/shared/lock"
 	"github.com/barkin/insider-notification/shared/model"
@@ -42,9 +40,6 @@ func NewNotificationDeliveryPipeline(
 // Run runs the notification through each gate in sequence.
 // Gates own their logging; Run owns Ack/Nack and returns any infrastructure error so the caller can observe failures.
 func (p *NotificationDeliveryPipeline) Run(ctx context.Context, result stream.Result[stream.NotificationReadyEvent]) error {
-	ctx, span := otel.Tracer("processor").Start(ctx, "deliver")
-	defer span.End()
-
 	evt, msg := result.Event, result.Msg
 
 	lockAcquired, err := p.locker.TryLock(ctx, evt.NotificationID)

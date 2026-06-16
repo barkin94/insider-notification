@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"sync"
 
+	sharedotel "github.com/barkin/insider-notification/shared/otel"
 	"github.com/barkin/insider-notification/shared/stream"
 )
 
@@ -30,12 +31,13 @@ func (c *NotificationDeliveryWorkerPool) Run(ctx context.Context) {
 		go func() {
 			defer wg.Done()
 			for ctx.Err() == nil {
-				nextNtfnChannelToProcess, ok := c.notificationSelectorByPriority.Next(ctx)
+				ntfnChannelToProcess, ok := c.notificationSelectorByPriority.Next(ctx)
 				if !ok {
 					continue
 				}
-				if err := c.notificationDeliveryPipeline.Run(nextNtfnChannelToProcess.Ctx, nextNtfnChannelToProcess); err != nil {
-					slog.ErrorContext(nextNtfnChannelToProcess.Ctx, "pipeline error", "error", err)
+				if err := c.notificationDeliveryPipeline.Run(ntfnChannelToProcess.Ctx, ntfnChannelToProcess); err != nil {
+					slog.ErrorContext(ntfnChannelToProcess.Ctx, "pipeline error", "error", err)
+					sharedotel.RecordError(ntfnChannelToProcess.Ctx, err)
 				}
 			}
 		}()

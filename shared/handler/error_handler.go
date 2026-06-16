@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	sharedErrors "github.com/barkin/insider-notification/shared/errors"
+	sharedotel "github.com/barkin/insider-notification/shared/otel"
 )
 
 type ErrorBody struct {
@@ -24,6 +25,8 @@ func errHandler(h AppHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := h(w, r); err != nil {
 			slog.ErrorContext(r.Context(), "error", "error", err.Error())
+
+			sharedotel.RecordError(r.Context(), err)
 
 			var notFoundErr *sharedErrors.NotFoundError
 			if errors.As(err, &notFoundErr) {

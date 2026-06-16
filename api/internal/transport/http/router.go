@@ -7,7 +7,6 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"github.com/uptrace/bun"
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	_ "github.com/barkin/insider-notification/api/docs"
 	"github.com/barkin/insider-notification/api/internal/service"
@@ -42,15 +41,17 @@ func NewRouter(deps Deps) http.Handler {
 		},
 	}
 
-	r := sharedhandler.NewRouter(checkers)
-
-	r.Route("/api/v1/notifications", func(r *sharedhandler.AppRouter) {
-		r.Post("/", createNotification(deps.Service))
-		r.Get("/", listNotifications(deps.Service))
-		r.Post("/batch", createBatch(deps.Service))
-		r.Get("/{id}", getNotification(deps.Service))
-		r.Post("/{id}/cancel", cancelNotification(deps.Service))
+	return sharedhandler.NewHandler(sharedhandler.HandlerOpts{
+		RegisterRoutesFunc: func(r *sharedhandler.AppRouter) {
+			r.Route("/api/v1/notifications", func(r *sharedhandler.AppRouter) {
+				r.Post("/", createNotification(deps.Service))
+				r.Get("/", listNotifications(deps.Service))
+				r.Post("/batch", createBatch(deps.Service))
+				r.Get("/{id}", getNotification(deps.Service))
+				r.Post("/{id}/cancel", cancelNotification(deps.Service))
+			})
+		},
+		ReadinessChecks: checkers,
+		OTelServiceName: "api",
 	})
-
-	return otelhttp.NewHandler(r, "api")
 }

@@ -18,12 +18,17 @@ func main() {
 	sharedlogger.Init(cfg.LogLevel)
 
 	if cfg.OTelEnabled {
-		otelShutdown := sharedotel.Init(context.Background(), cfg.OTelServiceName, cfg.OTelEndpoint, cfg.LogLevel)
+		otelShutdown, err := sharedotel.Init(context.Background(), cfg.OTelServiceName, cfg.OTelEndpoint, cfg.LogLevel)
 		defer otelShutdown(context.Background()) //nolint:errcheck
+
+		if err != nil {
+			slog.Error("otel init", "error", err)
+			os.Exit(1)
+		}
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
+	ctx, stopSignal := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stopSignal()
 
 	a, cleanup, err := app.New(ctx, cfg)
 	if err != nil {
@@ -32,5 +37,10 @@ func main() {
 	}
 	defer cleanup()
 
-	a.Run(ctx)
+	stop := a.Start(ctx)
+
+	<-ctx.Done()
+	slog.Info("shutting down, waiting for goroutines")
+	stop()
+	slog.Info("all goroutines stopped")
 }

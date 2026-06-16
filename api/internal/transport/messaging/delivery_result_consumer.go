@@ -5,7 +5,6 @@ import (
 	"log/slog"
 
 	"github.com/google/uuid"
-	"go.opentelemetry.io/otel"
 
 	"github.com/barkin/insider-notification/api/internal/service"
 	"github.com/barkin/insider-notification/shared/stream"
@@ -37,9 +36,6 @@ func (c *DeliveryResultConsumer) Run(ctx context.Context) {
 }
 
 func (c *DeliveryResultConsumer) processOne(ctx context.Context, result stream.Result[stream.NotificationDeliveryResultEvent]) {
-	ctx, span := otel.Tracer("api").Start(ctx, "deliveryResultConsumer.processOne")
-	defer span.End()
-
 	evt := result.Event
 	msg := result.Msg
 

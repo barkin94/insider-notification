@@ -17,6 +17,7 @@ import (
 type App struct {
 	retryConsumer   *messaging.RetryConsumer
 	retryDispatcher *messaging.RetryDispatcher
+	wg              sync.WaitGroup
 }
 
 // New constructs all dependencies and returns a ready-to-run App.
@@ -42,27 +43,21 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 	}, cleanup, nil
 }
 
-// Run starts the retry consumer and dispatcher, blocks until ctx is cancelled,
-// then waits for all goroutines to finish.
-func (a *App) Run(ctx context.Context) {
-	var wg sync.WaitGroup
-
-	wg.Add(1)
+// Start launches the retry consumer and dispatcher in the background and returns
+// a stop function the caller must invoke to wait for all goroutines to finish.
+func (a *App) Start(ctx context.Context) func() {
+	a.wg.Add(1)
 	go func() {
-		defer wg.Done()
+		defer a.wg.Done()
 		a.retryConsumer.Run(ctx)
 	}()
 
-	wg.Add(1)
+	a.wg.Add(1)
 	go func() {
-		defer wg.Done()
+		defer a.wg.Done()
 		a.retryDispatcher.Run(ctx)
 	}()
 
 	slog.Info("retryscheduler started")
-
-	<-ctx.Done()
-	slog.Info("shutting down, waiting for goroutines")
-	wg.Wait()
-	slog.Info("all goroutines stopped")
+	return a.wg.Wait
 }

@@ -24,6 +24,7 @@ type App struct {
 	server                 *http.Server
 	scheduler              *apischeduler.Scheduler
 	deliveryResultConsumer *messaging.DeliveryResultConsumer
+	wg                     sync.WaitGroup
 }
 
 // New constructs all dependencies and returns a ready-to-run App.
@@ -61,18 +62,20 @@ func New(ctx context.Context, cfg *config.Config) (*App, func()) {
 	}, cleanup
 }
 
-// Run starts the HTTP server, scheduler, and delivery result consumer, blocks until ctx
-// is cancelled, then gracefully shuts down.
-func (a *App) Run(ctx context.Context) {
-	var wg sync.WaitGroup
-
-	wg.Add(1)
+// Start launches the HTTP server, scheduler, and delivery result consumer in the background.
+// It returns a stop function that the caller must invoke to drain all goroutines gracefully.
+func (a *App) Start(ctx context.Context) func(context.Context) {
+	a.wg.Add(1)
 	go func() {
-		defer wg.Done()
+		defer a.wg.Done()
 		a.deliveryResultConsumer.Run(ctx)
 	}()
 
-	go a.scheduler.Run(ctx)
+	a.wg.Add(1)
+	go func() {
+		defer a.wg.Done()
+		a.scheduler.Run(ctx)
+	}()
 
 	go func() {
 		slog.Info("api server starting", "addr", a.server.Addr)
@@ -81,15 +84,10 @@ func (a *App) Run(ctx context.Context) {
 		}
 	}()
 
-	<-ctx.Done()
-	slog.Info("shutting down")
-
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if err := a.server.Shutdown(shutdownCtx); err != nil {
-		slog.Error("shutdown error", "error", err)
+	return func(ctx context.Context) {
+		if err := a.server.Shutdown(ctx); err != nil {
+			slog.Error("shutdown error", "error", err)
+		}
+		a.wg.Wait()
 	}
-
-	wg.Wait()
-	slog.Info("all goroutines stopped")
 }

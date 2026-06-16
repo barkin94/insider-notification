@@ -4,8 +4,6 @@ import (
 	"context"
 	"log/slog"
 
-	"go.opentelemetry.io/otel"
-
 	schedulerdb "github.com/barkin/insider-notification/retryscheduler/internal/db"
 	"github.com/barkin/insider-notification/shared/stream"
 )
@@ -36,9 +34,6 @@ func (c *RetryConsumer) Run(ctx context.Context) {
 }
 
 func (c *RetryConsumer) handleRetryEvent(ctx context.Context, result stream.Result[stream.NotificationRetryScheduleEvent]) {
-	ctx, span := otel.Tracer("retryscheduler").Start(ctx, "retryConsumer.processOne")
-	defer span.End()
-
 	evt := result.Event
 	msg := result.Msg
 

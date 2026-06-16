@@ -11,7 +11,7 @@ import (
 )
 
 func TestLiveness_200(t *testing.T) {
-	r := handler.NewRouter(nil)
+	r := handler.NewHandler(handler.HandlerOpts{})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/liveness", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -21,7 +21,7 @@ func TestLiveness_200(t *testing.T) {
 }
 
 func TestReadiness_200_noCheckers(t *testing.T) {
-	r := handler.NewRouter(nil)
+	r := handler.NewHandler(handler.HandlerOpts{})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/readiness", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -37,7 +37,7 @@ func TestReadiness_503_failingChecker(t *testing.T) {
 			Check: func(_ context.Context) error { return errors.New("connection refused") },
 		},
 	}
-	r := handler.NewRouter(checkers)
+	r := handler.NewHandler(handler.HandlerOpts{ReadinessChecks: checkers})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/readiness", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -53,7 +53,7 @@ func TestReadiness_200_passingChecker(t *testing.T) {
 			Check: func(_ context.Context) error { return nil },
 		},
 	}
-	r := handler.NewRouter(checkers)
+	r := handler.NewHandler(handler.HandlerOpts{ReadinessChecks: checkers})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/readiness", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -63,7 +63,7 @@ func TestReadiness_200_passingChecker(t *testing.T) {
 }
 
 func TestHealth_routesRegistered(t *testing.T) {
-	r := handler.NewRouter(nil)
+	r := handler.NewHandler(handler.HandlerOpts{})
 	for _, path := range []string{"/api/v1/liveness", "/api/v1/readiness"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		w := httptest.NewRecorder()

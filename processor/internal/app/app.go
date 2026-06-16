@@ -22,6 +22,7 @@ import (
 // App wires and runs the processor service.
 type App struct {
 	workerPool *delivery.NotificationDeliveryWorkerPool
+	wg         sync.WaitGroup
 }
 
 // New constructs all dependencies and returns a ready-to-run App.
@@ -62,21 +63,15 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 	}, cleanup, nil
 }
 
-// Run starts the worker pool, blocks until ctx is cancelled,
-// then waits for all goroutines to finish their current message.
-func (a *App) Run(ctx context.Context) {
-	var wg sync.WaitGroup
-
-	wg.Add(1)
+// Start launches the worker pool in the background and returns a stop function
+// the caller must invoke to wait for all workers to finish their current message.
+func (a *App) Start(ctx context.Context) func() {
+	a.wg.Add(1)
 	go func() {
-		defer wg.Done()
+		defer a.wg.Done()
 		a.workerPool.Run(ctx)
 	}()
 
 	slog.Info("processor started")
-
-	<-ctx.Done()
-	slog.Info("shutting down, waiting for workers")
-	wg.Wait()
-	slog.Info("all workers stopped")
+	return a.wg.Wait
 }

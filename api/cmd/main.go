@@ -9,8 +9,11 @@ package main
 
 import (
 	"context"
+	"log/slog"
+	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/barkin/insider-notification/api/internal/app"
 	"github.com/barkin/insider-notification/api/internal/config"
@@ -23,15 +26,28 @@ func main() {
 	sharedlogger.Init(cfg.LogLevel)
 
 	if cfg.OTelEnabled {
-		otelShutdown := sharedotel.Init(context.Background(), cfg.OTelServiceName, cfg.OTelEndpoint, cfg.LogLevel)
+		otelShutdown, err := sharedotel.Init(context.Background(), cfg.OTelServiceName, cfg.OTelEndpoint, cfg.LogLevel)
 		defer otelShutdown(context.Background()) //nolint:errcheck
+
+		if err != nil {
+			slog.Error("otel init", "error", err)
+			os.Exit(1)
+		}
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
+	ctx, stopSignal := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stopSignal()
 
 	a, cleanup := app.New(ctx, cfg)
 	defer cleanup()
 
-	a.Run(ctx)
+	shutdown := a.Start(ctx)
+
+	<-ctx.Done()
+	slog.Info("shutting down")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	shutdown(shutdownCtx)
+	slog.Info("all goroutines stopped")
 }
