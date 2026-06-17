@@ -14,7 +14,7 @@ import (
 	"github.com/barkin/insider-notification/api/internal/service"
 	handler "github.com/barkin/insider-notification/api/internal/transport/http"
 	"github.com/barkin/insider-notification/api/internal/transport/messaging"
-	shareddb "github.com/barkin/insider-notification/shared/db"
+	sharedbun "github.com/barkin/insider-notification/shared/bun"
 	sharedredis "github.com/barkin/insider-notification/shared/redis"
 	"github.com/barkin/insider-notification/shared/stream"
 )
@@ -30,7 +30,7 @@ type App struct {
 // New constructs all dependencies and returns a ready-to-run App.
 // Panics if any infrastructure dependency is unreachable.
 func New(ctx context.Context, cfg *config.Config) (*App, func()) {
-	bundb := shareddb.Open(cfg.DatabaseURL)
+	bundb := sharedbun.Connect(cfg.DatabaseURL)
 	rdb := sharedredis.NewClient(ctx, cfg.RedisAddr)
 
 	pub := stream.NewRedisPublisher(rdb)

@@ -148,8 +148,12 @@ github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 h1:o4JXh1EVt
 github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55/go.mod h1:OmDBASR4679mdNQnz2pUhc2G8CO2JrUAVFDRBDP/hJE=
 github.com/puzpuzpuz/xsync/v3 v3.5.1 h1:GJYJZwO6IdxN/IKbneznS6yPkVC+c3zyY/j19c++5Fg=
 github.com/puzpuzpuz/xsync/v3 v3.5.1/go.mod h1:VjzYrABPabuM4KyBh1Ftq6u8nhwY5tBPKP9jpmh0nnA=
-github.com/redis/go-redis/v9 v9.20.0 h1:WnQYxLkgO2xiXTCJY0ldIiI8dNqCDlQAG+AtaH7a2a0=
-github.com/redis/go-redis/v9 v9.20.0/go.mod h1:v/M13XI1PVCDcm01VtPFOADfZtHf8YW3baQf57KlIkA=
+github.com/redis/go-redis/extra/rediscmd/v9 v9.20.1 h1:NK7vIlrbkz4xM01gzUe+SruDvAb6Brx/PdirNJPjIg4=
+github.com/redis/go-redis/extra/rediscmd/v9 v9.20.1/go.mod h1:A3RExCp0qVQt36mdE4nqkFf6YmrO6Mt2BgJeIOVOGVc=
+github.com/redis/go-redis/extra/redisotel/v9 v9.20.1 h1:x1zIEhw3jvBHPcPrXLfrp3pGHLHAX4er6sjw7GsbkZk=
+github.com/redis/go-redis/extra/redisotel/v9 v9.20.1/go.mod h1:NDgRP4yN02H1aVGDLvaCiRN+CuvA/ELP2dDLnyLKyUM=
+github.com/redis/go-redis/v9 v9.20.1 h1:sfCU6A8P3dXbKyWes02uxA2baehGux9dZHfEKtsTB1w=
+github.com/redis/go-redis/v9 v9.20.1/go.mod h1:v/M13XI1PVCDcm01VtPFOADfZtHf8YW3baQf57KlIkA=
 github.com/rogpeppe/go-internal v1.14.1 h1:UQB4HGPB6osV0SQTLymcB4TgvyWu6ZyliaW0tI/otEQ=
 github.com/rogpeppe/go-internal v1.14.1/go.mod h1:MaRKkUm5W0goXpeCfT7UZI6fk/L7L7so1lCWt35ZSgc=
 github.com/sagikazarmark/locafero v0.11.0 h1:1iurJgmM9G3PA/I+wWYIOw/5SyBtxapeHDcg+AAIFXc=
@@ -195,6 +199,10 @@ github.com/uptrace/bun/dialect/pgdialect v1.2.18 h1:IZ6nM2+OYrL8lkEAy7UkSEZvoa3v
 github.com/uptrace/bun/dialect/pgdialect v1.2.18/go.mod h1:Tqdf4QP1okrGYpXfodXvCOK6Ob1OOTwSaoAzCgBB3IU=
 github.com/uptrace/bun/driver/pgdriver v1.2.18 h1:Zojuc83ulApocXomBLEcx1DqCZweREafHCjPfyXo88I=
 github.com/uptrace/bun/driver/pgdriver v1.2.18/go.mod h1:ZRJcARw93nxbQ5WawTrc5EO+F+GygkcYgDLEnT17CcE=
+github.com/uptrace/bun/extra/bunotel v1.2.18 h1:idfBT+IJGOLSwqkNv+Yiw4fG0tgasXatYeUZPOUuNzE=
+github.com/uptrace/bun/extra/bunotel v1.2.18/go.mod h1:IdnKewPjPXZQHyap29M9PM2l+f0u5fLONeW90bAat88=
+github.com/uptrace/opentelemetry-go-extra/otelsql v0.3.2 h1:ZjUj9BLYf9PEqBn8W/OapxhPjVRdC6CsXTdULHsyk5c=
+github.com/uptrace/opentelemetry-go-extra/otelsql v0.3.2/go.mod h1:O8bHQfyinKwTXKkiKNGmLQS7vRsqRxIQTFZpYpHK3IQ=
 github.com/vmihailenco/msgpack v4.0.4+incompatible h1:dSLoQfGFAo3F6OoNhwUmLwVgaUXK79GlxNBwueZn0xI=
 github.com/vmihailenco/msgpack v4.0.4+incompatible/go.mod h1:fy3FlTQTDXWkZ7Bh6AcGMlsjHatGryHQYUTf1ShIgkk=
 github.com/vmihailenco/msgpack/v5 v5.4.1 h1:cQriyiUvjTwOHg8QZaPihLWeRAAVoCpE00IUPn0Bjt8=

@@ -8,7 +8,7 @@ import (
 	"github.com/barkin/insider-notification/retryscheduler/internal/config"
 	schedulerdb "github.com/barkin/insider-notification/retryscheduler/internal/db"
 	"github.com/barkin/insider-notification/retryscheduler/internal/transport/messaging"
-	shareddb "github.com/barkin/insider-notification/shared/db"
+	sharedbun "github.com/barkin/insider-notification/shared/bun"
 	sharedredis "github.com/barkin/insider-notification/shared/redis"
 	"github.com/barkin/insider-notification/shared/stream"
 )
@@ -24,7 +24,7 @@ type App struct {
 // The returned cleanup func closes infrastructure and must be deferred by the caller.
 func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 	rdb := sharedredis.NewClient(ctx, cfg.RedisAddr)
-	bunDB := shareddb.Open(cfg.DatabaseURL)
+	bunDB := sharedbun.Connect(cfg.DatabaseURL)
 	repo := schedulerdb.NewDeliveryAttemptRepository(bunDB)
 
 	pub := stream.NewRedisPublisher(rdb)

@@ -6,13 +6,23 @@ import (
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
 	"github.com/uptrace/bun/driver/pgdriver"
+
+	"github.com/uptrace/bun/extra/bunotel"
 )
 
-func Open(databaseURL string) *bun.DB {
-	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(databaseURL)))
+func Connect(databaseURL string) *bun.DB {
+	conn := pgdriver.NewConnector(pgdriver.WithDSN(databaseURL))
+	sqldb := sql.OpenDB(conn)
 	bundb := bun.NewDB(sqldb, pgdialect.New())
 	if err := bundb.Ping(); err != nil {
 		panic("connect to postgres: " + err.Error())
 	}
+
+	bundb.AddQueryHook(
+		bunotel.NewQueryHook(
+			bunotel.WithDBName(conn.Config().Database),
+		),
+	)
+
 	return bundb
 }

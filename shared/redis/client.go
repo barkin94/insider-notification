@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	redisotel "github.com/redis/go-redis/extra/redisotel/v9"
 	goredis "github.com/redis/go-redis/v9"
 )
 
@@ -16,5 +17,13 @@ func NewClient(ctx context.Context, addr string) *goredis.Client {
 	if err := client.Ping(pingCtx).Err(); err != nil {
 		panic(fmt.Sprintf("redis ping %s: %s", addr, err))
 	}
+
+	if err := redisotel.InstrumentTracing(client); err != nil {
+		panic(err)
+	}
+	if err := redisotel.InstrumentMetrics(client); err != nil {
+		panic(err)
+	}
+
 	return client
 }
