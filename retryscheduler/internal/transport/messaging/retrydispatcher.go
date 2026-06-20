@@ -3,6 +3,7 @@ package messaging
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"time"
 
 	schedulerdb "github.com/barkin/insider-notification/retryscheduler/internal/db"
@@ -51,28 +52,43 @@ func (d *RetryDispatcher) Run(ctx context.Context) {
 }
 
 func (d *RetryDispatcher) Tick(ctx context.Context) {
-	attempts, err := d.repo.FindDueBefore(ctx, time.Now().UTC(), d.batch)
+	attempts, err := d.repo.FindAndDeleteDueBefore(ctx, time.Now().UTC(), d.batch)
 	if err != nil {
-		slog.ErrorContext(ctx, "retry dispatcher: read due attempts", "error", err)
+		slog.ErrorContext(ctx, "retry dispatcher: claim due attempts", "error", err)
 		return
 	}
+
+	var (
+		wg     sync.WaitGroup
+		mu     sync.Mutex
+		failed []*schedulerdb.DeliveryAttempt
+	)
 	for _, a := range attempts {
-		evt := stream.NotificationReadyEvent{
-			NotificationID: a.NotificationID,
-			Channel:        a.Channel,
-			Recipient:      a.Recipient,
-			Content:        a.Content,
-			Priority:       a.Priority,
-			MaxAttempts:    a.MaxAttempts,
-			AttemptNumber:  a.AttemptNumber,
-		}
-		topic := topicForPriority(a.Priority)
-		if err := d.pub.Publish(ctx, topic, evt); err != nil {
-			slog.ErrorContext(ctx, "retry dispatcher: publish retry", "id", a.NotificationID, "error", err)
-			continue
-		}
-		if err := d.repo.DeleteByID(ctx, a.NotificationID); err != nil {
-			slog.ErrorContext(ctx, "retry dispatcher: delete attempt", "id", a.NotificationID, "error", err)
+		wg.Add(1)
+		go func(a *schedulerdb.DeliveryAttempt) {
+			defer wg.Done()
+			evt := stream.NotificationReadyEvent{
+				NotificationID: a.NotificationID,
+				Channel:        a.Channel,
+				Recipient:      a.Recipient,
+				Content:        a.Content,
+				Priority:       a.Priority,
+				MaxAttempts:    a.MaxAttempts,
+				AttemptNumber:  a.AttemptNumber,
+			}
+			if err := d.pub.Publish(ctx, topicForPriority(a.Priority), evt); err != nil {
+				slog.ErrorContext(ctx, "retry dispatcher: publish retry", "id", a.NotificationID, "error", err)
+				mu.Lock()
+				failed = append(failed, a)
+				mu.Unlock()
+			}
+		}(a)
+	}
+	wg.Wait()
+
+	if len(failed) > 0 {
+		if err := d.repo.UpsertAll(ctx, failed); err != nil {
+			slog.ErrorContext(ctx, "retry dispatcher: re-enqueue after publish failures", "count", len(failed), "error", err)
 		}
 	}
 }

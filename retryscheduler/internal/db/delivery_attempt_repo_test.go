@@ -64,7 +64,7 @@ func TestSavePayload_upsertUpdatesRetryAfter(t *testing.T) {
 		t.Fatalf("second SavePayload with retry_after: %v", err)
 	}
 
-	due, err := repo.FindDueBefore(ctx, retryAt.Add(time.Millisecond), 10)
+	due, err := repo.FindAndDeleteDueBefore(ctx, retryAt.Add(time.Millisecond), 10)
 	if err != nil {
 		t.Fatalf("GetDue: %v", err)
 	}
@@ -81,8 +81,6 @@ func TestSavePayload_upsertUpdatesRetryAfter(t *testing.T) {
 	if found.AttemptNumber != 2 {
 		t.Errorf("attempt_number = %d, want 2", found.AttemptNumber)
 	}
-
-	t.Cleanup(func() { repo.DeleteByID(ctx, notifID) }) //nolint:errcheck,gosec
 }
 
 func TestDelete_removesRow(t *testing.T) {
@@ -100,13 +98,53 @@ func TestDelete_removesRow(t *testing.T) {
 		t.Fatalf("Delete: %v", err)
 	}
 
-	due, err := repo.FindDueBefore(ctx, time.Now().Add(time.Minute), 10)
+	due, err := repo.FindAndDeleteDueBefore(ctx, time.Now().Add(time.Minute), 10)
 	if err != nil {
 		t.Fatalf("GetDue after Delete: %v", err)
 	}
 	for _, a := range due {
 		if a.NotificationID == notifID {
 			t.Error("row still appears in GetDue after Delete")
+		}
+	}
+}
+
+func TestFindAndDeleteDueBefore_claimsAndRemovesRows(t *testing.T) {
+	ctx := context.Background()
+	repo := schedulerdb.NewDeliveryAttemptRepository(testDB)
+
+	ids := [2]string{mustNotifID(t), mustNotifID(t)}
+	retryAt := time.Now().Add(-time.Second).UTC()
+	for _, id := range ids {
+		p := newPayload(t, id)
+		p.RetryAfter = &retryAt
+		if err := repo.Upsert(ctx, p); err != nil {
+			t.Fatalf("Upsert: %v", err)
+		}
+	}
+
+	got, err := repo.FindAndDeleteDueBefore(ctx, time.Now(), 10)
+	if err != nil {
+		t.Fatalf("FindAndDeleteDueBefore: %v", err)
+	}
+	claimed := make(map[string]bool, len(got))
+	for _, a := range got {
+		claimed[a.NotificationID] = true
+	}
+	for _, id := range ids {
+		if !claimed[id] {
+			t.Errorf("expected id %s to be claimed, but it was not returned", id)
+		}
+	}
+
+	// Second call must not return the same rows — they were deleted.
+	got2, err := repo.FindAndDeleteDueBefore(ctx, time.Now(), 10)
+	if err != nil {
+		t.Fatalf("second FindAndDeleteDueBefore: %v", err)
+	}
+	for _, a := range got2 {
+		if claimed[a.NotificationID] {
+			t.Errorf("id %s returned again — row was not deleted", a.NotificationID)
 		}
 	}
 }
@@ -126,15 +164,11 @@ func TestGetDue_respectsLimit(t *testing.T) {
 		}
 	}
 
-	due, err := repo.FindDueBefore(ctx, time.Now(), 2)
+	due, err := repo.FindAndDeleteDueBefore(ctx, time.Now(), 2)
 	if err != nil {
 		t.Fatalf("GetDue: %v", err)
 	}
 	if len(due) > 2 {
 		t.Errorf("expected at most 2 due entries, got %d", len(due))
-	}
-
-	for _, id := range ids {
-		repo.DeleteByID(ctx, id) //nolint:errcheck,gosec
 	}
 }
