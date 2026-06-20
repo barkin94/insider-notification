@@ -83,7 +83,7 @@ API Service
 | `grafana` | Dashboards — metrics (Prometheus) + traces (Tempo) + logs (Loki) |
 | `mock-ntfn-provider` | Mockoon-based stub webhook endpoint for local delivery testing |
 | `migrate-api` | One-shot container that runs `api` DB migrations on startup |
-| `migrate-processor` | One-shot container that runs `retryscheduler` DB migrations on startup |
+| `migrate-retryscheduler` | One-shot container that runs `retryscheduler` DB migrations on startup |
 
 ### Service Documentation
 

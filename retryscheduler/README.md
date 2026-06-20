@@ -2,7 +2,7 @@
 
 Manages retry scheduling for the notification delivery system. Consumes `NotificationRetryScheduleEvent` messages from the retry topic, persists them to Postgres with a `retry_after` timestamp, and republishes them to the appropriate priority delivery topic once the scheduled time has passed.
 
-Run as a **single instance** — no horizontal scaling is needed because the retry dispatcher is a simple polling loop with no concurrent-consumer protection.
+Scales horizontally — the dispatcher uses `SELECT ... FOR UPDATE SKIP LOCKED` so multiple instances claim disjoint rows with no duplicate processing.
 
 ---
 
@@ -56,7 +56,7 @@ Processor Service (re-delivers)
 | Component | File | Responsibility |
 | --- | --- | --- |
 | RetryConsumer | `internal/transport/messaging/retry_consumer.go` | Subscribes to TopicRetry, upserts each event to Postgres with `retry_after = ScheduledAt` |
-| RetryDispatcher | `internal/transport/messaging/retrydispatcher.go` | Ticks every interval, fetches due rows, republishes as `NotificationReadyEvent`, deletes row |
+| RetryDispatcher | `internal/transport/messaging/retrydispatcher.go` | Ticks every interval, atomically claims and deletes due rows (`FOR UPDATE SKIP LOCKED`), publishes each as `NotificationReadyEvent` via concurrent goroutines; re-enqueues any publish failures in a single batch upsert |
 | DeliveryAttemptRepository | `internal/db/delivery_attempt_repo.go` | PostgreSQL CRUD for `delivery_attempts` |
 
 ---

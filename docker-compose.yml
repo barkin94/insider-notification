@@ -103,12 +103,12 @@ services:
       postgres:
         condition: service_healthy
 
-  migrate-processor:
+  migrate-retryscheduler:
     image: migrate/migrate
     volumes:
       - ./retryscheduler/migrations:/migrations:ro
     entrypoint: ["/bin/sh", "-c"]
-    command: ["migrate -path=/migrations -database $$MIGRATE_DATABASE_URL up"]
+    command: ["migrate -path=/migrations -database $$DATABASE_URL up"]
     env_file: retryscheduler/.env
     depends_on:
       postgres:
@@ -150,7 +150,7 @@ services:
       dockerfile: retryscheduler/Dockerfile
     env_file: retryscheduler/.env
     depends_on:
-      migrate-processor:
+      migrate-retryscheduler:
         condition: service_completed_successfully
       postgres:
         condition: service_healthy
