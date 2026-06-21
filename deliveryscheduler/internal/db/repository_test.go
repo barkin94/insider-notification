@@ -65,7 +65,7 @@ func TestUpsertAll_isIdempotent(t *testing.T) {
 	}
 
 	// Upsert again with same ID but different time
-	newTime := time.Now().Add(-time.Minute).UTC()
+	newTime := time.Now().Add(-time.Minute).UTC().Truncate(time.Microsecond)
 	notification.ScheduledAt = &newTime
 	if err := repo.UpsertAll(ctx, []*schedulerdb.ScheduledNotification{notification}); err != nil {
 		t.Fatalf("second UpsertAll: %v", err)
