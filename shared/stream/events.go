@@ -63,3 +63,23 @@ type NotificationRetryScheduleEvent struct {
 	AttemptNumber  int
 	ScheduledAt    time.Time
 }
+
+// NotificationsScheduledEvent is published to TopicNotificationScheduled by the API
+// when one or more notifications are created with a future delivery time (single or batch).
+// The scheduler service consumes this and persists each schedule.
+type NotificationsScheduledEvent struct {
+	Notifications []ScheduledNotificationItem
+}
+
+type ScheduledNotificationItem struct {
+	NotificationID string
+	ScheduledAt    time.Time
+}
+
+// ScheduledNotificationDueEvent is published to TopicScheduledNotificationDue
+// by the scheduler service when notifications with a past scheduled_at are due.
+// The API service consumes this, hydrates full notification details from its DB,
+// and publishes NotificationReadyEvent to the processor.
+type ScheduledNotificationDueEvent struct {
+	NotificationIDs []string
+}

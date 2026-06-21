@@ -16,10 +16,10 @@ type DeliveryAttemptRepository interface {
 	// UpsertAll is the batch variant of Upsert — all rows are written in a single round trip.
 	UpsertAll(ctx context.Context, attempts []*DeliveryAttempt) error
 	DeleteByID(ctx context.Context, id string) error
-	// FindAndDeleteDueBefore atomically claims and removes up to limit attempts whose
+	// DeleteByRetryAfterBeforeReturning atomically claims and removes up to limit attempts whose
 	// retry_after is at or before before, using SELECT ... FOR UPDATE SKIP LOCKED so
 	// concurrent callers never receive the same rows.
-	FindAndDeleteDueBefore(ctx context.Context, before time.Time, limit int) ([]*DeliveryAttempt, error)
+	DeleteByRetryAfterBeforeReturning(ctx context.Context, before time.Time, limit int) ([]*DeliveryAttempt, error)
 }
 
 type pgDeliveryAttemptRepo struct{ db *bun.DB }
@@ -69,7 +69,7 @@ func (r *pgDeliveryAttemptRepo) DeleteByID(ctx context.Context, id string) error
 	return nil
 }
 
-func (r *pgDeliveryAttemptRepo) FindAndDeleteDueBefore(ctx context.Context, before time.Time, limit int) ([]*DeliveryAttempt, error) {
+func (r *pgDeliveryAttemptRepo) DeleteByRetryAfterBeforeReturning(ctx context.Context, before time.Time, limit int) ([]*DeliveryAttempt, error) {
 	if limit < 1 {
 		limit = 1
 	}

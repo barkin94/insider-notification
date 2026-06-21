@@ -1,2 +1,3 @@
 CREATE DATABASE api;
-CREATE DATABASE processor;
+CREATE DATABASE retryscheduler;
+CREATE DATABASE deliveryscheduler;

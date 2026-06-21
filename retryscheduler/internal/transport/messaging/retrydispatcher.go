@@ -52,7 +52,7 @@ func (d *RetryDispatcher) Run(ctx context.Context) {
 }
 
 func (d *RetryDispatcher) Tick(ctx context.Context) {
-	attempts, err := d.repo.FindAndDeleteDueBefore(ctx, time.Now().UTC(), d.batch)
+	attempts, err := d.repo.DeleteByRetryAfterBeforeReturning(ctx, time.Now().UTC(), d.batch)
 	if err != nil {
 		slog.ErrorContext(ctx, "retry dispatcher: claim due attempts", "error", err)
 		return

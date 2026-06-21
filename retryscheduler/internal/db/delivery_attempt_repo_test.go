@@ -64,7 +64,7 @@ func TestSavePayload_upsertUpdatesRetryAfter(t *testing.T) {
 		t.Fatalf("second SavePayload with retry_after: %v", err)
 	}
 
-	due, err := repo.FindAndDeleteDueBefore(ctx, retryAt.Add(time.Millisecond), 10)
+	due, err := repo.DeleteByRetryAfterBeforeReturning(ctx, retryAt.Add(time.Millisecond), 10)
 	if err != nil {
 		t.Fatalf("GetDue: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestDelete_removesRow(t *testing.T) {
 		t.Fatalf("Delete: %v", err)
 	}
 
-	due, err := repo.FindAndDeleteDueBefore(ctx, time.Now().Add(time.Minute), 10)
+	due, err := repo.DeleteByRetryAfterBeforeReturning(ctx, time.Now().Add(time.Minute), 10)
 	if err != nil {
 		t.Fatalf("GetDue after Delete: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestDelete_removesRow(t *testing.T) {
 	}
 }
 
-func TestFindAndDeleteDueBefore_claimsAndRemovesRows(t *testing.T) {
+func TestDeleteByRetryAfterBeforeReturning_claimsAndRemovesRows(t *testing.T) {
 	ctx := context.Background()
 	repo := schedulerdb.NewDeliveryAttemptRepository(testDB)
 
@@ -123,9 +123,9 @@ func TestFindAndDeleteDueBefore_claimsAndRemovesRows(t *testing.T) {
 		}
 	}
 
-	got, err := repo.FindAndDeleteDueBefore(ctx, time.Now(), 10)
+	got, err := repo.DeleteByRetryAfterBeforeReturning(ctx, time.Now(), 10)
 	if err != nil {
-		t.Fatalf("FindAndDeleteDueBefore: %v", err)
+		t.Fatalf("DeleteByRetryAfterBeforeReturning: %v", err)
 	}
 	claimed := make(map[string]bool, len(got))
 	for _, a := range got {
@@ -138,9 +138,9 @@ func TestFindAndDeleteDueBefore_claimsAndRemovesRows(t *testing.T) {
 	}
 
 	// Second call must not return the same rows — they were deleted.
-	got2, err := repo.FindAndDeleteDueBefore(ctx, time.Now(), 10)
+	got2, err := repo.DeleteByRetryAfterBeforeReturning(ctx, time.Now(), 10)
 	if err != nil {
-		t.Fatalf("second FindAndDeleteDueBefore: %v", err)
+		t.Fatalf("second DeleteByRetryAfterBeforeReturning: %v", err)
 	}
 	for _, a := range got2 {
 		if claimed[a.NotificationID] {
@@ -164,7 +164,7 @@ func TestGetDue_respectsLimit(t *testing.T) {
 		}
 	}
 
-	due, err := repo.FindAndDeleteDueBefore(ctx, time.Now(), 2)
+	due, err := repo.DeleteByRetryAfterBeforeReturning(ctx, time.Now(), 2)
 	if err != nil {
 		t.Fatalf("GetDue: %v", err)
 	}
