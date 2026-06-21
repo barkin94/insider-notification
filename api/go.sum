@@ -14,8 +14,8 @@ github.com/ThreeDotsLabs/watermill v1.5.2 h1:0ES33Eq1jEsP/pWvtE4n8bE0bs+9Jq7boT7
 github.com/ThreeDotsLabs/watermill v1.5.2/go.mod h1:i9/968UriGphWfEbfMuYSD1qFbYRjb0mE0r+rV0FPp4=
 github.com/ThreeDotsLabs/watermill-redisstream v1.4.5 h1:SCETqsAYo/CRBb7H3+zWCcSqhMpDrQA4I6dCqC7UPR4=
 github.com/ThreeDotsLabs/watermill-redisstream v1.4.5/go.mod h1:Da3wqG1OcvHPODjuJcxSCY1O7D4loIZQpVbZ5u94xRo=
-github.com/barkin94/insider-notification/api/public v0.3.0 h1:tfh+OMqF/Au2Hmb4gIGjKOn2Tk0GglYERMXJm4M1kuY=
-github.com/barkin94/insider-notification/api/public v0.3.0/go.mod h1:3k5JFawRbWCLd3rOraeVGyNZ9r6kukq6FxiHZBV3cq0=
+github.com/barkin94/insider-notification/api/public v0.4.0 h1:eX2MeLIwTd4xCQTT1B23wZfimTJQxYeKzs+EDbhsRPQ=
+github.com/barkin94/insider-notification/api/public v0.4.0/go.mod h1:3k5JFawRbWCLd3rOraeVGyNZ9r6kukq6FxiHZBV3cq0=
 github.com/barkin94/insider-notification/deliveryscheduler/public v0.2.0 h1:cT2KWcGb7Ejb9MwjD0oyqnlyQXGPEADi1woecWbnix0=
 github.com/barkin94/insider-notification/deliveryscheduler/public v0.2.0/go.mod h1:xlutzaXl67dqOL8ALLbSzU5gwIiWLmCbgs9FuzP6yhM=
 github.com/barkin94/insider-notification/processor/public v0.2.0 h1:RfjHjRvim7/G/IEuQhqxBSfOss3XXPU4rPqv/3Bn0IU=

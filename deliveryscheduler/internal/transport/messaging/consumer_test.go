@@ -25,6 +25,10 @@ func (m *MockRepository) DeleteByScheduledAtBeforeReturning(ctx context.Context,
 	return nil, nil
 }
 
+func (m *MockRepository) DeleteByNotificationID(_ context.Context, _ string) error {
+	return nil
+}
+
 func TestConsumer_BatchesNotifications(t *testing.T) {
 	repo := &MockRepository{}
 

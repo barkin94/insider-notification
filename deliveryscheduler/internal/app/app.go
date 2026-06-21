@@ -18,10 +18,11 @@ import (
 
 // App wires and runs the delivery scheduler service.
 type App struct {
-	consumer   *messaging.Consumer
-	dispatcher *dispatcher.ScheduledNotificationDispatcher
-	ticker     *time.Ticker
-	wg         sync.WaitGroup
+	consumer       *messaging.Consumer
+	cancelConsumer *messaging.CancelConsumer
+	dispatcher     *dispatcher.ScheduledNotificationDispatcher
+	ticker         *time.Ticker
+	wg             sync.WaitGroup
 }
 
 // New constructs all dependencies and returns a ready-to-run App.
@@ -34,6 +35,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 	pub := stream.NewRedisPublisher(rdb)
 	sub := stream.NewRedisSubscriber(rdb, "notify:cg:deliveryscheduler")
 	msgs := stream.Subscribe[apipub.NotificationsScheduledEvent](ctx, sub, string(apipub.TopicNotificationScheduled), cfg.OTelServiceName)
+	cancelMsgs := stream.Subscribe[apipub.NotificationScheduleCancelledEvent](ctx, sub, string(apipub.TopicNotificationScheduleCancelled), cfg.OTelServiceName)
 
 	cleanup := func() {
 		_ = sub.Close()
@@ -42,8 +44,9 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 	}
 
 	return &App{
-		consumer:   messaging.NewConsumer(repo, msgs),
-		dispatcher: dispatcher.NewScheduledNotificationDispatcher(repo, pub, cfg.DeliverySchedulerBatchSize),
+		consumer:       messaging.NewConsumer(repo, msgs),
+		cancelConsumer: messaging.NewCancelConsumer(repo, cancelMsgs),
+		dispatcher:     dispatcher.NewScheduledNotificationDispatcher(repo, pub, cfg.DeliverySchedulerBatchSize),
 	}, cleanup, nil
 }
 
@@ -54,6 +57,12 @@ func (a *App) Start(ctx context.Context) func() {
 	go func() {
 		defer a.wg.Done()
 		a.consumer.Run(ctx)
+	}()
+
+	a.wg.Add(1)
+	go func() {
+		defer a.wg.Done()
+		a.cancelConsumer.Run(ctx)
 	}()
 
 	a.wg.Add(1)

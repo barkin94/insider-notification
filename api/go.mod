@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/ThreeDotsLabs/watermill v1.5.2
-	github.com/barkin94/insider-notification/api/public v0.3.0
+	github.com/barkin94/insider-notification/api/public v0.4.0
 	github.com/barkin94/insider-notification/deliveryscheduler/public v0.2.0
 	github.com/barkin94/insider-notification/processor/public v0.2.0
 	github.com/barkin94/insider-notification/shared v0.2.0

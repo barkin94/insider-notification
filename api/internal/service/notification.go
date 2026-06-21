@@ -77,7 +77,17 @@ func (s *notificationService) Cancel(ctx context.Context, id uuid.UUID) (*reposi
 		return nil, &sharedErrors.ConflictError{Message: err.Error()}
 	}
 
-	return s.repo.UpdateStatus(ctx, id, string(apipub.StatusCancelled))
+	updated, err := s.repo.UpdateStatus(ctx, id, string(apipub.StatusCancelled))
+	if err != nil {
+		return nil, err
+	}
+
+	evt := apipub.NotificationScheduleCancelledEvent{NotificationID: id.String()}
+	if err := s.publisher.Publish(ctx, string(apipub.TopicNotificationScheduleCancelled), evt); err != nil {
+		return nil, fmt.Errorf("publish cancel event: %w", err)
+	}
+
+	return updated, nil
 }
 
 func (s *notificationService) UpdateStatus(ctx context.Context, id uuid.UUID, status string) error {

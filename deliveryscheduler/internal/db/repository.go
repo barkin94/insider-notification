@@ -14,6 +14,8 @@ type ScheduledNotificationRepository interface {
 	// DeleteByScheduledAtBeforeReturning atomically claims and removes scheduled notifications
 	// whose scheduled_at is at or before the given time, up to limit entries.
 	DeleteByScheduledAtBeforeReturning(ctx context.Context, before time.Time, limit int) ([]*ScheduledNotification, error)
+	// DeleteByNotificationID removes the scheduled notification with the given ID, if it exists.
+	DeleteByNotificationID(ctx context.Context, notificationID string) error
 }
 
 type pgScheduledNotificationRepo struct{ db *bun.DB }
@@ -35,6 +37,17 @@ func (r *pgScheduledNotificationRepo) UpsertAll(ctx context.Context, notificatio
 		Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("pg batch upsert scheduled notifications: %w", err)
+	}
+	return nil
+}
+
+func (r *pgScheduledNotificationRepo) DeleteByNotificationID(ctx context.Context, notificationID string) error {
+	_, err := r.db.NewDelete().
+		Model((*ScheduledNotification)(nil)).
+		Where("notification_id = ?", notificationID).
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("pg delete scheduled notification: %w", err)
 	}
 	return nil
 }

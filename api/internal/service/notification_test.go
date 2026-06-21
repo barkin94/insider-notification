@@ -139,13 +139,33 @@ func TestCancel_success(t *testing.T) {
 	repo.getByIDFn = func(_ context.Context, _ uuid.UUID) (*repository.Notification, error) {
 		return pendingNotif(id), nil
 	}
-	svc := newSvc(repo, okPublisher(nil))
+	var gotTopic string
+	svc := newSvc(repo, okPublisher(&gotTopic))
 	n, err := svc.Cancel(context.Background(), id)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if n.Status != string(apipub.StatusCancelled) {
 		t.Errorf("status = %q, want cancelled", n.Status)
+	}
+	if gotTopic != string(apipub.TopicNotificationScheduleCancelled) {
+		t.Errorf("published to %q, want %q", gotTopic, apipub.TopicNotificationScheduleCancelled)
+	}
+}
+
+func TestCancel_publishFailure(t *testing.T) {
+	id := uuid.New()
+	repo := okRepo()
+	repo.getByIDFn = func(_ context.Context, _ uuid.UUID) (*repository.Notification, error) {
+		return pendingNotif(id), nil
+	}
+	pub := &mockPublisher{publishFn: func(_ context.Context, _ string, _ any) error {
+		return errors.New("redis down")
+	}}
+	svc := newSvc(repo, pub)
+	_, err := svc.Cancel(context.Background(), id)
+	if err == nil {
+		t.Fatal("expected error from publisher")
 	}
 }
 
