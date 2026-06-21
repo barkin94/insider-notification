@@ -18,6 +18,23 @@ import (
 	"github.com/barkin/insider-notification/shared/messaging"
 )
 
+type testEvent struct {
+	ID       string
+	Priority string
+}
+
+type testResultEvent struct {
+	ID     string
+	Status string
+}
+
+const (
+	topicHigh   = "test:stream:high"
+	topicNormal = "test:stream:normal"
+	topicLow    = "test:stream:low"
+	topicStatus = "test:stream:status"
+)
+
 var redisAddr string
 
 func TestMain(m *testing.M) {
@@ -75,32 +92,25 @@ func TestPublisher_routesToCorrectTopic(t *testing.T) {
 		priority string
 		topic    string
 	}{
-		{"high", messaging.TopicHigh},
-		{"normal", messaging.TopicNormal},
-		{"low", messaging.TopicLow},
+		{"high", topicHigh},
+		{"normal", topicNormal},
+		{"low", topicLow},
 	}
 
 	for _, tc := range cases {
 		pub := newPublisher(t)
 		sub := newSubscriber(t, "test-cg-"+tc.priority)
 
-		msgs := messaging.Subscribe[messaging.NotificationReadyEvent](ctx, sub, tc.topic, "test")
+		msgs := messaging.Subscribe[testEvent](ctx, sub, tc.topic, "test")
 
-		evt := messaging.NotificationReadyEvent{
-			NotificationID: "id-" + tc.priority,
-			Channel:        "sms",
-			Recipient:      "+1555",
-			Content:        "hello",
-			Priority:       tc.priority,
-			MaxAttempts:    3,
-		}
+		evt := testEvent{ID: "id-" + tc.priority, Priority: tc.priority}
 		if err := pub.Publish(ctx, tc.topic, evt); err != nil {
 			t.Fatalf("publish: %v", err)
 		}
 
 		result := <-msgs
-		if result.Event.NotificationID != evt.NotificationID {
-			t.Errorf("got id %s, want %s", result.Event.NotificationID, evt.NotificationID)
+		if result.Event.ID != evt.ID {
+			t.Errorf("got id %s, want %s", result.Event.ID, evt.ID)
 		}
 		result.Msg.Ack()
 	}
@@ -113,22 +123,16 @@ func TestPublisher_deliveryResult(t *testing.T) {
 	pub := newPublisher(t)
 	sub := newSubscriber(t, "test-status-cg")
 
-	msgs := messaging.Subscribe[messaging.NotificationDeliveryResultEvent](ctx, sub, messaging.TopicStatus, "test")
+	msgs := messaging.Subscribe[testResultEvent](ctx, sub, topicStatus, "test")
 
-	evt := messaging.NotificationDeliveryResultEvent{
-		NotificationID: "notif-1",
-		Status:         "delivered",
-		AttemptNumber:  1,
-		HTTPStatusCode: 200,
-		LatencyMS:      100,
-	}
-	if err := pub.Publish(ctx, messaging.TopicStatus, evt); err != nil {
+	evt := testResultEvent{ID: "notif-1", Status: "delivered"}
+	if err := pub.Publish(ctx, topicStatus, evt); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
 
 	result := <-msgs
-	if result.Event.NotificationID != evt.NotificationID {
-		t.Errorf("got id %s, want %s", result.Event.NotificationID, evt.NotificationID)
+	if result.Event.ID != evt.ID {
+		t.Errorf("got id %s, want %s", result.Event.ID, evt.ID)
 	}
 	result.Msg.Ack()
 }

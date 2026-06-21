@@ -6,14 +6,15 @@ import (
 	"time"
 
 	"github.com/barkin/insider-notification/processor/internal/delivery"
+	apipub "github.com/barkin/insider-notification/api/public"
 	stream "github.com/barkin/insider-notification/shared/messaging"
 )
 
 // result aliases the concrete type to keep test lines short.
-type result = stream.Result[stream.NotificationReadyEvent]
+type result = stream.Result[apipub.NotificationReadyEvent]
 
 func makeResult(priority string) result {
-	return result{Event: stream.NotificationReadyEvent{Priority: priority}}
+	return result{Event: apipub.NotificationReadyEvent{Priority: priority}}
 }
 
 func filledChan(results []result) <-chan result {

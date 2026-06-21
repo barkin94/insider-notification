@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	schedulerdb "github.com/barkin/insider-notification/retryscheduler/internal/db"
+	processorpub "github.com/barkin/insider-notification/processor/public"
 	stream "github.com/barkin/insider-notification/shared/messaging"
 )
 
@@ -12,10 +13,10 @@ import (
 // persists each one to Postgres so the RetryDispatcher picks it up when ScheduledAt is past.
 type RetryConsumer struct {
 	repo schedulerdb.DeliveryAttemptRepository
-	msgs <-chan stream.Result[stream.NotificationRetryScheduleEvent]
+	msgs <-chan stream.Result[processorpub.NotificationRetryScheduleEvent]
 }
 
-func NewRetryConsumer(repo schedulerdb.DeliveryAttemptRepository, msgs <-chan stream.Result[stream.NotificationRetryScheduleEvent]) *RetryConsumer {
+func NewRetryConsumer(repo schedulerdb.DeliveryAttemptRepository, msgs <-chan stream.Result[processorpub.NotificationRetryScheduleEvent]) *RetryConsumer {
 	return &RetryConsumer{repo: repo, msgs: msgs}
 }
 
@@ -33,7 +34,7 @@ func (c *RetryConsumer) Run(ctx context.Context) {
 	}
 }
 
-func (c *RetryConsumer) handleRetryEvent(ctx context.Context, result stream.Result[stream.NotificationRetryScheduleEvent]) {
+func (c *RetryConsumer) handleRetryEvent(ctx context.Context, result stream.Result[processorpub.NotificationRetryScheduleEvent]) {
 	evt := result.Event
 	msg := result.Msg
 

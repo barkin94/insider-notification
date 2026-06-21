@@ -7,6 +7,8 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/barkin/insider-notification/api/internal/repository"
+	apipub "github.com/barkin/insider-notification/api/public"
+	dspub "github.com/barkin/insider-notification/deliveryscheduler/public"
 	stream "github.com/barkin/insider-notification/shared/messaging"
 )
 
@@ -20,13 +22,13 @@ type NotificationReader interface {
 type ScheduledDueConsumer struct {
 	repo      NotificationReader
 	publisher stream.Publisher
-	msgs      <-chan stream.Result[stream.ScheduledNotificationDueEvent]
+	msgs      <-chan stream.Result[dspub.ScheduledNotificationDueEvent]
 }
 
 func NewScheduledDueConsumer(
 	repo NotificationReader,
 	publisher stream.Publisher,
-	msgs <-chan stream.Result[stream.ScheduledNotificationDueEvent],
+	msgs <-chan stream.Result[dspub.ScheduledNotificationDueEvent],
 ) *ScheduledDueConsumer {
 	return &ScheduledDueConsumer{repo: repo, publisher: publisher, msgs: msgs}
 }
@@ -45,14 +47,14 @@ func (c *ScheduledDueConsumer) Run(ctx context.Context) {
 	}
 }
 
-func (c *ScheduledDueConsumer) handleScheduledDueEvent(ctx context.Context, result stream.Result[stream.ScheduledNotificationDueEvent]) {
+func (c *ScheduledDueConsumer) handleScheduledDueEvent(ctx context.Context, result stream.Result[dspub.ScheduledNotificationDueEvent]) {
 	evt := result.Event
 	msg := result.Msg
 
 	topicByPriority := map[string]string{
-		"high":   stream.TopicHigh,
-		"normal": stream.TopicNormal,
-		"low":    stream.TopicLow,
+		"high":   apipub.TopicHigh,
+		"normal": apipub.TopicNormal,
+		"low":    apipub.TopicLow,
 	}
 
 	for _, notifID := range evt.NotificationIDs {
@@ -70,7 +72,7 @@ func (c *ScheduledDueConsumer) handleScheduledDueEvent(ctx context.Context, resu
 			return
 		}
 
-		readyEvt := stream.NotificationReadyEvent{
+		readyEvt := apipub.NotificationReadyEvent{
 			NotificationID: notif.ID.String(),
 			Channel:        notif.Channel,
 			Recipient:      notif.Recipient,

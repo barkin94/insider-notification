@@ -16,6 +16,8 @@ import (
 	sharedbun "github.com/barkin/insider-notification/shared/bun"
 	sharedredis "github.com/barkin/insider-notification/shared/redis"
 	stream "github.com/barkin/insider-notification/shared/messaging"
+	processorpub "github.com/barkin/insider-notification/processor/public"
+	dspub "github.com/barkin/insider-notification/deliveryscheduler/public"
 )
 
 // App wires and runs the API service.
@@ -34,11 +36,11 @@ func New(ctx context.Context, cfg *config.Config) (*App, func()) {
 
 	pub := stream.NewRedisPublisher(rdb)
 	sub := stream.NewRedisSubscriber(rdb, "notify:cg:api")
-	statusMsgs := stream.Subscribe[stream.NotificationDeliveryResultEvent](
-		ctx, sub, stream.TopicStatus, cfg.OTelServiceName,
+	statusMsgs := stream.Subscribe[processorpub.NotificationDeliveryResultEvent](
+		ctx, sub, processorpub.TopicStatus, cfg.OTelServiceName,
 	)
-	scheduledDueMsgs := stream.Subscribe[stream.ScheduledNotificationDueEvent](
-		ctx, sub, stream.TopicScheduledNotificationDue, cfg.OTelServiceName,
+	scheduledDueMsgs := stream.Subscribe[dspub.ScheduledNotificationDueEvent](
+		ctx, sub, dspub.TopicScheduledNotificationDue, cfg.OTelServiceName,
 	)
 
 	notifRepo := postgres.NewNotificationRepository(bundb)

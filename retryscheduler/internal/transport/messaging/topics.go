@@ -1,14 +1,13 @@
 package messaging
 
 import (
-	"github.com/barkin/insider-notification/shared/model"
-	stream "github.com/barkin/insider-notification/shared/messaging"
+	apipub "github.com/barkin/insider-notification/api/public"
 )
 
 var topicByPriority = map[string]string{
-	string(model.PriorityHigh):   stream.TopicHigh,
-	string(model.PriorityNormal): stream.TopicNormal,
-	string(model.PriorityLow):    stream.TopicLow,
+	string(apipub.PriorityHigh):   apipub.TopicHigh,
+	string(apipub.PriorityNormal): apipub.TopicNormal,
+	string(apipub.PriorityLow):    apipub.TopicLow,
 }
 
 func topicForPriority(priority string) string {
@@ -16,5 +15,5 @@ func topicForPriority(priority string) string {
 	if topic != "" {
 		return topic
 	}
-	return topicByPriority[string(model.PriorityNormal)]
+	return topicByPriority[string(apipub.PriorityNormal)]
 }

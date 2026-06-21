@@ -7,16 +7,17 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/barkin/insider-notification/api/internal/service"
+	processorpub "github.com/barkin/insider-notification/processor/public"
 	stream "github.com/barkin/insider-notification/shared/messaging"
 )
 
 // DeliveryResultConsumer processes NotificationDeliveryResultEvent messages from the status stream.
 type DeliveryResultConsumer struct {
 	svc  service.NotificationService
-	msgs <-chan stream.Result[stream.NotificationDeliveryResultEvent]
+	msgs <-chan stream.Result[processorpub.NotificationDeliveryResultEvent]
 }
 
-func NewDeliveryResultConsumer(svc service.NotificationService, msgs <-chan stream.Result[stream.NotificationDeliveryResultEvent]) *DeliveryResultConsumer {
+func NewDeliveryResultConsumer(svc service.NotificationService, msgs <-chan stream.Result[processorpub.NotificationDeliveryResultEvent]) *DeliveryResultConsumer {
 	return &DeliveryResultConsumer{svc: svc, msgs: msgs}
 }
 
@@ -35,7 +36,7 @@ func (c *DeliveryResultConsumer) Run(ctx context.Context) {
 	}
 }
 
-func (c *DeliveryResultConsumer) processOne(ctx context.Context, result stream.Result[stream.NotificationDeliveryResultEvent]) {
+func (c *DeliveryResultConsumer) processOne(ctx context.Context, result stream.Result[processorpub.NotificationDeliveryResultEvent]) {
 	evt := result.Event
 	msg := result.Msg
 

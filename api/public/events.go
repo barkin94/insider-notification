@@ -1,4 +1,4 @@
-package messaging
+package public
 
 import "time"
 
@@ -17,7 +17,7 @@ type NotificationReadyEvent struct {
 }
 
 // NotificationEntity is the minimal interface NotificationReadyEvent.From requires,
-// keeping the stream package free of a dependency on api/internal/db/entities.
+// keeping the api/public package free of a dependency on api/internal/db/entities.
 type NotificationEntity interface {
 	GetID() string
 	GetChannel() string
@@ -38,32 +38,6 @@ func (NotificationReadyEvent) From(n NotificationEntity) NotificationReadyEvent 
 	}
 }
 
-// NotificationDeliveryResultEvent is published to the status stream by the
-// Processor after each delivery attempt. Trace context travels in message.Metadata.
-type NotificationDeliveryResultEvent struct {
-	NotificationID    string
-	Status            string
-	AttemptNumber     int
-	HTTPStatusCode    int
-	ErrorMessage      string
-	ProviderMessageID string
-	LatencyMS         int
-}
-
-// NotificationRetryScheduleEvent is published to TopicRetry by the processor
-// whenever a delivery attempt should be retried after a delay.
-// ScheduledAt is the absolute UTC time at which the attempt should be retried.
-type NotificationRetryScheduleEvent struct {
-	NotificationID string
-	Channel        string
-	Recipient      string
-	Content        string
-	Priority       string
-	MaxAttempts    int
-	AttemptNumber  int
-	ScheduledAt    time.Time
-}
-
 // NotificationsScheduledEvent is published to TopicNotificationScheduled by the API
 // when one or more notifications are created with a future delivery time (single or batch).
 // The scheduler service consumes this and persists each schedule.
@@ -74,12 +48,4 @@ type NotificationsScheduledEvent struct {
 type ScheduledNotificationItem struct {
 	NotificationID string
 	ScheduledAt    time.Time
-}
-
-// ScheduledNotificationDueEvent is published to TopicScheduledNotificationDue
-// by the scheduler service when notifications with a past scheduled_at are due.
-// The API service consumes this, hydrates full notification details from its DB,
-// and publishes NotificationReadyEvent to the processor.
-type ScheduledNotificationDueEvent struct {
-	NotificationIDs []string
 }

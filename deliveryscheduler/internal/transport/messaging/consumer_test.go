@@ -7,8 +7,8 @@ import (
 
 	"github.com/google/uuid"
 
+	apipub "github.com/barkin/insider-notification/api/public"
 	db "github.com/barkin/insider-notification/deliveryscheduler/internal/db"
-	stream "github.com/barkin/insider-notification/shared/messaging"
 )
 
 // MockRepository mocks ScheduledNotificationRepository for testing
@@ -28,7 +28,7 @@ func (m *MockRepository) DeleteByScheduledAtBeforeReturning(ctx context.Context,
 func TestConsumer_BatchesNotifications(t *testing.T) {
 	repo := &MockRepository{}
 
-	items := []stream.ScheduledNotificationItem{
+	items := []apipub.ScheduledNotificationItem{
 		{
 			NotificationID: uuid.New().String(),
 			ScheduledAt:    time.Now().Add(time.Hour),

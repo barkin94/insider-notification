@@ -13,7 +13,8 @@ import (
 
 	"github.com/barkin/insider-notification/processor/internal/delivery"
 	"github.com/barkin/insider-notification/processor/internal/service"
-	"github.com/barkin/insider-notification/shared/model"
+	apipub "github.com/barkin/insider-notification/api/public"
+	processorpub "github.com/barkin/insider-notification/processor/public"
 	stream "github.com/barkin/insider-notification/shared/messaging"
 )
 
@@ -78,10 +79,10 @@ func (f *fakeLimiter) IsAllowed(_ context.Context, _ string) (bool, time.Duratio
 
 // --- helpers ---
 
-func runSingle(p *delivery.NotificationDeliveryPipeline, evt stream.NotificationReadyEvent) *message.Message {
+func runSingle(p *delivery.NotificationDeliveryPipeline, evt apipub.NotificationReadyEvent) *message.Message {
 	ctx := context.Background()
 	msg := message.NewMessage(watermill.NewUUID(), nil)
-	result := stream.Result[stream.NotificationReadyEvent]{
+	result := stream.Result[apipub.NotificationReadyEvent]{
 		Ctx:   ctx,
 		Event: evt,
 		Msg:   msg,
@@ -92,18 +93,18 @@ func runSingle(p *delivery.NotificationDeliveryPipeline, evt stream.Notification
 
 const baseNotifID = "00000000-0000-0000-0000-000000000001"
 
-func baseEvent() stream.NotificationReadyEvent {
-	return stream.NotificationReadyEvent{
+func baseEvent() apipub.NotificationReadyEvent {
+	return apipub.NotificationReadyEvent{
 		NotificationID: baseNotifID,
-		Priority:       string(model.PriorityHigh),
-		Channel:        string(model.ChannelEmail),
+		Priority:       string(apipub.PriorityHigh),
+		Channel:        string(apipub.ChannelEmail),
 		Recipient:      "+905551234567",
 		Content:        "Your message",
 		MaxAttempts:    4,
 	}
 }
 
-func baseEventWithID() stream.NotificationReadyEvent {
+func baseEventWithID() apipub.NotificationReadyEvent {
 	evt := baseEvent()
 	evt.NotificationID = uuid.New().String()
 	return evt
@@ -162,12 +163,12 @@ func TestPipeline_TerminalFailure(t *testing.T) {
 	if len(calls) != 1 {
 		t.Fatalf("expected 1 publish, got %d: %v", len(calls), calls)
 	}
-	if calls[0].topic != stream.TopicStatus {
-		t.Errorf("expected publish to %s, got %s", stream.TopicStatus, calls[0].topic)
+	if calls[0].topic != processorpub.TopicStatus {
+		t.Errorf("expected publish to %s, got %s", processorpub.TopicStatus, calls[0].topic)
 	}
-	evt := calls[0].payload.(stream.NotificationDeliveryResultEvent)
-	if evt.Status != string(model.StatusFailed) {
-		t.Errorf("expected status %s, got %s", string(model.StatusFailed), evt.Status)
+	evt := calls[0].payload.(processorpub.NotificationDeliveryResultEvent)
+	if evt.Status != string(apipub.StatusFailed) {
+		t.Errorf("expected status %s, got %s", string(apipub.StatusFailed), evt.Status)
 	}
 }
 
@@ -187,9 +188,9 @@ func TestPipeline_Delivered(t *testing.T) {
 	if len(calls) != 1 {
 		t.Fatalf("expected 1 publish (delivered), got %d", len(calls))
 	}
-	evt := calls[0].payload.(stream.NotificationDeliveryResultEvent)
-	if evt.Status != string(model.StatusDelivered) {
-		t.Errorf("expected status %s, got %s", string(model.StatusDelivered), evt.Status)
+	evt := calls[0].payload.(processorpub.NotificationDeliveryResultEvent)
+	if evt.Status != string(apipub.StatusDelivered) {
+		t.Errorf("expected status %s, got %s", string(apipub.StatusDelivered), evt.Status)
 	}
 	if evt.HTTPStatusCode != 202 {
 		t.Errorf("expected status code 202, got %d", evt.HTTPStatusCode)
@@ -213,17 +214,17 @@ func TestPipeline_Retryable_PublishesRetry(t *testing.T) {
 	if len(calls) != 1 {
 		t.Fatalf("expected 1 publish (retry), got %d: %v", len(calls), pub.topicsPublished())
 	}
-	if calls[0].topic != stream.TopicRetry {
-		t.Errorf("expected publish to %s, got %s", stream.TopicRetry, calls[0].topic)
+	if calls[0].topic != processorpub.TopicRetry {
+		t.Errorf("expected publish to %s, got %s", processorpub.TopicRetry, calls[0].topic)
 	}
-	retryEvt := calls[0].payload.(stream.NotificationRetryScheduleEvent)
+	retryEvt := calls[0].payload.(processorpub.NotificationRetryScheduleEvent)
 	if retryEvt.ScheduledAt.Before(before) {
 		t.Error("expected ScheduledAt to be in the future")
 	}
 	if retryEvt.AttemptNumber != 1 {
 		t.Errorf("AttemptNumber = %d, want 1", retryEvt.AttemptNumber)
 	}
-	if retryEvt.Priority != string(model.PriorityHigh) {
+	if retryEvt.Priority != string(apipub.PriorityHigh) {
 		t.Errorf("Priority = %q, want high", retryEvt.Priority)
 	}
 }
@@ -248,12 +249,12 @@ func TestPipeline_Exhausted_Failed(t *testing.T) {
 	if len(calls) != 1 {
 		t.Fatalf("expected 1 publish (failed), got %d", len(calls))
 	}
-	if calls[0].topic != stream.TopicStatus {
-		t.Errorf("expected publish to %s, got %s", stream.TopicStatus, calls[0].topic)
+	if calls[0].topic != processorpub.TopicStatus {
+		t.Errorf("expected publish to %s, got %s", processorpub.TopicStatus, calls[0].topic)
 	}
-	last := calls[0].payload.(stream.NotificationDeliveryResultEvent)
-	if last.Status != string(model.StatusFailed) {
-		t.Errorf("expected status %s, got %s", string(model.StatusFailed), last.Status)
+	last := calls[0].payload.(processorpub.NotificationDeliveryResultEvent)
+	if last.Status != string(apipub.StatusFailed) {
+		t.Errorf("expected status %s, got %s", string(apipub.StatusFailed), last.Status)
 	}
 	if last.AttemptNumber != 4 {
 		t.Errorf("expected AttemptNumber 4, got %d", last.AttemptNumber)
@@ -276,9 +277,9 @@ func TestPipeline_NonRetryable_Failed(t *testing.T) {
 	if len(calls) != 1 {
 		t.Fatalf("expected 1 publish (failed), got %d", len(calls))
 	}
-	last := calls[0].payload.(stream.NotificationDeliveryResultEvent)
-	if last.Status != string(model.StatusFailed) {
-		t.Errorf("expected status %s, got %s", string(model.StatusFailed), last.Status)
+	last := calls[0].payload.(processorpub.NotificationDeliveryResultEvent)
+	if last.Status != string(apipub.StatusFailed) {
+		t.Errorf("expected status %s, got %s", string(apipub.StatusFailed), last.Status)
 	}
 }
 
@@ -298,10 +299,10 @@ func TestPipeline_RateLimited_PublishesRetry(t *testing.T) {
 	if len(calls) != 1 {
 		t.Fatalf("expected 1 retry publish for rate-limited event, got %d", len(calls))
 	}
-	if calls[0].topic != stream.TopicRetry {
-		t.Errorf("expected publish to %s, got %s", stream.TopicRetry, calls[0].topic)
+	if calls[0].topic != processorpub.TopicRetry {
+		t.Errorf("expected publish to %s, got %s", processorpub.TopicRetry, calls[0].topic)
 	}
-	retryEvt := calls[0].payload.(stream.NotificationRetryScheduleEvent)
+	retryEvt := calls[0].payload.(processorpub.NotificationRetryScheduleEvent)
 	if retryEvt.ScheduledAt.Before(before) {
 		t.Error("expected ScheduledAt to be in the future")
 	}
@@ -328,7 +329,7 @@ func TestPipeline_Attempts_Retryable(t *testing.T) {
 	if len(calls) != 1 {
 		t.Fatalf("expected 1 retry publish, got %d", len(calls))
 	}
-	retryEvt := calls[0].payload.(stream.NotificationRetryScheduleEvent)
+	retryEvt := calls[0].payload.(processorpub.NotificationRetryScheduleEvent)
 	if retryEvt.AttemptNumber != 1 {
 		t.Errorf("AttemptNumber = %d, want 1", retryEvt.AttemptNumber)
 	}
@@ -347,14 +348,14 @@ func TestPipeline_Attempts_Terminal(t *testing.T) {
 		t.Error("expected ACK")
 	}
 	calls := pub.calls()
-	if len(calls) != 1 || calls[0].topic != stream.TopicStatus {
+	if len(calls) != 1 || calls[0].topic != processorpub.TopicStatus {
 		t.Errorf("expected status publish only, got %v", pub.topicsPublished())
 	}
 }
 
 // Retry publish error causes Nack so the message is redelivered.
 func TestPipeline_RetryPublishError_Nacks(t *testing.T) {
-	pub := &fakePublisher{errOn: stream.TopicRetry}
+	pub := &fakePublisher{errOn: processorpub.TopicRetry}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: true, StatusCode: 503}}
 	lim := &fakeLimiter{allowed: true}
 	c := newPipeline(pub, dc, lim, true)
@@ -374,7 +375,7 @@ func TestPipeline_Attempts_PayloadCarried(t *testing.T) {
 	c := newPipeline(pub, dc, lim, true)
 
 	evt := baseEventWithID()
-	evt.Channel = string(model.ChannelSMS)
+	evt.Channel = string(apipub.ChannelSMS)
 	evt.Recipient = "+905550001"
 	evt.Content = "hello"
 	evt.MaxAttempts = 3
@@ -384,8 +385,8 @@ func TestPipeline_Attempts_PayloadCarried(t *testing.T) {
 	if len(calls) != 1 {
 		t.Fatalf("expected 1 retry publish, got %d", len(calls))
 	}
-	retryEvt := calls[0].payload.(stream.NotificationRetryScheduleEvent)
-	if retryEvt.Channel != string(model.ChannelSMS) {
+	retryEvt := calls[0].payload.(processorpub.NotificationRetryScheduleEvent)
+	if retryEvt.Channel != string(apipub.ChannelSMS) {
 		t.Errorf("Channel = %q, want sms", retryEvt.Channel)
 	}
 	if retryEvt.Recipient != "+905550001" {

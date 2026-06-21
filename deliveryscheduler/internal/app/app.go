@@ -12,6 +12,7 @@ import (
 	"github.com/barkin/insider-notification/deliveryscheduler/internal/transport/messaging"
 	sharedbun "github.com/barkin/insider-notification/shared/bun"
 	sharedredis "github.com/barkin/insider-notification/shared/redis"
+	apipub "github.com/barkin/insider-notification/api/public"
 	stream "github.com/barkin/insider-notification/shared/messaging"
 )
 
@@ -32,7 +33,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 
 	pub := stream.NewRedisPublisher(rdb)
 	sub := stream.NewRedisSubscriber(rdb, "notify:cg:deliveryscheduler")
-	msgs := stream.Subscribe[stream.NotificationsScheduledEvent](ctx, sub, stream.TopicNotificationScheduled, cfg.OTelServiceName)
+	msgs := stream.Subscribe[apipub.NotificationsScheduledEvent](ctx, sub, apipub.TopicNotificationScheduled, cfg.OTelServiceName)
 
 	cleanup := func() {
 		_ = sub.Close()

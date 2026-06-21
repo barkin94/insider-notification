@@ -8,6 +8,7 @@ import (
 	"github.com/barkin/insider-notification/retryscheduler/internal/config"
 	schedulerdb "github.com/barkin/insider-notification/retryscheduler/internal/db"
 	"github.com/barkin/insider-notification/retryscheduler/internal/transport/messaging"
+	processorpub "github.com/barkin/insider-notification/processor/public"
 	sharedbun "github.com/barkin/insider-notification/shared/bun"
 	sharedredis "github.com/barkin/insider-notification/shared/redis"
 	stream "github.com/barkin/insider-notification/shared/messaging"
@@ -29,7 +30,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 
 	pub := stream.NewRedisPublisher(rdb)
 	sub := stream.NewRedisSubscriber(rdb, "notify:cg:retryscheduler")
-	msgs := stream.Subscribe[stream.NotificationRetryScheduleEvent](ctx, sub, stream.TopicRetry, cfg.OTelServiceName)
+	msgs := stream.Subscribe[processorpub.NotificationRetryScheduleEvent](ctx, sub, processorpub.TopicRetry, cfg.OTelServiceName)
 
 	cleanup := func() {
 		_ = sub.Close()

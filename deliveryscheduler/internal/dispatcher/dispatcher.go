@@ -6,6 +6,7 @@ import (
 	"time"
 
 	db "github.com/barkin/insider-notification/deliveryscheduler/internal/db"
+	dspub "github.com/barkin/insider-notification/deliveryscheduler/public"
 	stream "github.com/barkin/insider-notification/shared/messaging"
 )
 
@@ -49,10 +50,10 @@ func (d *ScheduledNotificationDispatcher) Tick(ctx context.Context) {
 	}
 
 	// Publish as a single ScheduledNotificationDueEvent
-	evt := stream.ScheduledNotificationDueEvent{
+	evt := dspub.ScheduledNotificationDueEvent{
 		NotificationIDs: ids,
 	}
-	if err := d.pub.Publish(ctx, stream.TopicScheduledNotificationDue, evt); err != nil {
+	if err := d.pub.Publish(ctx, dspub.TopicScheduledNotificationDue, evt); err != nil {
 		slog.ErrorContext(ctx, "delivery scheduler: publish due notifications", "count", len(ids), "error", err)
 		if err := d.repo.UpsertAll(ctx, notifications); err != nil {
 			slog.ErrorContext(ctx, "delivery scheduler: re-enqueue after publish failure", "count", len(notifications), "error", err)

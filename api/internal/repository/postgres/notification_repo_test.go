@@ -8,17 +8,17 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/barkin/insider-notification/api/internal/repository"
-	"github.com/barkin/insider-notification/shared/model"
+	apipub "github.com/barkin/insider-notification/api/public"
 )
 
 func newNotification() *repository.Notification {
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	n := &repository.Notification{
 		Recipient:   "+905551234567",
-		Channel:     string(model.ChannelSMS),
+		Channel:     string(apipub.ChannelSMS),
 		Content:     "test content",
-		Priority:    string(model.PriorityNormal),
-		Status:      string(model.StatusPending),
+		Priority:    string(apipub.PriorityNormal),
+		Status:      string(apipub.StatusPending),
 		MaxAttempts: 4,
 	}
 	n.ID = mustV7()
@@ -54,7 +54,7 @@ func TestNotificationRepo_Create_GetByID(t *testing.T) {
 	if got.Recipient != n.Recipient {
 		t.Errorf("Recipient = %q, want %q", got.Recipient, n.Recipient)
 	}
-	if got.Status != string(model.StatusPending) {
+	if got.Status != string(apipub.StatusPending) {
 		t.Errorf("Status = %q, want pending", got.Status)
 	}
 }
@@ -78,11 +78,11 @@ func TestNotificationRepo_UpdateStatus(t *testing.T) {
 		t.Fatalf("create notification: %v", err)
 	}
 
-	updated, err := repo.UpdateStatus(ctx, n.ID, string(model.StatusCancelled))
+	updated, err := repo.UpdateStatus(ctx, n.ID, string(apipub.StatusCancelled))
 	if err != nil {
 		t.Fatalf("UpdateStatus: %v", err)
 	}
-	if updated.Status != string(model.StatusCancelled) {
+	if updated.Status != string(apipub.StatusCancelled) {
 		t.Errorf("Status = %q, want cancelled", updated.Status)
 	}
 }
@@ -129,14 +129,14 @@ func TestList_offset_filterByStatus(t *testing.T) {
 	}
 	n := newNotification()
 	n.BatchID = &batchID
-	n.Status = string(model.StatusDelivered)
+	n.Status = string(apipub.StatusDelivered)
 	if err := repo.Create(ctx, n); err != nil {
 		t.Fatalf("create notification: %v", err)
 	}
 
 	results, total, _, err := repo.List(ctx, repository.ListFilter{
 		BatchID: &batchID,
-		Status:  string(model.StatusDelivered),
+		Status:  string(apipub.StatusDelivered),
 		Page:    1, PageSize: 20,
 	})
 	if err != nil {
@@ -266,7 +266,7 @@ func TestList_cursor_filtersPreserved(t *testing.T) {
 	for range 3 {
 		n := newNotification()
 		n.BatchID = &batchID
-		n.Channel = string(model.ChannelSMS)
+		n.Channel = string(apipub.ChannelSMS)
 		if err := repo.Create(ctx, n); err != nil {
 			t.Fatalf("create notification: %v", err)
 		}
@@ -274,7 +274,7 @@ func TestList_cursor_filtersPreserved(t *testing.T) {
 	for range 4 {
 		n := newNotification()
 		n.BatchID = &batchID
-		n.Channel = string(model.ChannelEmail)
+		n.Channel = string(apipub.ChannelEmail)
 		if err := repo.Create(ctx, n); err != nil {
 			t.Fatalf("create notification: %v", err)
 		}
@@ -283,7 +283,7 @@ func TestList_cursor_filtersPreserved(t *testing.T) {
 	maxUUID := uuid.UUID{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
 	results, total, _, err := repo.List(ctx, repository.ListFilter{
 		BatchID:  &batchID,
-		Channel:  string(model.ChannelSMS),
+		Channel:  string(apipub.ChannelSMS),
 		PageSize: 10,
 		CursorID: &maxUUID,
 	})
@@ -297,7 +297,7 @@ func TestList_cursor_filtersPreserved(t *testing.T) {
 		t.Errorf("len(results) = %d, want 3", len(results))
 	}
 	for _, n := range results {
-		if n.Channel != string(model.ChannelSMS) {
+		if n.Channel != string(apipub.ChannelSMS) {
 			t.Errorf("expected channel sms, got %q", n.Channel)
 		}
 	}

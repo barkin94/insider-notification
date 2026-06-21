@@ -6,18 +6,19 @@ import (
 	"sync"
 
 	sharedotel "github.com/barkin/insider-notification/shared/otel"
+	apipub "github.com/barkin/insider-notification/api/public"
 	stream "github.com/barkin/insider-notification/shared/messaging"
 )
 
 // WorkerPool fans out stream messages from the router to N concurrent pipeline workers.
 type NotificationDeliveryWorkerPool struct {
-	notificationSelectorByPriority *PriorityRouter[stream.Result[stream.NotificationReadyEvent]]
+	notificationSelectorByPriority *PriorityRouter[stream.Result[apipub.NotificationReadyEvent]]
 	notificationDeliveryPipeline   *NotificationDeliveryPipeline
 	concurrency                    int
 }
 
 func NewNotificationDeliveryWorkerPool(
-	notificationSelector *PriorityRouter[stream.Result[stream.NotificationReadyEvent]],
+	notificationSelector *PriorityRouter[stream.Result[apipub.NotificationReadyEvent]],
 	notificationDeliveryPipeline *NotificationDeliveryPipeline,
 	concurrency int,
 ) *NotificationDeliveryWorkerPool {

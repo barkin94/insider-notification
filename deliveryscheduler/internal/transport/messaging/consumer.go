@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	db "github.com/barkin/insider-notification/deliveryscheduler/internal/db"
+	apipub "github.com/barkin/insider-notification/api/public"
 	stream "github.com/barkin/insider-notification/shared/messaging"
 )
 
@@ -12,12 +13,12 @@ import (
 // so the dispatcher picks them up when scheduled_at time has passed.
 type Consumer struct {
 	repo db.ScheduledNotificationRepository
-	msgs <-chan stream.Result[stream.NotificationsScheduledEvent]
+	msgs <-chan stream.Result[apipub.NotificationsScheduledEvent]
 }
 
 func NewConsumer(
 	repo db.ScheduledNotificationRepository,
-	msgs <-chan stream.Result[stream.NotificationsScheduledEvent],
+	msgs <-chan stream.Result[apipub.NotificationsScheduledEvent],
 ) *Consumer {
 	return &Consumer{repo: repo, msgs: msgs}
 }
@@ -36,7 +37,7 @@ func (c *Consumer) Run(ctx context.Context) {
 	}
 }
 
-func (c *Consumer) handleScheduledEvents(ctx context.Context, result stream.Result[stream.NotificationsScheduledEvent]) {
+func (c *Consumer) handleScheduledEvents(ctx context.Context, result stream.Result[apipub.NotificationsScheduledEvent]) {
 	evt := result.Event
 	msg := result.Msg
 

@@ -1,4 +1,4 @@
-package model
+package public
 
 type Channel string
 type Priority string

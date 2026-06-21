@@ -11,6 +11,7 @@ import (
 	"github.com/barkin/insider-notification/api/internal/repository"
 	"github.com/barkin/insider-notification/api/internal/service"
 	sharedErrors "github.com/barkin/insider-notification/shared/genericerrors"
+	apipub "github.com/barkin/insider-notification/api/public"
 	stream "github.com/barkin/insider-notification/shared/messaging"
 )
 
@@ -110,8 +111,8 @@ func TestCreate_success(t *testing.T) {
 	if n.Status != string(notification.StatusPending) {
 		t.Errorf("status = %q, want pending", n.Status)
 	}
-	if gotTopic != stream.TopicHigh {
-		t.Errorf("published to %q, want %q", gotTopic, stream.TopicHigh)
+	if gotTopic != apipub.TopicHigh {
+		t.Errorf("published to %q, want %q", gotTopic, apipub.TopicHigh)
 	}
 }
 

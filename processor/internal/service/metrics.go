@@ -8,7 +8,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
-	stream "github.com/barkin/insider-notification/shared/messaging"
+	apipub "github.com/barkin/insider-notification/api/public"
 )
 
 // Metrics records delivery outcomes for the processor service.
@@ -88,9 +88,9 @@ func newQueueDepthGauge(meter metric.Meter, rdb *goredis.Client) error {
 				return nil
 			}
 			for priority, topic := range map[string]string{
-				"high":   stream.TopicHigh,
-				"normal": stream.TopicNormal,
-				"low":    stream.TopicLow,
+				"high":   apipub.TopicHigh,
+				"normal": apipub.TopicNormal,
+				"low":    apipub.TopicLow,
 			} {
 				n, err := rdb.XLen(ctx, topic).Result()
 				if err == nil {

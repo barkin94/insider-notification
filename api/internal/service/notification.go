@@ -9,6 +9,7 @@ import (
 
 	"github.com/barkin/insider-notification/api/internal/domain/notification"
 	"github.com/barkin/insider-notification/api/internal/repository"
+	apipub "github.com/barkin/insider-notification/api/public"
 	sharedErrors "github.com/barkin/insider-notification/shared/genericerrors"
 	stream "github.com/barkin/insider-notification/shared/messaging"
 )
@@ -44,9 +45,9 @@ func NewNotificationService(
 }
 
 var topicByPriority = map[string]string{
-	string(notification.PriorityHigh):   stream.TopicHigh,
-	string(notification.PriorityNormal): stream.TopicNormal,
-	string(notification.PriorityLow):    stream.TopicLow,
+	string(notification.PriorityHigh):   apipub.TopicHigh,
+	string(notification.PriorityNormal): apipub.TopicNormal,
+	string(notification.PriorityLow):    apipub.TopicLow,
 }
 
 func (s *notificationService) Create(ctx context.Context, n notification.Notification) (*repository.Notification, error) {
@@ -140,12 +141,12 @@ func (s *notificationService) CreateBatch(ctx context.Context, ns []notification
 	}
 
 	// Separate scheduled and immediate notifications
-	scheduled := make([]stream.ScheduledNotificationItem, 0)
+	scheduled := make([]apipub.ScheduledNotificationItem, 0)
 	immediate := make([]*repository.Notification, 0)
 
 	for _, entity := range acceptedEntities {
 		if entity.DeliverAfter != nil {
-			scheduled = append(scheduled, stream.ScheduledNotificationItem{
+			scheduled = append(scheduled, apipub.ScheduledNotificationItem{
 				NotificationID: entity.ID.String(),
 				ScheduledAt:    *entity.DeliverAfter,
 			})
@@ -156,15 +157,15 @@ func (s *notificationService) CreateBatch(ctx context.Context, ns []notification
 
 	// Publish scheduled notifications as a batch
 	if len(scheduled) > 0 {
-		evt := stream.NotificationsScheduledEvent{Notifications: scheduled}
-		if err := s.publisher.Publish(ctx, stream.TopicNotificationScheduled, evt); err != nil {
+		evt := apipub.NotificationsScheduledEvent{Notifications: scheduled}
+		if err := s.publisher.Publish(ctx, apipub.TopicNotificationScheduled, evt); err != nil {
 			return batchID, results, fmt.Errorf("publish scheduled events: %w", err)
 		}
 	}
 
 	// Publish immediate notifications
 	for _, entity := range immediate {
-		evt := stream.NotificationReadyEvent{}.From(entity)
+		evt := apipub.NotificationReadyEvent{}.From(entity)
 		if err := s.publisher.Publish(ctx, topicByPriority[entity.Priority], evt); err != nil {
 			return batchID, results, fmt.Errorf("publish ready event: %w", err)
 		}
@@ -187,20 +188,20 @@ func (s *notificationService) persist(ctx context.Context, n notification.Notifi
 func (s *notificationService) publish(ctx context.Context, entity *repository.Notification) error {
 	if entity.DeliverAfter != nil {
 		// Scheduled notification: publish to delivery scheduler service
-		evt := stream.NotificationsScheduledEvent{
-			Notifications: []stream.ScheduledNotificationItem{
+		evt := apipub.NotificationsScheduledEvent{
+			Notifications: []apipub.ScheduledNotificationItem{
 				{
 					NotificationID: entity.ID.String(),
 					ScheduledAt:    *entity.DeliverAfter,
 				},
 			},
 		}
-		if err := s.publisher.Publish(ctx, stream.TopicNotificationScheduled, evt); err != nil {
+		if err := s.publisher.Publish(ctx, apipub.TopicNotificationScheduled, evt); err != nil {
 			return fmt.Errorf("publish scheduled event: %w", err)
 		}
 		return nil
 	}
-	evt := stream.NotificationReadyEvent{}.From(entity)
+	evt := apipub.NotificationReadyEvent{}.From(entity)
 	if err := s.publisher.Publish(ctx, topicByPriority[entity.Priority], evt); err != nil {
 		return fmt.Errorf("publish event: %w", err)
 	}

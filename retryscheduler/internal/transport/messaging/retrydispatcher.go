@@ -7,6 +7,7 @@ import (
 	"time"
 
 	schedulerdb "github.com/barkin/insider-notification/retryscheduler/internal/db"
+	apipub "github.com/barkin/insider-notification/api/public"
 	stream "github.com/barkin/insider-notification/shared/messaging"
 )
 
@@ -67,7 +68,7 @@ func (d *RetryDispatcher) Tick(ctx context.Context) {
 		wg.Add(1)
 		go func(a *schedulerdb.DeliveryAttempt) {
 			defer wg.Done()
-			evt := stream.NotificationReadyEvent{
+			evt := apipub.NotificationReadyEvent{
 				NotificationID: a.NotificationID,
 				Channel:        a.Channel,
 				Recipient:      a.Recipient,

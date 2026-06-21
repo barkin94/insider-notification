@@ -23,7 +23,8 @@ import (
 	repopostgres "github.com/barkin/insider-notification/api/internal/repository/postgres"
 	"github.com/barkin/insider-notification/api/internal/service"
 	"github.com/barkin/insider-notification/api/internal/transport/messaging"
-	"github.com/barkin/insider-notification/shared/model"
+	apipub "github.com/barkin/insider-notification/api/public"
+	processorpub "github.com/barkin/insider-notification/processor/public"
 	stream "github.com/barkin/insider-notification/shared/messaging"
 )
 
@@ -96,17 +97,17 @@ func seedNotification(t *testing.T, id uuid.UUID, status string) {
 	}
 }
 
-func makeResult(evt stream.NotificationDeliveryResultEvent) stream.Result[stream.NotificationDeliveryResultEvent] {
+func makeResult(evt processorpub.NotificationDeliveryResultEvent) stream.Result[processorpub.NotificationDeliveryResultEvent] {
 	msg := watermill.NewMessage(uuid.New().String(), nil)
-	return stream.Result[stream.NotificationDeliveryResultEvent]{Ctx: context.Background(), Event: evt, Msg: msg}
+	return stream.Result[processorpub.NotificationDeliveryResultEvent]{Ctx: context.Background(), Event: evt, Msg: msg}
 }
 
 func makeSvc() service.NotificationService {
 	return service.NewNotificationService(repopostgres.NewNotificationRepository(testDB), noopPublisher{})
 }
 
-func runConsumer(svc service.NotificationService, result stream.Result[stream.NotificationDeliveryResultEvent]) {
-	ch := make(chan stream.Result[stream.NotificationDeliveryResultEvent], 1)
+func runConsumer(svc service.NotificationService, result stream.Result[processorpub.NotificationDeliveryResultEvent]) {
+	ch := make(chan stream.Result[processorpub.NotificationDeliveryResultEvent], 1)
 	ch <- result
 	close(ch)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -116,11 +117,11 @@ func runConsumer(svc service.NotificationService, result stream.Result[stream.No
 
 func TestDeliveryResultConsumer_delivered(t *testing.T) {
 	notifID := mustV7()
-	seedNotification(t, notifID, string(model.StatusPending))
+	seedNotification(t, notifID, string(apipub.StatusPending))
 
-	evt := stream.NotificationDeliveryResultEvent{
+	evt := processorpub.NotificationDeliveryResultEvent{
 		NotificationID: notifID.String(),
-		Status:         string(model.StatusDelivered),
+		Status:         string(apipub.StatusDelivered),
 		AttemptNumber:  1,
 		HTTPStatusCode: 200,
 		LatencyMS:      120,
@@ -131,18 +132,18 @@ func TestDeliveryResultConsumer_delivered(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetByID: %v", err)
 	}
-	if got.Status != string(model.StatusDelivered) {
-		t.Errorf("status = %q, want %q", got.Status, string(model.StatusDelivered))
+	if got.Status != string(apipub.StatusDelivered) {
+		t.Errorf("status = %q, want %q", got.Status, string(apipub.StatusDelivered))
 	}
 }
 
 func TestDeliveryResultConsumer_failed(t *testing.T) {
 	notifID := mustV7()
-	seedNotification(t, notifID, string(model.StatusPending))
+	seedNotification(t, notifID, string(apipub.StatusPending))
 
-	evt := stream.NotificationDeliveryResultEvent{
+	evt := processorpub.NotificationDeliveryResultEvent{
 		NotificationID: notifID.String(),
-		Status:         string(model.StatusFailed),
+		Status:         string(apipub.StatusFailed),
 		AttemptNumber:  4,
 		ErrorMessage:   "provider timeout",
 		LatencyMS:      500,
@@ -153,18 +154,18 @@ func TestDeliveryResultConsumer_failed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetByID: %v", err)
 	}
-	if got.Status != string(model.StatusFailed) {
-		t.Errorf("status = %q, want %q", got.Status, string(model.StatusFailed))
+	if got.Status != string(apipub.StatusFailed) {
+		t.Errorf("status = %q, want %q", got.Status, string(apipub.StatusFailed))
 	}
 }
 
 func TestDeliveryResultConsumer_idempotent(t *testing.T) {
 	notifID := mustV7()
-	seedNotification(t, notifID, string(model.StatusPending))
+	seedNotification(t, notifID, string(apipub.StatusPending))
 
-	evt := stream.NotificationDeliveryResultEvent{
+	evt := processorpub.NotificationDeliveryResultEvent{
 		NotificationID: notifID.String(),
-		Status:         string(model.StatusDelivered),
+		Status:         string(apipub.StatusDelivered),
 		AttemptNumber:  1,
 		HTTPStatusCode: 200,
 		LatencyMS:      80,
@@ -178,7 +179,7 @@ func TestDeliveryResultConsumer_idempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetByID: %v", err)
 	}
-	if got.Status != string(model.StatusDelivered) {
-		t.Errorf("status = %q, want %q", got.Status, string(model.StatusDelivered))
+	if got.Status != string(apipub.StatusDelivered) {
+		t.Errorf("status = %q, want %q", got.Status, string(apipub.StatusDelivered))
 	}
 }

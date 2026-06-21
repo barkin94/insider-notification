@@ -4,11 +4,15 @@ go 1.25.0
 
 require (
 	github.com/ThreeDotsLabs/watermill v1.5.2
+	// github.com/barkin/insider-notification/api/public v0.0.0-00010101000000-000000000000
+	// github.com/barkin/insider-notification/processor/public v0.0.0-00010101000000-000000000000
+	github.com/barkin/insider-notification/api/public v0.0.0
+	github.com/barkin/insider-notification/processor/public v0.0.0
 	github.com/barkin/insider-notification/shared v0.0.0
 	github.com/go-redis/redis_rate/v10 v10.0.1
 	github.com/google/uuid v1.6.0
 	github.com/redis/go-redis/v9 v9.20.1
-	github.com/testcontainers/testcontainers-go v0.42.0
+	github.com/testcontainers/testcontainers-go v0.43.0
 	github.com/testcontainers/testcontainers-go/modules/redis v0.42.0
 	go.opentelemetry.io/otel v1.44.0
 	go.opentelemetry.io/otel/metric v1.44.0
@@ -48,7 +52,7 @@ require (
 	github.com/mdelapenya/tlscert v0.2.0 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/go-archive v0.2.0 // indirect
-	github.com/moby/moby/api v1.54.1 // indirect
+	github.com/moby/moby/api v1.54.2 // indirect
 	github.com/moby/moby/client v0.4.0 // indirect
 	github.com/moby/patternmatcher v0.6.1 // indirect
 	github.com/moby/sys/sequential v0.6.0 // indirect
@@ -65,7 +69,7 @@ require (
 	github.com/redis/go-redis/extra/rediscmd/v9 v9.20.1 // indirect
 	github.com/redis/go-redis/extra/redisotel/v9 v9.20.1 // indirect
 	github.com/sagikazarmark/locafero v0.11.0 // indirect
-	github.com/shirou/gopsutil/v4 v4.26.3 // indirect
+	github.com/shirou/gopsutil/v4 v4.26.5 // indirect
 	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/sourcegraph/conc v0.3.1-0.20240121214520-5f936abd7ae8 // indirect
 	github.com/spf13/afero v1.15.0 // indirect
@@ -106,3 +110,7 @@ require (
 )
 
 replace github.com/barkin/insider-notification/shared => ../shared
+
+replace github.com/barkin/insider-notification/api/public => ../api/public
+
+replace github.com/barkin/insider-notification/processor/public => ../processor/public

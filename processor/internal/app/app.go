@@ -14,7 +14,7 @@ import (
 	"github.com/barkin/insider-notification/processor/internal/service"
 	"github.com/barkin/insider-notification/processor/internal/transport/messaging"
 	"github.com/barkin/insider-notification/shared/lock"
-	"github.com/barkin/insider-notification/shared/model"
+	apipub "github.com/barkin/insider-notification/api/public"
 	sharedredis "github.com/barkin/insider-notification/shared/redis"
 	stream "github.com/barkin/insider-notification/shared/messaging"
 )
@@ -43,9 +43,9 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 		pub,
 		service.NewNtfnDeliveryClient(cfg.NtfnDeliveryClientURL, cfg.NtfnDeliveryClientTimeout),
 		service.NewLimiter(rdb, map[string]redis_rate.Limit{
-			string(model.ChannelSMS):   {Rate: cfg.SMSRatePerSecond, Burst: cfg.SMSBurst, Period: time.Second},
-			string(model.ChannelEmail): {Rate: cfg.EmailRatePerSecond, Burst: cfg.EmailBurst, Period: time.Second},
-			string(model.ChannelPush):  {Rate: cfg.PushRatePerSecond, Burst: cfg.PushBurst, Period: time.Second},
+			string(apipub.ChannelSMS):   {Rate: cfg.SMSRatePerSecond, Burst: cfg.SMSBurst, Period: time.Second},
+			string(apipub.ChannelEmail): {Rate: cfg.EmailRatePerSecond, Burst: cfg.EmailBurst, Period: time.Second},
+			string(apipub.ChannelPush):  {Rate: cfg.PushRatePerSecond, Burst: cfg.PushBurst, Period: time.Second},
 		}),
 		lock.NewRedisLocker(rdb),
 		m,

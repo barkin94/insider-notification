@@ -6,6 +6,7 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 
 	"github.com/barkin/insider-notification/processor/internal/delivery"
+	apipub "github.com/barkin/insider-notification/api/public"
 	stream "github.com/barkin/insider-notification/shared/messaging"
 )
 
@@ -17,12 +18,12 @@ func NewNotificationRouter(
 	sub message.Subscriber,
 	serviceName string,
 	highWeight, normalWeight, lowWeight int,
-) *delivery.PriorityRouter[stream.Result[stream.NotificationReadyEvent]] {
-	highMsgs := stream.Subscribe[stream.NotificationReadyEvent](ctx, sub, stream.TopicHigh, serviceName)
-	normalMsgs := stream.Subscribe[stream.NotificationReadyEvent](ctx, sub, stream.TopicNormal, serviceName)
-	lowMsgs := stream.Subscribe[stream.NotificationReadyEvent](ctx, sub, stream.TopicLow, serviceName)
+) *delivery.PriorityRouter[stream.Result[apipub.NotificationReadyEvent]] {
+	highMsgs := stream.Subscribe[apipub.NotificationReadyEvent](ctx, sub, apipub.TopicHigh, serviceName)
+	normalMsgs := stream.Subscribe[apipub.NotificationReadyEvent](ctx, sub, apipub.TopicNormal, serviceName)
+	lowMsgs := stream.Subscribe[apipub.NotificationReadyEvent](ctx, sub, apipub.TopicLow, serviceName)
 
-	return delivery.NewPriorityRouter([]delivery.WeightedSource[stream.Result[stream.NotificationReadyEvent]]{
+	return delivery.NewPriorityRouter([]delivery.WeightedSource[stream.Result[apipub.NotificationReadyEvent]]{
 		{Ch: highMsgs, Weight: highWeight},
 		{Ch: normalMsgs, Weight: normalWeight},
 		{Ch: lowMsgs, Weight: lowWeight},

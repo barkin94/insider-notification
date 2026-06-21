@@ -4,6 +4,10 @@ go 1.25.0
 
 require (
 	github.com/barkin/insider-notification/shared v0.0.0
+	// github.com/barkin/insider-notification/api/public v0.0.0-00010101000000-000000000000
+	// github.com/barkin/insider-notification/deliveryscheduler/public v0.0.0-00010101000000-000000000000
+	github.com/barkin/insider-notification/api/public v0.0.0
+	github.com/barkin/insider-notification/deliveryscheduler/public v0.0.0
 	github.com/golang-migrate/migrate/v4 v4.19.1
 	github.com/google/uuid v1.6.0
 	github.com/testcontainers/testcontainers-go v0.43.0
@@ -122,3 +126,6 @@ require (
 )
 
 replace github.com/barkin/insider-notification/shared => ../shared
+replace github.com/barkin/insider-notification/api/public => ../api/public
+replace github.com/barkin/insider-notification/deliveryscheduler/public => ../deliveryscheduler/public
+
