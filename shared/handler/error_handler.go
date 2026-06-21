@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	sharedErrors "github.com/barkin/insider-notification/shared/errors"
+	sharedErrors "github.com/barkin/insider-notification/shared/genericerrors"
 	sharedotel "github.com/barkin/insider-notification/shared/otel"
 )
 

@@ -10,6 +10,7 @@ import (
 
 type Config struct {
 	shared.Base
+	RedisAddr                 string
 	WorkerConcurrency         int
 	NtfnDeliveryClientURL     string
 	NtfnDeliveryClientTimeout time.Duration
@@ -46,13 +47,8 @@ func Load() *Config {
 	}
 
 	return &Config{
-		Base: shared.Base{
-			RedisAddr:       redisAddr,
-			LogLevel:        v.GetString("LOG_LEVEL"),
-			OTelEnabled:     v.GetBool("OTEL_ENABLED"),
-			OTelEndpoint:    v.GetString("OTEL_ENDPOINT"),
-			OTelServiceName: v.GetString("OTEL_SERVICE_NAME"),
-		},
+		Base:      shared.LoadBase(v),
+		RedisAddr: redisAddr,
 		WorkerConcurrency:         v.GetInt("WORKER_CONCURRENCY"),
 		NtfnDeliveryClientURL:     v.GetString("NTFN_DELIVERY_CLIENT_URL"),
 		NtfnDeliveryClientTimeout: v.GetDuration("NTFN_DELIVERY_CLIENT_TIMEOUT"),

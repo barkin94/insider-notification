@@ -6,7 +6,7 @@ import (
 	"time"
 
 	db "github.com/barkin/insider-notification/deliveryscheduler/internal/db"
-	"github.com/barkin/insider-notification/shared/stream"
+	stream "github.com/barkin/insider-notification/shared/messaging"
 )
 
 // ScheduledNotificationDispatcher claims due scheduled notifications and publishes them.

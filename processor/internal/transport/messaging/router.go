@@ -6,7 +6,7 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 
 	"github.com/barkin/insider-notification/processor/internal/delivery"
-	"github.com/barkin/insider-notification/shared/stream"
+	stream "github.com/barkin/insider-notification/shared/messaging"
 )
 
 // NewNotificationRouter subscribes to the three priority topics and wires them

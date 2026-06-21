@@ -17,7 +17,7 @@ import (
 	"github.com/barkin/insider-notification/api/internal/repository"
 	"github.com/barkin/insider-notification/api/internal/service"
 	handler "github.com/barkin/insider-notification/api/internal/transport/http"
-	sharedErrors "github.com/barkin/insider-notification/shared/errors"
+	sharedErrors "github.com/barkin/insider-notification/shared/genericerrors"
 )
 
 // --- mock service ---

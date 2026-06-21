@@ -2,7 +2,7 @@ package messaging
 
 import (
 	"github.com/barkin/insider-notification/shared/model"
-	"github.com/barkin/insider-notification/shared/stream"
+	stream "github.com/barkin/insider-notification/shared/messaging"
 )
 
 var topicByPriority = map[string]string{

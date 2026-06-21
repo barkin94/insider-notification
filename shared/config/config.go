@@ -6,10 +6,8 @@ import (
 	"github.com/spf13/viper"
 )
 
-// Base holds config fields shared by both services.
+// Base holds config fields shared across all services.
 type Base struct {
-	DatabaseURL     string
-	RedisAddr       string
 	LogLevel        string
 	OTelEnabled     bool
 	OTelServiceName string
@@ -26,23 +24,12 @@ func NewViper() *viper.Viper {
 	return v
 }
 
-// LoadBase reads the shared required fields from v.
-// Returns the field name that is missing, or an empty string on success.
-func LoadBase(v *viper.Viper) (Base, string) {
-	dbURL := v.GetString("DATABASE_URL")
-	redisAddr := v.GetString("REDIS_ADDR")
-	switch {
-	case dbURL == "":
-		return Base{}, "DATABASE_URL"
-	case redisAddr == "":
-		return Base{}, "REDIS_ADDR"
-	}
+// LoadBase reads the shared fields from v.
+func LoadBase(v *viper.Viper) Base {
 	return Base{
-		DatabaseURL:     dbURL,
-		RedisAddr:       redisAddr,
 		LogLevel:        v.GetString("LOG_LEVEL"),
 		OTelEnabled:     v.GetBool("OTEL_ENABLED"),
 		OTelEndpoint:    v.GetString("OTEL_ENDPOINT"),
 		OTelServiceName: v.GetString("OTEL_SERVICE_NAME"),
-	}, ""
+	}
 }

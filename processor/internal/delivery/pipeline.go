@@ -8,7 +8,7 @@ import (
 	"github.com/barkin/insider-notification/processor/internal/service"
 	"github.com/barkin/insider-notification/shared/lock"
 	"github.com/barkin/insider-notification/shared/model"
-	"github.com/barkin/insider-notification/shared/stream"
+	stream "github.com/barkin/insider-notification/shared/messaging"
 )
 
 // NotificationDeliveryPipeline runs a single notification event through

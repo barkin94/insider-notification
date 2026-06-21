@@ -7,8 +7,6 @@ import (
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 	httpSwagger "github.com/swaggo/http-swagger"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
-
-	"github.com/barkin/insider-notification/shared/middleware"
 )
 
 // AppRouter wraps chi.Router and automatically applies errHandler on every AppHandler route.
@@ -53,7 +51,7 @@ type HandlerOpts struct {
 func NewHandler(opts HandlerOpts) http.Handler {
 	mux := chi.NewRouter()
 	mux.Use(chiMiddleware.Recoverer)
-	mux.Use(middleware.Logger())
+	mux.Use(requestLogger())
 
 	mux.Get("/api/v1/docs/*", httpSwagger.WrapHandler)
 	mux.Get("/api/v1/liveness", livenessCheck())

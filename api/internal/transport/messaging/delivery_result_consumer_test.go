@@ -24,7 +24,7 @@ import (
 	"github.com/barkin/insider-notification/api/internal/service"
 	"github.com/barkin/insider-notification/api/internal/transport/messaging"
 	"github.com/barkin/insider-notification/shared/model"
-	"github.com/barkin/insider-notification/shared/stream"
+	stream "github.com/barkin/insider-notification/shared/messaging"
 )
 
 type noopPublisher struct{}

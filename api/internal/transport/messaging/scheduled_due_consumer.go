@@ -7,7 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/barkin/insider-notification/api/internal/repository"
-	"github.com/barkin/insider-notification/shared/stream"
+	stream "github.com/barkin/insider-notification/shared/messaging"
 )
 
 // NotificationReader is the narrow read port for fetching notifications.

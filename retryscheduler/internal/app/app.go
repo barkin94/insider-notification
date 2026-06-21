@@ -10,7 +10,7 @@ import (
 	"github.com/barkin/insider-notification/retryscheduler/internal/transport/messaging"
 	sharedbun "github.com/barkin/insider-notification/shared/bun"
 	sharedredis "github.com/barkin/insider-notification/shared/redis"
-	"github.com/barkin/insider-notification/shared/stream"
+	stream "github.com/barkin/insider-notification/shared/messaging"
 )
 
 // App wires and runs the retryscheduler service.

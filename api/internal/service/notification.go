@@ -9,8 +9,8 @@ import (
 
 	"github.com/barkin/insider-notification/api/internal/domain/notification"
 	"github.com/barkin/insider-notification/api/internal/repository"
-	sharedErrors "github.com/barkin/insider-notification/shared/errors"
-	"github.com/barkin/insider-notification/shared/stream"
+	sharedErrors "github.com/barkin/insider-notification/shared/genericerrors"
+	stream "github.com/barkin/insider-notification/shared/messaging"
 )
 
 // BatchResult holds the outcome of one item in a batch create operation.

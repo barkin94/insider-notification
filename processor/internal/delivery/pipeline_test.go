@@ -14,7 +14,7 @@ import (
 	"github.com/barkin/insider-notification/processor/internal/delivery"
 	"github.com/barkin/insider-notification/processor/internal/service"
 	"github.com/barkin/insider-notification/shared/model"
-	"github.com/barkin/insider-notification/shared/stream"
+	stream "github.com/barkin/insider-notification/shared/messaging"
 )
 
 // --- fakes ---

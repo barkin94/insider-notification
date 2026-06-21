@@ -16,7 +16,7 @@ import (
 	"github.com/barkin/insider-notification/shared/lock"
 	"github.com/barkin/insider-notification/shared/model"
 	sharedredis "github.com/barkin/insider-notification/shared/redis"
-	"github.com/barkin/insider-notification/shared/stream"
+	stream "github.com/barkin/insider-notification/shared/messaging"
 )
 
 // App wires and runs the processor service.

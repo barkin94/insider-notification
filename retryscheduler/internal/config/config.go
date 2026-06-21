@@ -10,6 +10,8 @@ import (
 
 type Config struct {
 	shared.Base
+	DatabaseURL            string
+	RedisAddr              string
 	RetryDispatchInterval  time.Duration
 	RetryDispatchBatchSize int
 }
@@ -20,26 +22,21 @@ func Load() *Config {
 	v.SetDefault("RETRY_DISPATCH_BATCH_SIZE", 100)
 	v.SetDefault("OTEL_SERVICE_NAME", "retryscheduler")
 
-	redisAddr := v.GetString("REDIS_ADDR")
-	if redisAddr == "" {
-		slog.Error("missing required env var", "var", "REDIS_ADDR")
-		os.Exit(1)
-	}
 	databaseURL := v.GetString("DATABASE_URL")
 	if databaseURL == "" {
 		slog.Error("missing required env var", "var", "DATABASE_URL")
 		os.Exit(1)
 	}
+	redisAddr := v.GetString("REDIS_ADDR")
+	if redisAddr == "" {
+		slog.Error("missing required env var", "var", "REDIS_ADDR")
+		os.Exit(1)
+	}
 
 	return &Config{
-		Base: shared.Base{
-			DatabaseURL:     databaseURL,
-			RedisAddr:       redisAddr,
-			LogLevel:        v.GetString("LOG_LEVEL"),
-			OTelEnabled:     v.GetBool("OTEL_ENABLED"),
-			OTelEndpoint:    v.GetString("OTEL_ENDPOINT"),
-			OTelServiceName: v.GetString("OTEL_SERVICE_NAME"),
-		},
+		Base:                   shared.LoadBase(v),
+		DatabaseURL:            databaseURL,
+		RedisAddr:              redisAddr,
 		RetryDispatchInterval:  v.GetDuration("RETRY_DISPATCH_INTERVAL"),
 		RetryDispatchBatchSize: v.GetInt("RETRY_DISPATCH_BATCH_SIZE"),
 	}

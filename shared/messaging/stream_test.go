@@ -1,4 +1,4 @@
-package stream_test
+package messaging_test
 
 import (
 	"context"
@@ -15,7 +15,7 @@ import (
 	tcredis "github.com/testcontainers/testcontainers-go/modules/redis"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	"github.com/barkin/insider-notification/shared/stream"
+	"github.com/barkin/insider-notification/shared/messaging"
 )
 
 var redisAddr string
@@ -42,9 +42,9 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-var discardLogger = stream.NewSlogAdapter(slog.New(slog.NewTextHandler(io.Discard, nil)))
+var discardLogger = messaging.NewSlogAdapter(slog.New(slog.NewTextHandler(io.Discard, nil)))
 
-func newPublisher(t *testing.T) stream.Publisher {
+func newPublisher(t *testing.T) messaging.Publisher {
 	t.Helper()
 	pub, err := redisstream.NewPublisher(redisstream.PublisherConfig{
 		Client: redis.NewClient(&redis.Options{Addr: redisAddr}),
@@ -52,7 +52,7 @@ func newPublisher(t *testing.T) stream.Publisher {
 	if err != nil {
 		t.Fatalf("new publisher: %v", err)
 	}
-	return stream.NewPublisher(pub)
+	return messaging.NewPublisher(pub)
 }
 
 func newSubscriber(t *testing.T, group string) *redisstream.Subscriber {
@@ -75,18 +75,18 @@ func TestPublisher_routesToCorrectTopic(t *testing.T) {
 		priority string
 		topic    string
 	}{
-		{"high", stream.TopicHigh},
-		{"normal", stream.TopicNormal},
-		{"low", stream.TopicLow},
+		{"high", messaging.TopicHigh},
+		{"normal", messaging.TopicNormal},
+		{"low", messaging.TopicLow},
 	}
 
 	for _, tc := range cases {
 		pub := newPublisher(t)
 		sub := newSubscriber(t, "test-cg-"+tc.priority)
 
-		msgs := stream.Subscribe[stream.NotificationReadyEvent](ctx, sub, tc.topic, "test")
+		msgs := messaging.Subscribe[messaging.NotificationReadyEvent](ctx, sub, tc.topic, "test")
 
-		evt := stream.NotificationReadyEvent{
+		evt := messaging.NotificationReadyEvent{
 			NotificationID: "id-" + tc.priority,
 			Channel:        "sms",
 			Recipient:      "+1555",
@@ -113,16 +113,16 @@ func TestPublisher_deliveryResult(t *testing.T) {
 	pub := newPublisher(t)
 	sub := newSubscriber(t, "test-status-cg")
 
-	msgs := stream.Subscribe[stream.NotificationDeliveryResultEvent](ctx, sub, stream.TopicStatus, "test")
+	msgs := messaging.Subscribe[messaging.NotificationDeliveryResultEvent](ctx, sub, messaging.TopicStatus, "test")
 
-	evt := stream.NotificationDeliveryResultEvent{
+	evt := messaging.NotificationDeliveryResultEvent{
 		NotificationID: "notif-1",
 		Status:         "delivered",
 		AttemptNumber:  1,
 		HTTPStatusCode: 200,
 		LatencyMS:      100,
 	}
-	if err := pub.Publish(ctx, stream.TopicStatus, evt); err != nil {
+	if err := pub.Publish(ctx, messaging.TopicStatus, evt); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
 

@@ -1,4 +1,4 @@
-package middleware_test
+package handler_test
 
 import (
 	"bytes"
@@ -8,20 +8,19 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/barkin/insider-notification/shared/middleware"
+	"github.com/barkin/insider-notification/shared/handler"
 )
 
-func TestLogger_fields(t *testing.T) {
+func TestRequestLogger_fields(t *testing.T) {
 	var buf bytes.Buffer
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
 
-	h := middleware.Logger()(
-		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		}),
-	)
+	opts := handler.HandlerOpts{
+		RegisterRoutesFunc: nil,
+	}
+	h := handler.NewHandler(opts)
 
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/liveness", nil)
 	h.ServeHTTP(httptest.NewRecorder(), req)
 
 	var entry map[string]any

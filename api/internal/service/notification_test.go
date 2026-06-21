@@ -10,8 +10,8 @@ import (
 	"github.com/barkin/insider-notification/api/internal/domain/notification"
 	"github.com/barkin/insider-notification/api/internal/repository"
 	"github.com/barkin/insider-notification/api/internal/service"
-	sharedErrors "github.com/barkin/insider-notification/shared/errors"
-	"github.com/barkin/insider-notification/shared/stream"
+	sharedErrors "github.com/barkin/insider-notification/shared/genericerrors"
+	stream "github.com/barkin/insider-notification/shared/messaging"
 )
 
 // --- mock repo ---

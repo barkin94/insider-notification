@@ -1,4 +1,4 @@
-package errors
+package genericerrors
 
 // DomainError is a typed validation or state error produced by the domain layer.
 type DomainError struct {

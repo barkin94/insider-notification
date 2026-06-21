@@ -5,7 +5,7 @@ import (
 	"log/slog"
 
 	db "github.com/barkin/insider-notification/deliveryscheduler/internal/db"
-	"github.com/barkin/insider-notification/shared/stream"
+	stream "github.com/barkin/insider-notification/shared/messaging"
 )
 
 // Consumer consumes NotificationsScheduledEvent and persists scheduled notifications to Postgres

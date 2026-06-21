@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/barkin/insider-notification/processor/internal/delivery"
-	"github.com/barkin/insider-notification/shared/stream"
+	stream "github.com/barkin/insider-notification/shared/messaging"
 )
 
 // result aliases the concrete type to keep test lines short.

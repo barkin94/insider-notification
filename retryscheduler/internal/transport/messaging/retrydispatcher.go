@@ -7,7 +7,7 @@ import (
 	"time"
 
 	schedulerdb "github.com/barkin/insider-notification/retryscheduler/internal/db"
-	"github.com/barkin/insider-notification/shared/stream"
+	stream "github.com/barkin/insider-notification/shared/messaging"
 )
 
 // RetryDispatcher republishes due retry attempts without occupying delivery workers

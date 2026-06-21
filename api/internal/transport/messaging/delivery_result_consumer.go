@@ -7,7 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/barkin/insider-notification/api/internal/service"
-	"github.com/barkin/insider-notification/shared/stream"
+	stream "github.com/barkin/insider-notification/shared/messaging"
 )
 
 // DeliveryResultConsumer processes NotificationDeliveryResultEvent messages from the status stream.

@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	db "github.com/barkin/insider-notification/deliveryscheduler/internal/db"
-	"github.com/barkin/insider-notification/shared/stream"
+	stream "github.com/barkin/insider-notification/shared/messaging"
 )
 
 // MockRepository mocks ScheduledNotificationRepository for testing
@@ -52,7 +52,7 @@ func TestConsumer_BatchesNotifications(t *testing.T) {
 		}
 	}
 
-	repo.UpsertAll(context.Background(), notifications)
+	repo.UpsertAll(context.Background(), notifications) //nolint:errcheck, gosec
 
 	// Verify all items were upserted
 	if len(repo.upsertedAll) != len(items) {
