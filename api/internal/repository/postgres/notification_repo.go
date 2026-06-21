@@ -25,6 +25,14 @@ func (r *bunNotificationRepo) Create(ctx context.Context, n *repository.Notifica
 	return err
 }
 
+func (r *bunNotificationRepo) CreateBatch(ctx context.Context, ns []*repository.Notification) error {
+	if len(ns) == 0 {
+		return nil
+	}
+	_, err := r.db.NewInsert().Model(&ns).Exec(ctx)
+	return err
+}
+
 func (r *bunNotificationRepo) GetByID(ctx context.Context, id uuid.UUID) (*repository.Notification, error) {
 	n := &repository.Notification{}
 	n.ID = id

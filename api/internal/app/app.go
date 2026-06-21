@@ -21,10 +21,11 @@ import (
 
 // App wires and runs the API service.
 type App struct {
-	server                 *http.Server
-	scheduler              *apischeduler.Scheduler
-	deliveryResultConsumer *messaging.DeliveryResultConsumer
-	wg                     sync.WaitGroup
+	server                  *http.Server
+	scheduler               *apischeduler.Scheduler
+	deliveryResultConsumer  *messaging.DeliveryResultConsumer
+	scheduledDueConsumer    *messaging.ScheduledDueConsumer
+	wg                      sync.WaitGroup
 }
 
 // New constructs all dependencies and returns a ready-to-run App.
@@ -37,6 +38,9 @@ func New(ctx context.Context, cfg *config.Config) (*App, func()) {
 	sub := stream.NewRedisSubscriber(rdb, "notify:cg:api")
 	statusMsgs := stream.Subscribe[stream.NotificationDeliveryResultEvent](
 		ctx, sub, stream.TopicStatus, cfg.OTelServiceName,
+	)
+	scheduledDueMsgs := stream.Subscribe[stream.ScheduledNotificationDueEvent](
+		ctx, sub, stream.TopicScheduledNotificationDue, cfg.OTelServiceName,
 	)
 
 	notifRepo := postgres.NewNotificationRepository(bundb)
@@ -59,16 +63,23 @@ func New(ctx context.Context, cfg *config.Config) (*App, func()) {
 		server:                 srv,
 		scheduler:              apischeduler.New(notifRepo, pub, cfg.SchedulerInterval),
 		deliveryResultConsumer: messaging.NewDeliveryResultConsumer(svc, statusMsgs),
+		scheduledDueConsumer:   messaging.NewScheduledDueConsumer(notifRepo, pub, scheduledDueMsgs),
 	}, cleanup
 }
 
-// Start launches the HTTP server, scheduler, and delivery result consumer in the background.
+// Start launches the HTTP server, scheduler, and consumers in the background.
 // It returns a stop function that the caller must invoke to drain all goroutines gracefully.
 func (a *App) Start(ctx context.Context) func(context.Context) {
 	a.wg.Add(1)
 	go func() {
 		defer a.wg.Done()
 		a.deliveryResultConsumer.Run(ctx)
+	}()
+
+	a.wg.Add(1)
+	go func() {
+		defer a.wg.Done()
+		a.scheduledDueConsumer.Run(ctx)
 	}()
 
 	a.wg.Add(1)

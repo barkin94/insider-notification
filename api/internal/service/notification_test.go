@@ -26,6 +26,17 @@ type mockNotifRepo struct {
 func (m *mockNotifRepo) Create(ctx context.Context, n *repository.Notification) error {
 	return m.createFn(ctx, n)
 }
+func (m *mockNotifRepo) CreateBatch(ctx context.Context, ns []*repository.Notification) error {
+	if m.createFn == nil {
+		return nil
+	}
+	for _, n := range ns {
+		if err := m.createFn(ctx, n); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 func (m *mockNotifRepo) GetByID(ctx context.Context, id uuid.UUID) (*repository.Notification, error) {
 	return m.getByIDFn(ctx, id)
 }

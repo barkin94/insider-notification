@@ -104,19 +104,70 @@ func (s *notificationService) CreateBatch(ctx context.Context, ns []notification
 	batchID := uuid.New()
 	results := make([]BatchResult, len(ns))
 
+	// Convert all to entities and validate
+	entities := make([]*repository.Notification, len(ns))
 	for i, n := range ns {
-		entity, err := s.persist(ctx, n, &batchID)
+		entity, err := repository.Notification{}.From(n, &batchID)
 		if err != nil {
 			msg := err.Error()
 			results[i] = BatchResult{Index: i, Status: "rejected", Error: &msg}
 			continue
 		}
-		if err := s.publish(ctx, entity); err != nil {
-			msg := err.Error()
-			results[i] = BatchResult{Index: i, Status: "rejected", Error: &msg}
-			continue
-		}
+		entities[i] = entity
 		results[i] = BatchResult{Index: i, Status: "accepted", ID: &entity.ID}
+	}
+
+	// Collect valid entities and persist in batch
+	acceptedEntities := make([]*repository.Notification, 0, len(ns))
+	acceptedIndices := make([]int, 0, len(ns))
+	for i, entity := range entities {
+		if entity != nil {
+			acceptedEntities = append(acceptedEntities, entity)
+			acceptedIndices = append(acceptedIndices, i)
+		}
+	}
+
+	if len(acceptedEntities) > 0 {
+		if err := s.repo.CreateBatch(ctx, acceptedEntities); err != nil {
+			msg := fmt.Sprintf("create notifications: %v", err)
+			for _, i := range acceptedIndices {
+				results[i].Status = "rejected"
+				results[i].Error = &msg
+				results[i].ID = nil
+			}
+			acceptedEntities = nil
+		}
+	}
+
+	// Separate scheduled and immediate notifications
+	scheduled := make([]stream.ScheduledNotificationItem, 0)
+	immediate := make([]*repository.Notification, 0)
+
+	for _, entity := range acceptedEntities {
+		if entity.DeliverAfter != nil {
+			scheduled = append(scheduled, stream.ScheduledNotificationItem{
+				NotificationID: entity.ID.String(),
+				ScheduledAt:    *entity.DeliverAfter,
+			})
+		} else {
+			immediate = append(immediate, entity)
+		}
+	}
+
+	// Publish scheduled notifications as a batch
+	if len(scheduled) > 0 {
+		evt := stream.NotificationsScheduledEvent{Notifications: scheduled}
+		if err := s.publisher.Publish(ctx, stream.TopicNotificationScheduled, evt); err != nil {
+			return batchID, results, fmt.Errorf("publish scheduled events: %w", err)
+		}
+	}
+
+	// Publish immediate notifications
+	for _, entity := range immediate {
+		evt := stream.NotificationReadyEvent{}.From(entity)
+		if err := s.publisher.Publish(ctx, topicByPriority[entity.Priority], evt); err != nil {
+			return batchID, results, fmt.Errorf("publish ready event: %w", err)
+		}
 	}
 
 	return batchID, results, nil
@@ -135,6 +186,18 @@ func (s *notificationService) persist(ctx context.Context, n notification.Notifi
 
 func (s *notificationService) publish(ctx context.Context, entity *repository.Notification) error {
 	if entity.DeliverAfter != nil {
+		// Scheduled notification: publish to delivery scheduler service
+		evt := stream.NotificationsScheduledEvent{
+			Notifications: []stream.ScheduledNotificationItem{
+				{
+					NotificationID: entity.ID.String(),
+					ScheduledAt:    *entity.DeliverAfter,
+				},
+			},
+		}
+		if err := s.publisher.Publish(ctx, stream.TopicNotificationScheduled, evt); err != nil {
+			return fmt.Errorf("publish scheduled event: %w", err)
+		}
 		return nil
 	}
 	evt := stream.NotificationReadyEvent{}.From(entity)
