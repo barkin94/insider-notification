@@ -114,6 +114,17 @@ services:
       postgres:
         condition: service_healthy
 
+  migrate-deliveryscheduler:
+    image: migrate/migrate
+    volumes:
+      - ./deliveryscheduler/migrations:/migrations:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["migrate -path=/migrations -database $$DATABASE_URL up"]
+    env_file: deliveryscheduler/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   api:
     build:
       context: .
@@ -151,6 +162,21 @@ services:
     env_file: retryscheduler/.env
     depends_on:
       migrate-retryscheduler:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+
+  deliveryscheduler:
+    build:
+      context: .
+      dockerfile: deliveryscheduler/Dockerfile
+    env_file: deliveryscheduler/.env
+    depends_on:
+      migrate-deliveryscheduler:
         condition: service_completed_successfully
       postgres:
         condition: service_healthy
