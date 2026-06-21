@@ -35,7 +35,8 @@ api/
 │       │   ├── notification.go             # HTTP handlers
 │       │   └── dtos.go                     # Request / response types
 │       └── messaging/
-│           └── delivery_result_consumer.go # Consumes delivery status events from Redis
+│           ├── delivery_result_consumer.go # Consumes delivery status events from Redis
+│           └── scheduled_due_consumer.go   # Consumes scheduled-due events from delivery scheduler
 ├── migrations/                             # SQL migration files
 └── docs/                                   # Auto-generated Swagger docs
 ```
@@ -59,8 +60,9 @@ Service Layer
          Processor Service
 
 Background Goroutines
-    ├── Scheduler          — polls DB every 5s for scheduled notifications, publishes to Redis
-    └── DeliveryConsumer   — reads status events from Redis, updates DB status
+    ├── Scheduler              — polls DB every 5s for scheduled notifications, publishes to Redis
+    ├── DeliveryConsumer       — reads status events from Redis, updates DB status
+    └── ScheduledDueConsumer   — reads scheduled-due events from Delivery Scheduler, hydrates notifications, publishes to Redis
 ```
 
 ### Layers

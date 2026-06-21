@@ -44,37 +44,52 @@ HTTP Client
      ▼
 API Service
 │
-├─── [ 1: Persist scheduled notification as <b>pending</b> ]
+├─── [ 1: Persist scheduled notification as <b>pending</b> with deliver_after ]
 │
-├─── [ 2: DB polling ticker finds due notification ]
+├─── [ 2: Publish NotificationsScheduledEvent (batch) ]
 │           │
 │           ▼
-│    [ 3: Dispatch NotificationReadyEvent to Topics By Priority ]
-│            │
-│            ├──► <high_priority_topic>   ──┐
-│            ├──► <normal_priority_topic> ──┼──► Processor Service
-│            └──► <low_priority_topic>    ──┘    │
-│                                                ├─── [ 4: Lock/Rate Limit Notifications ]
-│                                                │
-│                                                ├─── [ 5: Ntfn Delivery API (Mockoon) ]
-│                                                │
-│                                                └─── [ 6: Dispatch NotificationDeliveryResultEvent ]       
-│                                                            |
-│                                                            └──► <status_update_topic> ──┐                   
-│                                                                                         │
-│     ┌───────────────────────────────────────────────────────────────────────────────────┘
+│    Delivery Scheduler Service
+│           │
+│           ├─── [ 3: Consume NotificationsScheduledEvent ]
+│           ├─── [ 4: Persist schedule to Postgres ]
+│           └─── [ 5: Poll for due notifications (atomic claim with FOR UPDATE SKIP LOCKED) ]
+│                       │
+│                       ▼
+│               [ 6: Publish ScheduledNotificationDueEvent (batch IDs) ]
+│                       │
+│                       ▼
+│    API Service (Consumer)
+│           │
+│           ├─── [ 7: Consume ScheduledNotificationDueEvent ]
+│           ├─── [ 8: Hydrate full notification details from DB ]
+│           └─── [ 9: Publish NotificationReadyEvent to Topics By Priority ]
+│                    │
+│                    ├──► <high_priority_topic>   ──┐
+│                    ├──► <normal_priority_topic> ──┼──► Processor Service
+│                    └──► <low_priority_topic>    ──┘    │
+│                                                        ├─── [ 10: Lock/Rate Limit Notifications ]
+│                                                        │
+│                                                        ├─── [ 11: Ntfn Delivery API (Mockoon) ]
+│                                                        │
+│                                                        └─── [ 12: Dispatch NotificationDeliveryResultEvent ]       
+│                                                                    |
+│                                                                    └──► <status_update_topic> ──┐                   
+│                                                                                                 │
+│     ┌───────────────────────────────────────────────────────────────────────────────────────────┘
 ▼     ▼
-└─── [ 7: Update notification status as <b>delivered</b>/<b>failed</b>]
+└─── [ 13: Update notification status as <b>delivered</b>/<b>failed</b> ]
 ```
 
 ### Containers
 
 | Service | Role |
 |---------|------|
-| [`api`](api/README.md) | HTTP API — create, list, cancel notifications |
+| [`api`](api/README.md) | HTTP API — create, list, cancel notifications; consumes scheduled-due events |
 | [`processor`](processor/README.md) | Consumes delivery streams, delivers via webhook, publishes results |
 | [`retryscheduler`](retryscheduler/README.md) | Consumes retry topic, schedules retries in Postgres, republishes when due |
-| `postgres` | Persistent store for notifications and delivery attempts |
+| [`deliveryscheduler`](deliveryscheduler/README.md) | Consumes scheduled notifications, polls for due items, republishes when ready |
+| `postgres` | Persistent store for notifications, delivery attempts, and scheduled deliveries |
 | `redis` | Redis Streams for async message passing |
 | `otel-collector` | Receives OTLP traces, forwards to Tempo |
 | `tempo` | Trace storage, queried by Grafana |
@@ -84,12 +99,14 @@ API Service
 | `mock-ntfn-provider` | Mockoon-based stub webhook endpoint for local delivery testing |
 | `migrate-api` | One-shot container that runs `api` DB migrations on startup |
 | `migrate-retryscheduler` | One-shot container that runs `retryscheduler` DB migrations on startup |
+| `migrate-deliveryscheduler` | One-shot container that runs `deliveryscheduler` DB migrations on startup |
 
 ### Service Documentation
 
-- [api/README.md](api/README.md) — HTTP API reference, request lifecycle, pagination, scheduler, and delivery result consumer
+- [api/README.md](api/README.md) — HTTP API reference, request lifecycle, pagination, scheduled notifications, and delivery result consumer
 - [processor/README.md](processor/README.md) — Priority router, delivery pipeline, retry mechanism, and rate limiting
-- [retryscheduler/README.md](retryscheduler/README.md) — Retry consumer, dispatcher, and scheduling logic
+- [retryscheduler/README.md](retryscheduler/README.md) — Retry consumer, dispatcher, and atomic claim scheduling
+- [deliveryscheduler/README.md](deliveryscheduler/README.md) — Scheduled delivery consumer, dispatcher, and atomic claim scheduling
 
 ## Prerequisites
 
