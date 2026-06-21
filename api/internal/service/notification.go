@@ -7,11 +7,11 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/barkin/insider-notification/api/internal/domain/notification"
-	"github.com/barkin/insider-notification/api/internal/repository"
-	apipub "github.com/barkin/insider-notification/api/public"
-	sharedErrors "github.com/barkin/insider-notification/shared/genericerrors"
-	stream "github.com/barkin/insider-notification/shared/messaging"
+	"github.com/barkin94/insider-notification/api/internal/domain/notification"
+	"github.com/barkin94/insider-notification/api/internal/repository"
+	apipub "github.com/barkin94/insider-notification/api/public"
+	sharedErrors "github.com/barkin94/insider-notification/shared/genericerrors"
+	stream "github.com/barkin94/insider-notification/shared/messaging"
 )
 
 // BatchResult holds the outcome of one item in a batch create operation.

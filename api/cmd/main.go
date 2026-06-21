@@ -15,10 +15,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/barkin/insider-notification/api/internal/app"
-	"github.com/barkin/insider-notification/api/internal/config"
-	sharedlogger "github.com/barkin/insider-notification/shared/logger"
-	sharedotel "github.com/barkin/insider-notification/shared/otel"
+	"github.com/barkin94/insider-notification/api/internal/app"
+	"github.com/barkin94/insider-notification/api/internal/config"
+	sharedlogger "github.com/barkin94/insider-notification/shared/logger"
+	sharedotel "github.com/barkin94/insider-notification/shared/otel"
 )
 
 func main() {

@@ -5,11 +5,11 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/barkin/insider-notification/processor/internal/service"
-	"github.com/barkin/insider-notification/shared/lock"
-	apipub "github.com/barkin/insider-notification/api/public"
-	processorpub "github.com/barkin/insider-notification/processor/public"
-	stream "github.com/barkin/insider-notification/shared/messaging"
+	apipub "github.com/barkin94/insider-notification/api/public"
+	"github.com/barkin94/insider-notification/processor/internal/service"
+	processorpub "github.com/barkin94/insider-notification/processor/public"
+	"github.com/barkin94/insider-notification/shared/lock"
+	stream "github.com/barkin94/insider-notification/shared/messaging"
 )
 
 // NotificationDeliveryPipeline runs a single notification event through

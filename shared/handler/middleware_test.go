@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/barkin/insider-notification/shared/handler"
+	"github.com/barkin94/insider-notification/shared/handler"
 )
 
 func TestRequestLogger_fields(t *testing.T) {

@@ -6,9 +6,9 @@ import (
 	"sync"
 	"time"
 
-	schedulerdb "github.com/barkin/insider-notification/retryscheduler/internal/db"
-	apipub "github.com/barkin/insider-notification/api/public"
-	stream "github.com/barkin/insider-notification/shared/messaging"
+	apipub "github.com/barkin94/insider-notification/api/public"
+	schedulerdb "github.com/barkin94/insider-notification/retryscheduler/internal/db"
+	stream "github.com/barkin94/insider-notification/shared/messaging"
 )
 
 // RetryDispatcher republishes due retry attempts without occupying delivery workers

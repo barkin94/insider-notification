@@ -7,8 +7,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/barkin/insider-notification/api/internal/repository"
-	apipub "github.com/barkin/insider-notification/api/public"
+	"github.com/barkin94/insider-notification/api/internal/repository"
+	apipub "github.com/barkin94/insider-notification/api/public"
 )
 
 func newNotification() *repository.Notification {

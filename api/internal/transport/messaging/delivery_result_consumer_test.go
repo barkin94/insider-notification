@@ -20,12 +20,12 @@ import (
 	"github.com/uptrace/bun/dialect/pgdialect"
 	"github.com/uptrace/bun/driver/pgdriver"
 
-	repopostgres "github.com/barkin/insider-notification/api/internal/repository/postgres"
-	"github.com/barkin/insider-notification/api/internal/service"
-	"github.com/barkin/insider-notification/api/internal/transport/messaging"
-	apipub "github.com/barkin/insider-notification/api/public"
-	processorpub "github.com/barkin/insider-notification/processor/public"
-	stream "github.com/barkin/insider-notification/shared/messaging"
+	repopostgres "github.com/barkin94/insider-notification/api/internal/repository/postgres"
+	"github.com/barkin94/insider-notification/api/internal/service"
+	"github.com/barkin94/insider-notification/api/internal/transport/messaging"
+	apipub "github.com/barkin94/insider-notification/api/public"
+	processorpub "github.com/barkin94/insider-notification/processor/public"
+	stream "github.com/barkin94/insider-notification/shared/messaging"
 )
 
 type noopPublisher struct{}

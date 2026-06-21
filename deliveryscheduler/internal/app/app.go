@@ -6,14 +6,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/barkin/insider-notification/deliveryscheduler/internal/config"
-	"github.com/barkin/insider-notification/deliveryscheduler/internal/db"
-	"github.com/barkin/insider-notification/deliveryscheduler/internal/dispatcher"
-	"github.com/barkin/insider-notification/deliveryscheduler/internal/transport/messaging"
-	sharedbun "github.com/barkin/insider-notification/shared/bun"
-	sharedredis "github.com/barkin/insider-notification/shared/redis"
-	apipub "github.com/barkin/insider-notification/api/public"
-	stream "github.com/barkin/insider-notification/shared/messaging"
+	apipub "github.com/barkin94/insider-notification/api/public"
+	"github.com/barkin94/insider-notification/deliveryscheduler/internal/config"
+	"github.com/barkin94/insider-notification/deliveryscheduler/internal/db"
+	"github.com/barkin94/insider-notification/deliveryscheduler/internal/dispatcher"
+	"github.com/barkin94/insider-notification/deliveryscheduler/internal/transport/messaging"
+	sharedbun "github.com/barkin94/insider-notification/shared/bun"
+	stream "github.com/barkin94/insider-notification/shared/messaging"
+	sharedredis "github.com/barkin94/insider-notification/shared/redis"
 )
 
 // App wires and runs the delivery scheduler service.

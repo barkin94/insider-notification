@@ -11,11 +11,11 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/google/uuid"
 
-	"github.com/barkin/insider-notification/processor/internal/delivery"
-	"github.com/barkin/insider-notification/processor/internal/service"
-	apipub "github.com/barkin/insider-notification/api/public"
-	processorpub "github.com/barkin/insider-notification/processor/public"
-	stream "github.com/barkin/insider-notification/shared/messaging"
+	apipub "github.com/barkin94/insider-notification/api/public"
+	"github.com/barkin94/insider-notification/processor/internal/delivery"
+	"github.com/barkin94/insider-notification/processor/internal/service"
+	processorpub "github.com/barkin94/insider-notification/processor/public"
+	stream "github.com/barkin94/insider-notification/shared/messaging"
 )
 
 // --- fakes ---

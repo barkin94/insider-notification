@@ -5,13 +5,13 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/barkin/insider-notification/retryscheduler/internal/config"
-	schedulerdb "github.com/barkin/insider-notification/retryscheduler/internal/db"
-	"github.com/barkin/insider-notification/retryscheduler/internal/transport/messaging"
-	processorpub "github.com/barkin/insider-notification/processor/public"
-	sharedbun "github.com/barkin/insider-notification/shared/bun"
-	sharedredis "github.com/barkin/insider-notification/shared/redis"
-	stream "github.com/barkin/insider-notification/shared/messaging"
+	processorpub "github.com/barkin94/insider-notification/processor/public"
+	"github.com/barkin94/insider-notification/retryscheduler/internal/config"
+	schedulerdb "github.com/barkin94/insider-notification/retryscheduler/internal/db"
+	"github.com/barkin94/insider-notification/retryscheduler/internal/transport/messaging"
+	sharedbun "github.com/barkin94/insider-notification/shared/bun"
+	stream "github.com/barkin94/insider-notification/shared/messaging"
+	sharedredis "github.com/barkin94/insider-notification/shared/redis"
 )
 
 // App wires and runs the retryscheduler service.

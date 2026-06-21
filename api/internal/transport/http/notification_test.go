@@ -13,11 +13,11 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/barkin/insider-notification/api/internal/domain/notification"
-	"github.com/barkin/insider-notification/api/internal/repository"
-	"github.com/barkin/insider-notification/api/internal/service"
-	handler "github.com/barkin/insider-notification/api/internal/transport/http"
-	sharedErrors "github.com/barkin/insider-notification/shared/genericerrors"
+	"github.com/barkin94/insider-notification/api/internal/domain/notification"
+	"github.com/barkin94/insider-notification/api/internal/repository"
+	"github.com/barkin94/insider-notification/api/internal/service"
+	handler "github.com/barkin94/insider-notification/api/internal/transport/http"
+	sharedErrors "github.com/barkin94/insider-notification/shared/genericerrors"
 )
 
 // --- mock service ---

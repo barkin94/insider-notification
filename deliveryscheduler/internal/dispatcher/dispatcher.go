@@ -5,9 +5,9 @@ import (
 	"log/slog"
 	"time"
 
-	db "github.com/barkin/insider-notification/deliveryscheduler/internal/db"
-	dspub "github.com/barkin/insider-notification/deliveryscheduler/public"
-	stream "github.com/barkin/insider-notification/shared/messaging"
+	db "github.com/barkin94/insider-notification/deliveryscheduler/internal/db"
+	dspub "github.com/barkin94/insider-notification/deliveryscheduler/public"
+	stream "github.com/barkin94/insider-notification/shared/messaging"
 )
 
 // ScheduledNotificationDispatcher claims due scheduled notifications and publishes them.

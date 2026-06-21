@@ -9,14 +9,14 @@ import (
 
 	"github.com/go-redis/redis_rate/v10"
 
-	"github.com/barkin/insider-notification/processor/internal/config"
-	"github.com/barkin/insider-notification/processor/internal/delivery"
-	"github.com/barkin/insider-notification/processor/internal/service"
-	"github.com/barkin/insider-notification/processor/internal/transport/messaging"
-	"github.com/barkin/insider-notification/shared/lock"
-	apipub "github.com/barkin/insider-notification/api/public"
-	sharedredis "github.com/barkin/insider-notification/shared/redis"
-	stream "github.com/barkin/insider-notification/shared/messaging"
+	apipub "github.com/barkin94/insider-notification/api/public"
+	"github.com/barkin94/insider-notification/processor/internal/config"
+	"github.com/barkin94/insider-notification/processor/internal/delivery"
+	"github.com/barkin94/insider-notification/processor/internal/service"
+	"github.com/barkin94/insider-notification/processor/internal/transport/messaging"
+	"github.com/barkin94/insider-notification/shared/lock"
+	stream "github.com/barkin94/insider-notification/shared/messaging"
+	sharedredis "github.com/barkin94/insider-notification/shared/redis"
 )
 
 // App wires and runs the processor service.

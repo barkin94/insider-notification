@@ -12,6 +12,12 @@ github.com/ThreeDotsLabs/watermill v1.5.2 h1:0ES33Eq1jEsP/pWvtE4n8bE0bs+9Jq7boT7
 github.com/ThreeDotsLabs/watermill v1.5.2/go.mod h1:i9/968UriGphWfEbfMuYSD1qFbYRjb0mE0r+rV0FPp4=
 github.com/ThreeDotsLabs/watermill-redisstream v1.4.5 h1:SCETqsAYo/CRBb7H3+zWCcSqhMpDrQA4I6dCqC7UPR4=
 github.com/ThreeDotsLabs/watermill-redisstream v1.4.5/go.mod h1:Da3wqG1OcvHPODjuJcxSCY1O7D4loIZQpVbZ5u94xRo=
+github.com/barkin94/insider-notification/api/public v0.1.0 h1:46/ml004lsJ2xFP7cgmrNF+bot8YJylEFzu0Z40/Z38=
+github.com/barkin94/insider-notification/api/public v0.1.0/go.mod h1:RlIodJxKsk0MLlhqQ0jWh1EyoDs/wPBXmV8TOwtJYtw=
+github.com/barkin94/insider-notification/deliveryscheduler/public v0.1.0 h1:IhWXCqp7/NUAXQ52Y7zJ0432Mi6BS2wkW/fT8OB9qbg=
+github.com/barkin94/insider-notification/deliveryscheduler/public v0.1.0/go.mod h1:QKAcK9vhdVva8iq1ZxATQKIGLo3m8zi7ZYOc/Kq5x1A=
+github.com/barkin94/insider-notification/shared v0.1.0 h1:h5LtS280p45a1rFhgWcnEH90GfDwCJ9KL6upyFqLWB0=
+github.com/barkin94/insider-notification/shared v0.1.0/go.mod h1:ARTr0fuHiyKDRr8PdOXVX06MSyvMPY7FESRzXFK6rNo=
 github.com/bsm/ginkgo/v2 v2.12.0 h1:Ny8MWAHyOepLGlLKYmXG4IEkioBysk6GpaRTLC8zwWs=
 github.com/bsm/ginkgo/v2 v2.12.0/go.mod h1:SwYbGRRDovPVboqFv0tPTcG1sN61LM1Z4ARdbAV9g4c=
 github.com/bsm/gomega v1.27.10 h1:yeMWxP2pV2fG3FgAODIY8EiRE3dy0aeFYt4l7wh6yKA=

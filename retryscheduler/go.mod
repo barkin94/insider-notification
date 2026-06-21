@@ -1,13 +1,11 @@
-module github.com/barkin/insider-notification/retryscheduler
+module github.com/barkin94/insider-notification/retryscheduler
 
 go 1.25.0
 
 require (
-	// github.com/barkin/insider-notification/api/public v0.0.0-00010101000000-000000000000
-	// github.com/barkin/insider-notification/processor/public v0.0.0-00010101000000-000000000000
-	github.com/barkin/insider-notification/api/public v0.0.0
-	github.com/barkin/insider-notification/processor/public v0.0.0
-	github.com/barkin/insider-notification/shared v0.0.0
+	github.com/barkin94/insider-notification/api/public v0.1.0
+	github.com/barkin94/insider-notification/processor/public v0.1.0
+	github.com/barkin94/insider-notification/shared v0.1.0
 	github.com/golang-migrate/migrate/v4 v4.19.1
 	github.com/google/uuid v1.6.0
 	github.com/testcontainers/testcontainers-go v0.43.0
@@ -124,9 +122,3 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	mellium.im/sasl v0.3.2 // indirect
 )
-
-replace github.com/barkin/insider-notification/shared => ../shared
-
-replace github.com/barkin/insider-notification/api/public => ../api/public
-
-replace github.com/barkin/insider-notification/processor/public => ../processor/public

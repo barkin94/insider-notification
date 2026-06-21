@@ -7,8 +7,8 @@ import (
 
 	"github.com/google/uuid"
 
-	apipub "github.com/barkin/insider-notification/api/public"
-	db "github.com/barkin/insider-notification/deliveryscheduler/internal/db"
+	apipub "github.com/barkin94/insider-notification/api/public"
+	db "github.com/barkin94/insider-notification/deliveryscheduler/internal/db"
 )
 
 // MockRepository mocks ScheduledNotificationRepository for testing

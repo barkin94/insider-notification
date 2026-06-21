@@ -7,7 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
-	schedulerdb "github.com/barkin/insider-notification/deliveryscheduler/internal/db"
+	schedulerdb "github.com/barkin94/insider-notification/deliveryscheduler/internal/db"
 )
 
 func mustNotifID(t *testing.T) string {

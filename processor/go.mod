@@ -1,14 +1,12 @@
-module github.com/barkin/insider-notification/processor
+module github.com/barkin94/insider-notification/processor
 
 go 1.25.0
 
 require (
 	github.com/ThreeDotsLabs/watermill v1.5.2
-	// github.com/barkin/insider-notification/api/public v0.0.0-00010101000000-000000000000
-	// github.com/barkin/insider-notification/processor/public v0.0.0-00010101000000-000000000000
-	github.com/barkin/insider-notification/api/public v0.0.0
-	github.com/barkin/insider-notification/processor/public v0.0.0
-	github.com/barkin/insider-notification/shared v0.0.0
+	github.com/barkin94/insider-notification/api/public v0.1.0
+	github.com/barkin94/insider-notification/processor/public v0.1.0
+	github.com/barkin94/insider-notification/shared v0.1.0
 	github.com/go-redis/redis_rate/v10 v10.0.1
 	github.com/google/uuid v1.6.0
 	github.com/redis/go-redis/v9 v9.20.1
@@ -108,9 +106,3 @@ require (
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/barkin/insider-notification/shared => ../shared
-
-replace github.com/barkin/insider-notification/api/public => ../api/public
-
-replace github.com/barkin/insider-notification/processor/public => ../processor/public

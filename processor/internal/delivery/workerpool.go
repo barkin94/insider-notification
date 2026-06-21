@@ -5,9 +5,9 @@ import (
 	"log/slog"
 	"sync"
 
-	sharedotel "github.com/barkin/insider-notification/shared/otel"
-	apipub "github.com/barkin/insider-notification/api/public"
-	stream "github.com/barkin/insider-notification/shared/messaging"
+	apipub "github.com/barkin94/insider-notification/api/public"
+	stream "github.com/barkin94/insider-notification/shared/messaging"
+	sharedotel "github.com/barkin94/insider-notification/shared/otel"
 )
 
 // WorkerPool fans out stream messages from the router to N concurrent pipeline workers.

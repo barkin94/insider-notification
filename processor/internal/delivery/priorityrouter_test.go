@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/barkin/insider-notification/processor/internal/delivery"
-	apipub "github.com/barkin/insider-notification/api/public"
-	stream "github.com/barkin/insider-notification/shared/messaging"
+	apipub "github.com/barkin94/insider-notification/api/public"
+	"github.com/barkin94/insider-notification/processor/internal/delivery"
+	stream "github.com/barkin94/insider-notification/shared/messaging"
 )
 
 // result aliases the concrete type to keep test lines short.

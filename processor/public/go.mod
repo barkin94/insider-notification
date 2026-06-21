@@ -1,3 +1,3 @@
-module github.com/barkin/insider-notification/processor/public
+module github.com/barkin94/insider-notification/processor/public
 
 go 1.25.0

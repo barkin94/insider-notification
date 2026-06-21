@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/barkin/insider-notification/shared/httpclient"
+	"github.com/barkin94/insider-notification/shared/httpclient"
 )
 
 // DeliveryResult holds the outcome of a single delivery attempt.

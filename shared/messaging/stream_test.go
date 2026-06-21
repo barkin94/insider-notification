@@ -15,7 +15,7 @@ import (
 	tcredis "github.com/testcontainers/testcontainers-go/modules/redis"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	"github.com/barkin/insider-notification/shared/messaging"
+	"github.com/barkin94/insider-notification/shared/messaging"
 )
 
 type testEvent struct {

@@ -4,9 +4,9 @@ import (
 	"context"
 	"log/slog"
 
-	schedulerdb "github.com/barkin/insider-notification/retryscheduler/internal/db"
-	processorpub "github.com/barkin/insider-notification/processor/public"
-	stream "github.com/barkin/insider-notification/shared/messaging"
+	processorpub "github.com/barkin94/insider-notification/processor/public"
+	schedulerdb "github.com/barkin94/insider-notification/retryscheduler/internal/db"
+	stream "github.com/barkin94/insider-notification/shared/messaging"
 )
 
 // RetryConsumer consumes NotificationRetryScheduleEvents from TopicRetry and

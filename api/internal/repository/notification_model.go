@@ -5,8 +5,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/barkin/insider-notification/api/internal/domain/notification"
-	sharedbun "github.com/barkin/insider-notification/shared/bun"
+	"github.com/barkin94/insider-notification/api/internal/domain/notification"
+	sharedbun "github.com/barkin94/insider-notification/shared/bun"
 )
 
 type Notification struct {

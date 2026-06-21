@@ -6,10 +6,10 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/barkin/insider-notification/api/internal/repository"
-	apipub "github.com/barkin/insider-notification/api/public"
-	dspub "github.com/barkin/insider-notification/deliveryscheduler/public"
-	stream "github.com/barkin/insider-notification/shared/messaging"
+	"github.com/barkin94/insider-notification/api/internal/repository"
+	apipub "github.com/barkin94/insider-notification/api/public"
+	dspub "github.com/barkin94/insider-notification/deliveryscheduler/public"
+	stream "github.com/barkin94/insider-notification/shared/messaging"
 )
 
 // NotificationReader is the narrow read port for fetching notifications.

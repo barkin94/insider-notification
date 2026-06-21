@@ -8,16 +8,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/barkin/insider-notification/api/internal/config"
-	"github.com/barkin/insider-notification/api/internal/repository/postgres"
-	"github.com/barkin/insider-notification/api/internal/service"
-	handler "github.com/barkin/insider-notification/api/internal/transport/http"
-	"github.com/barkin/insider-notification/api/internal/transport/messaging"
-	sharedbun "github.com/barkin/insider-notification/shared/bun"
-	sharedredis "github.com/barkin/insider-notification/shared/redis"
-	stream "github.com/barkin/insider-notification/shared/messaging"
-	processorpub "github.com/barkin/insider-notification/processor/public"
-	dspub "github.com/barkin/insider-notification/deliveryscheduler/public"
+	"github.com/barkin94/insider-notification/api/internal/config"
+	"github.com/barkin94/insider-notification/api/internal/repository/postgres"
+	"github.com/barkin94/insider-notification/api/internal/service"
+	handler "github.com/barkin94/insider-notification/api/internal/transport/http"
+	"github.com/barkin94/insider-notification/api/internal/transport/messaging"
+	dspub "github.com/barkin94/insider-notification/deliveryscheduler/public"
+	processorpub "github.com/barkin94/insider-notification/processor/public"
+	sharedbun "github.com/barkin94/insider-notification/shared/bun"
+	stream "github.com/barkin94/insider-notification/shared/messaging"
+	sharedredis "github.com/barkin94/insider-notification/shared/redis"
 )
 
 // App wires and runs the API service.

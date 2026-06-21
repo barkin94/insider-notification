@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	shared "github.com/barkin/insider-notification/shared/config"
+	shared "github.com/barkin94/insider-notification/shared/config"
 )
 
 type Config struct {
@@ -47,8 +47,8 @@ func Load() *Config {
 	}
 
 	return &Config{
-		Base:      shared.LoadBase(v),
-		RedisAddr: redisAddr,
+		Base:                      shared.LoadBase(v),
+		RedisAddr:                 redisAddr,
 		WorkerConcurrency:         v.GetInt("WORKER_CONCURRENCY"),
 		NtfnDeliveryClientURL:     v.GetString("NTFN_DELIVERY_CLIENT_URL"),
 		NtfnDeliveryClientTimeout: v.GetDuration("NTFN_DELIVERY_CLIENT_TIMEOUT"),

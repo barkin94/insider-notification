@@ -1,7 +1,7 @@
 package messaging
 
 import (
-	apipub "github.com/barkin/insider-notification/api/public"
+	apipub "github.com/barkin94/insider-notification/api/public"
 )
 
 var topicByPriority = map[string]string{
