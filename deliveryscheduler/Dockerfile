@@ -4,9 +4,6 @@ WORKDIR /app
 RUN apk add --no-cache git
 
 COPY deliveryscheduler/go.mod deliveryscheduler/go.sum deliveryscheduler/
-RUN GOPRIVATE=github.com/barkin/insider-notification \
-    GONOSUMDB=github.com/barkin/insider-notification \
-    go mod download -C deliveryscheduler
 
 COPY deliveryscheduler/ deliveryscheduler/
 

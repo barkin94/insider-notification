@@ -4,9 +4,6 @@ WORKDIR /app
 RUN apk add --no-cache git
 
 COPY api/go.mod api/go.sum api/
-RUN GOPRIVATE=github.com/barkin/insider-notification \
-    GONOSUMDB=github.com/barkin/insider-notification \
-    go mod download -C api
 
 RUN go install github.com/swaggo/swag/cmd/swag@v1.16.6
 

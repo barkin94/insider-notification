@@ -4,9 +4,6 @@ WORKDIR /app
 RUN apk add --no-cache git
 
 COPY processor/go.mod processor/go.sum processor/
-RUN GOPRIVATE=github.com/barkin/insider-notification \
-    GONOSUMDB=github.com/barkin/insider-notification \
-    go mod download -C processor
 
 COPY processor/ processor/
 

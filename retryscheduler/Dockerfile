@@ -4,9 +4,6 @@ WORKDIR /app
 RUN apk add --no-cache git
 
 COPY retryscheduler/go.mod retryscheduler/go.sum retryscheduler/
-RUN GOPRIVATE=github.com/barkin/insider-notification \
-    GONOSUMDB=github.com/barkin/insider-notification \
-    go mod download -C retryscheduler
 
 COPY retryscheduler/ retryscheduler/
 
