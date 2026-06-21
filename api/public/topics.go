@@ -1,8 +1,7 @@
 package public
 
-const (
-	TopicHigh                  = "notify:stream:high"
-	TopicNormal                = "notify:stream:normal"
-	TopicLow                   = "notify:stream:low"
-	TopicNotificationScheduled = "notify:stream:notification-scheduled"
-)
+var TopicByPriority = map[Priority]Topic{
+	PriorityHigh:   TopicHigh,
+	PriorityNormal: TopicNormal,
+	PriorityLow:    TopicLow,
+}

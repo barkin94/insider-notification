@@ -3,6 +3,7 @@ package public
 type Channel string
 type Priority string
 type Status string
+type Topic string
 
 const (
 	ChannelSMS   Channel = "sms"
@@ -17,4 +18,9 @@ const (
 	StatusDelivered Status = "delivered"
 	StatusFailed    Status = "failed"
 	StatusCancelled Status = "cancelled"
+
+	TopicHigh                  Topic = "notify:stream:high"
+	TopicNormal                Topic = "notify:stream:normal"
+	TopicLow                   Topic = "notify:stream:low"
+	TopicNotificationScheduled Topic = "notify:stream:notification-scheduled"
 )
