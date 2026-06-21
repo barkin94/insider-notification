@@ -1,6 +1,5 @@
 # Environment files (copy from .env.example)
-api/.env
-processor/.env
+*.env
 
 # Build outputs
 bin/
