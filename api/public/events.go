@@ -49,3 +49,9 @@ type ScheduledNotificationItem struct {
 	NotificationID string
 	ScheduledAt    time.Time
 }
+
+// NotificationScheduleCancelledEvent is published by the API when a scheduled
+// notification is cancelled so downstream services can remove any pending schedule.
+type NotificationScheduleCancelledEvent struct {
+	NotificationID string
+}
