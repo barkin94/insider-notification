@@ -44,12 +44,6 @@ func NewNotificationService(
 	return &notificationService{repo: repo, publisher: publisher}
 }
 
-var topicByPriority = map[string]string{
-	string(notification.PriorityHigh):   apipub.TopicHigh,
-	string(notification.PriorityNormal): apipub.TopicNormal,
-	string(notification.PriorityLow):    apipub.TopicLow,
-}
-
 func (s *notificationService) Create(ctx context.Context, n notification.Notification) (*repository.Notification, error) {
 	entity, err := s.persist(ctx, n, nil)
 	if err != nil {
@@ -79,11 +73,11 @@ func (s *notificationService) Cancel(ctx context.Context, id uuid.UUID) (*reposi
 	}
 
 	dn := entity.ToDomain()
-	if err := dn.Transition(notification.StatusCancelled); err != nil {
+	if err := dn.Transition(apipub.StatusCancelled); err != nil {
 		return nil, &sharedErrors.ConflictError{Message: err.Error()}
 	}
 
-	return s.repo.UpdateStatus(ctx, id, string(notification.StatusCancelled))
+	return s.repo.UpdateStatus(ctx, id, string(apipub.StatusCancelled))
 }
 
 func (s *notificationService) UpdateStatus(ctx context.Context, id uuid.UUID, status string) error {
@@ -93,7 +87,7 @@ func (s *notificationService) UpdateStatus(ctx context.Context, id uuid.UUID, st
 	}
 
 	dn := entity.ToDomain()
-	if err := dn.Transition(notification.Status(status)); err != nil {
+	if err := dn.Transition(apipub.Status(status)); err != nil {
 		return err
 	}
 
@@ -158,7 +152,7 @@ func (s *notificationService) CreateBatch(ctx context.Context, ns []notification
 	// Publish scheduled notifications as a batch
 	if len(scheduled) > 0 {
 		evt := apipub.NotificationsScheduledEvent{Notifications: scheduled}
-		if err := s.publisher.Publish(ctx, apipub.TopicNotificationScheduled, evt); err != nil {
+		if err := s.publisher.Publish(ctx, string(apipub.TopicNotificationScheduled), evt); err != nil {
 			return batchID, results, fmt.Errorf("publish scheduled events: %w", err)
 		}
 	}
@@ -166,7 +160,7 @@ func (s *notificationService) CreateBatch(ctx context.Context, ns []notification
 	// Publish immediate notifications
 	for _, entity := range immediate {
 		evt := apipub.NotificationReadyEvent{}.From(entity)
-		if err := s.publisher.Publish(ctx, topicByPriority[entity.Priority], evt); err != nil {
+		if err := s.publisher.Publish(ctx, string(apipub.TopicByPriority[apipub.Priority(entity.Priority)]), evt); err != nil {
 			return batchID, results, fmt.Errorf("publish ready event: %w", err)
 		}
 	}
@@ -196,13 +190,13 @@ func (s *notificationService) publish(ctx context.Context, entity *repository.No
 				},
 			},
 		}
-		if err := s.publisher.Publish(ctx, apipub.TopicNotificationScheduled, evt); err != nil {
+		if err := s.publisher.Publish(ctx, string(apipub.TopicNotificationScheduled), evt); err != nil {
 			return fmt.Errorf("publish scheduled event: %w", err)
 		}
 		return nil
 	}
 	evt := apipub.NotificationReadyEvent{}.From(entity)
-	if err := s.publisher.Publish(ctx, topicByPriority[entity.Priority], evt); err != nil {
+	if err := s.publisher.Publish(ctx, string(apipub.TopicByPriority[apipub.Priority(entity.Priority)]), evt); err != nil {
 		return fmt.Errorf("publish event: %w", err)
 	}
 	return nil

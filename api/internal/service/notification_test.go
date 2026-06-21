@@ -89,7 +89,7 @@ func newSvc(repo repository.NotificationRepository, pub stream.Publisher) servic
 	return service.NewNotificationService(repo, pub)
 }
 
-func validNotification(channel notification.Channel, priority notification.Priority) notification.Notification {
+func validNotification(channel apipub.Channel, priority apipub.Priority) notification.Notification {
 	var n notification.Notification
 	n.SetChannel(channel)          //nolint:errcheck,gosec
 	n.SetRecipient("+15551234567") //nolint:errcheck,gosec
@@ -104,14 +104,14 @@ func TestCreate_success(t *testing.T) {
 	var gotTopic string
 	svc := newSvc(okRepo(), okPublisher(&gotTopic))
 
-	n, err := svc.Create(context.Background(), validNotification(notification.ChannelSMS, notification.PriorityHigh))
+	n, err := svc.Create(context.Background(), validNotification(apipub.ChannelSMS, apipub.PriorityHigh))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if n.Status != string(notification.StatusPending) {
+	if n.Status != string(apipub.StatusPending) {
 		t.Errorf("status = %q, want pending", n.Status)
 	}
-	if gotTopic != apipub.TopicHigh {
+	if gotTopic != string(apipub.TopicHigh) {
 		t.Errorf("published to %q, want %q", gotTopic, apipub.TopicHigh)
 	}
 }
@@ -121,7 +121,7 @@ func TestCreate_publishFailure(t *testing.T) {
 		return errors.New("redis down")
 	}}
 	svc := newSvc(okRepo(), pub)
-	_, err := svc.Create(context.Background(), validNotification(notification.ChannelSMS, notification.PriorityNormal))
+	_, err := svc.Create(context.Background(), validNotification(apipub.ChannelSMS, apipub.PriorityNormal))
 	if err == nil {
 		t.Fatal("expected error from publisher")
 	}
@@ -144,7 +144,7 @@ func TestCancel_success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if n.Status != string(notification.StatusCancelled) {
+	if n.Status != string(apipub.StatusCancelled) {
 		t.Errorf("status = %q, want cancelled", n.Status)
 	}
 }

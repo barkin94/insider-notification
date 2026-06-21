@@ -19,9 +19,9 @@ func NewNotificationRouter(
 	serviceName string,
 	highWeight, normalWeight, lowWeight int,
 ) *delivery.PriorityRouter[stream.Result[apipub.NotificationReadyEvent]] {
-	highMsgs := stream.Subscribe[apipub.NotificationReadyEvent](ctx, sub, apipub.TopicHigh, serviceName)
-	normalMsgs := stream.Subscribe[apipub.NotificationReadyEvent](ctx, sub, apipub.TopicNormal, serviceName)
-	lowMsgs := stream.Subscribe[apipub.NotificationReadyEvent](ctx, sub, apipub.TopicLow, serviceName)
+	highMsgs := stream.Subscribe[apipub.NotificationReadyEvent](ctx, sub, string(apipub.TopicHigh), serviceName)
+	normalMsgs := stream.Subscribe[apipub.NotificationReadyEvent](ctx, sub, string(apipub.TopicNormal), serviceName)
+	lowMsgs := stream.Subscribe[apipub.NotificationReadyEvent](ctx, sub, string(apipub.TopicLow), serviceName)
 
 	return delivery.NewPriorityRouter([]delivery.WeightedSource[stream.Result[apipub.NotificationReadyEvent]]{
 		{Ch: highMsgs, Weight: highWeight},

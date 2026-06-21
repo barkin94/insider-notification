@@ -51,12 +51,6 @@ func (c *ScheduledDueConsumer) handleScheduledDueEvent(ctx context.Context, resu
 	evt := result.Event
 	msg := result.Msg
 
-	topicByPriority := map[string]string{
-		"high":   apipub.TopicHigh,
-		"normal": apipub.TopicNormal,
-		"low":    apipub.TopicLow,
-	}
-
 	for _, notifID := range evt.NotificationIDs {
 		id, err := uuid.Parse(notifID)
 		if err != nil {
@@ -81,8 +75,8 @@ func (c *ScheduledDueConsumer) handleScheduledDueEvent(ctx context.Context, resu
 			MaxAttempts:    notif.MaxAttempts,
 		}
 
-		topic := topicByPriority[notif.Priority]
-		if err := c.publisher.Publish(ctx, topic, readyEvt); err != nil {
+		topic := apipub.TopicByPriority[apipub.Priority(notif.Priority)]
+		if err := c.publisher.Publish(ctx, string(topic), readyEvt); err != nil {
 			slog.ErrorContext(ctx, "scheduled due consumer: publish notification ready", "id", notifID, "error", err)
 			msg.Nack()
 			return

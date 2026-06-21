@@ -33,7 +33,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 
 	pub := stream.NewRedisPublisher(rdb)
 	sub := stream.NewRedisSubscriber(rdb, "notify:cg:deliveryscheduler")
-	msgs := stream.Subscribe[apipub.NotificationsScheduledEvent](ctx, sub, apipub.TopicNotificationScheduled, cfg.OTelServiceName)
+	msgs := stream.Subscribe[apipub.NotificationsScheduledEvent](ctx, sub, string(apipub.TopicNotificationScheduled), cfg.OTelServiceName)
 
 	cleanup := func() {
 		_ = sub.Close()

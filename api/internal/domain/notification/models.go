@@ -6,50 +6,33 @@ import (
 	"regexp"
 	"slices"
 	"time"
-)
 
-type Channel string
-type Priority string
-type Status string
-
-const (
-	ChannelSMS   Channel = "sms"
-	ChannelEmail Channel = "email"
-	ChannelPush  Channel = "push"
-
-	PriorityHigh   Priority = "high"
-	PriorityNormal Priority = "normal"
-	PriorityLow    Priority = "low"
-
-	StatusPending   Status = "pending"
-	StatusDelivered Status = "delivered"
-	StatusFailed    Status = "failed"
-	StatusCancelled Status = "cancelled"
+	apipub "github.com/barkin94/insider-notification/api/public"
 )
 
 // E.164: + followed by 7–15 digits, leading digit non-zero.
 var phoneRE = regexp.MustCompile(`^\+[1-9]\d{6,14}$`)
 
-var validTransitions = map[Status][]Status{
-	StatusPending:   {StatusDelivered, StatusFailed, StatusCancelled},
-	StatusFailed:    {StatusPending}, // retry
-	StatusDelivered: {},              // terminal
-	StatusCancelled: {},              // terminal
+var validTransitions = map[apipub.Status][]apipub.Status{
+	apipub.StatusPending:   {apipub.StatusDelivered, apipub.StatusFailed, apipub.StatusCancelled},
+	apipub.StatusFailed:    {apipub.StatusPending}, // retry
+	apipub.StatusDelivered: {},                     // terminal
+	apipub.StatusCancelled: {},                     // terminal
 }
 
 type Notification struct {
-	channel      Channel
+	channel      apipub.Channel
 	recipient    string
 	content      string
-	priority     Priority
-	status       Status
+	priority     apipub.Priority
+	status       apipub.Status
 	deliverAfter *time.Time
 	maxAttempts  int
 }
 
-func (n *Notification) SetChannel(ch Channel) error {
+func (n *Notification) SetChannel(ch apipub.Channel) error {
 	switch ch {
-	case ChannelSMS, ChannelEmail, ChannelPush:
+	case apipub.ChannelSMS, apipub.ChannelEmail, apipub.ChannelPush:
 		n.channel = ch
 		return nil
 	default:
@@ -63,15 +46,15 @@ func (n *Notification) SetRecipient(r string) error {
 		return ErrRecipientRequired()
 	}
 	switch n.channel {
-	case ChannelEmail:
+	case apipub.ChannelEmail:
 		if _, err := mail.ParseAddress(r); err != nil {
 			return ErrInvalidEmail()
 		}
-	case ChannelSMS:
+	case apipub.ChannelSMS:
 		if !phoneRE.MatchString(r) {
 			return ErrInvalidPhone()
 		}
-	case ChannelPush:
+	case apipub.ChannelPush:
 		// no format restriction beyond non-empty
 	default:
 		return ErrChannelNotSet()
@@ -88,9 +71,9 @@ func (n *Notification) SetContent(s string) error {
 	return nil
 }
 
-func (n *Notification) SetPriority(p Priority) error {
+func (n *Notification) SetPriority(p apipub.Priority) error {
 	switch p {
-	case PriorityHigh, PriorityNormal, PriorityLow:
+	case apipub.PriorityHigh, apipub.PriorityNormal, apipub.PriorityLow:
 		n.priority = p
 		return nil
 	default:
@@ -102,7 +85,7 @@ func (n *Notification) SetDeliverAfter(t *time.Time) {
 	n.deliverAfter = t
 }
 
-func (n *Notification) Transition(to Status) error {
+func (n *Notification) Transition(to apipub.Status) error {
 	if n.status == to {
 		return nil
 	}
@@ -127,7 +110,7 @@ func (n *Notification) SetMaxAttempts(v int) error {
 }
 
 // New creates a Notification directly from its field values, bypassing setter validation.
-func New(channel Channel, recipient, content string, priority Priority, status Status, deliverAfter *time.Time, maxAttempts int) *Notification {
+func New(channel apipub.Channel, recipient, content string, priority apipub.Priority, status apipub.Status, deliverAfter *time.Time, maxAttempts int) *Notification {
 	return &Notification{
 		channel:      channel,
 		recipient:    recipient,
@@ -139,12 +122,12 @@ func New(channel Channel, recipient, content string, priority Priority, status S
 	}
 }
 
-func (n Notification) GetChannel() Channel         { return n.channel }
-func (n Notification) GetRecipient() string        { return n.recipient }
-func (n Notification) GetContent() string          { return n.content }
-func (n Notification) GetPriority() Priority       { return n.priority }
-func (n Notification) GetStatus() Status           { return n.status }
-func (n Notification) GetDeliverAfter() *time.Time { return n.deliverAfter }
+func (n Notification) GetChannel() apipub.Channel   { return n.channel }
+func (n Notification) GetRecipient() string         { return n.recipient }
+func (n Notification) GetContent() string           { return n.content }
+func (n Notification) GetPriority() apipub.Priority { return n.priority }
+func (n Notification) GetStatus() apipub.Status     { return n.status }
+func (n Notification) GetDeliverAfter() *time.Time  { return n.deliverAfter }
 func (n Notification) GetMaxAttempts() int {
 	if n.maxAttempts == 0 {
 		return 1

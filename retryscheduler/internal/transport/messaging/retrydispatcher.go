@@ -77,7 +77,8 @@ func (d *RetryDispatcher) Tick(ctx context.Context) {
 				MaxAttempts:    a.MaxAttempts,
 				AttemptNumber:  a.AttemptNumber,
 			}
-			if err := d.pub.Publish(ctx, topicForPriority(a.Priority), evt); err != nil {
+			topic := apipub.TopicByPriority[apipub.Priority(a.Priority)]
+			if err := d.pub.Publish(ctx, string(topic), evt); err != nil {
 				slog.ErrorContext(ctx, "retry dispatcher: publish retry", "id", a.NotificationID, "error", err)
 				mu.Lock()
 				failed = append(failed, a)

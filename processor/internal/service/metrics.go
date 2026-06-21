@@ -88,9 +88,9 @@ func newQueueDepthGauge(meter metric.Meter, rdb *goredis.Client) error {
 				return nil
 			}
 			for priority, topic := range map[string]string{
-				"high":   apipub.TopicHigh,
-				"normal": apipub.TopicNormal,
-				"low":    apipub.TopicLow,
+				"high":   string(apipub.TopicHigh),
+				"normal": string(apipub.TopicNormal),
+				"low":    string(apipub.TopicLow),
 			} {
 				n, err := rdb.XLen(ctx, topic).Result()
 				if err == nil {

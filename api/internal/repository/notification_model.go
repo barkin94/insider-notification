@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/barkin94/insider-notification/api/internal/domain/notification"
+	apipub "github.com/barkin94/insider-notification/api/public"
 	sharedbun "github.com/barkin94/insider-notification/shared/bun"
 )
 
@@ -33,7 +34,7 @@ func (Notification) From(n notification.Notification, batchID *uuid.UUID) (*Noti
 		Channel:      string(n.GetChannel()),
 		Content:      n.GetContent(),
 		Priority:     string(n.GetPriority()),
-		Status:       string(notification.StatusPending),
+		Status:       string(apipub.StatusPending),
 		MaxAttempts:  n.GetMaxAttempts(),
 		DeliverAfter: n.GetDeliverAfter(),
 	}, nil
@@ -41,11 +42,11 @@ func (Notification) From(n notification.Notification, batchID *uuid.UUID) (*Noti
 
 func (n *Notification) ToDomain() *notification.Notification {
 	return notification.New(
-		notification.Channel(n.Channel),
+		apipub.Channel(n.Channel),
 		n.Recipient,
 		n.Content,
-		notification.Priority(n.Priority),
-		notification.Status(n.Status),
+		apipub.Priority(n.Priority),
+		apipub.Status(n.Status),
 		n.DeliverAfter,
 		n.MaxAttempts,
 	)

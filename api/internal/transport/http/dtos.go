@@ -5,6 +5,7 @@ import (
 
 	"github.com/barkin94/insider-notification/api/internal/domain/notification"
 	"github.com/barkin94/insider-notification/api/internal/repository"
+	apipub "github.com/barkin94/insider-notification/api/public"
 	sharedhandler "github.com/barkin94/insider-notification/shared/handler"
 )
 
@@ -20,7 +21,7 @@ type createRequest struct {
 func (r createRequest) ToNotification() (notification.Notification, error) {
 	var n notification.Notification
 
-	if err := n.SetChannel(notification.Channel(r.Channel)); err != nil {
+	if err := n.SetChannel(apipub.Channel(r.Channel)); err != nil {
 		return n, err
 	}
 	if err := n.SetRecipient(r.Recipient); err != nil {
@@ -29,7 +30,7 @@ func (r createRequest) ToNotification() (notification.Notification, error) {
 	if err := n.SetContent(r.Content); err != nil {
 		return n, err
 	}
-	if err := n.SetPriority(notification.Priority(r.Priority)); err != nil {
+	if err := n.SetPriority(apipub.Priority(r.Priority)); err != nil {
 		return n, err
 	}
 	if r.MaxAttempts != nil {
