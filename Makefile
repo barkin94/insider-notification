@@ -1,7 +1,7 @@
 .PHONY: help infra up down build logs test lint swag install-tools \
         build-api build-processor build-retryscheduler build-deliveryscheduler \
         test-api test-processor test-retryscheduler test-deliveryscheduler test-shared \
-        lint-api lint-processor lint-retryscheduler lint-deliveryscheduler
+        lint-api lint-processor lint-retryscheduler lint-deliveryscheduler lint-shared
 
 help: ## Show available commands
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-18s %s\n", $$1, $$2}'
@@ -73,6 +73,9 @@ lint-retryscheduler: ## Run linter for retryscheduler
 
 lint-deliveryscheduler: ## Run linter for deliveryscheduler
 	cd deliveryscheduler && GOWORK=off golangci-lint run ./...
+
+lint-shared: ## Run linter for shared
+	cd shared && GOWORK=off golangci-lint run ./...
 
 swag: ## Regenerate Swagger docs (requires swag CLI)
 	cd api && swag init -g cmd/main.go -o docs --parseDependency --parseInternal

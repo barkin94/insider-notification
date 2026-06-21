@@ -5,14 +5,12 @@ on:
     branches: [master]
     paths:
       - "processor/**"
-      - "shared/**"
       - ".golangci.yml"
       - ".github/workflows/processor.yml"
   pull_request:
     branches: [master]
     paths:
       - "processor/**"
-      - "shared/**"
       - ".golangci.yml"
       - ".github/workflows/processor.yml"
 
@@ -33,7 +31,7 @@ jobs:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: go-processor-${{ runner.os }}-${{ hashFiles('processor/go.sum', 'shared/go.sum') }}
+          key: go-processor-${{ runner.os }}-${{ hashFiles('processor/go.sum') }}
           restore-keys: go-processor-${{ runner.os }}-
 
       - run: make install-tools
@@ -55,7 +53,7 @@ jobs:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: go-processor-${{ runner.os }}-${{ hashFiles('processor/go.sum', 'shared/go.sum') }}
+          key: go-processor-${{ runner.os }}-${{ hashFiles('processor/go.sum') }}
           restore-keys: go-processor-${{ runner.os }}-
 
       - run: make install-tools

@@ -5,14 +5,12 @@ on:
     branches: [master]
     paths:
       - "deliveryscheduler/**"
-      - "shared/**"
       - ".golangci.yml"
       - ".github/workflows/deliveryscheduler.yml"
   pull_request:
     branches: [master]
     paths:
       - "deliveryscheduler/**"
-      - "shared/**"
       - ".golangci.yml"
       - ".github/workflows/deliveryscheduler.yml"
 
@@ -33,7 +31,7 @@ jobs:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: go-deliveryscheduler-${{ runner.os }}-${{ hashFiles('deliveryscheduler/go.sum', 'shared/go.sum') }}
+          key: go-deliveryscheduler-${{ runner.os }}-${{ hashFiles('deliveryscheduler/go.sum') }}
           restore-keys: go-deliveryscheduler-${{ runner.os }}-
 
       - run: make install-tools
@@ -55,7 +53,7 @@ jobs:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: go-deliveryscheduler-${{ runner.os }}-${{ hashFiles('deliveryscheduler/go.sum', 'shared/go.sum') }}
+          key: go-deliveryscheduler-${{ runner.os }}-${{ hashFiles('deliveryscheduler/go.sum') }}
           restore-keys: go-deliveryscheduler-${{ runner.os }}-
 
       - run: make install-tools
