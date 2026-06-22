@@ -22,7 +22,7 @@ import (
 // App wires and runs the processor service.
 type App struct {
 	consumer *messaging.NotificationReadyConsumer
-	wg         sync.WaitGroup
+	wg       sync.WaitGroup
 }
 
 // New constructs all dependencies and returns a ready-to-run App.

@@ -3,8 +3,8 @@ package handler
 import (
 	"time"
 
-	"github.com/barkin94/insider-notification/api/internal/domain/notification"
 	"github.com/barkin94/insider-notification/api/internal/db"
+	"github.com/barkin94/insider-notification/api/internal/domain/notification"
 	apipub "github.com/barkin94/insider-notification/api/public"
 	sharedhandler "github.com/barkin94/insider-notification/shared/handler"
 )

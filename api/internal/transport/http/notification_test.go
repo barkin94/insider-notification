@@ -13,8 +13,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/barkin94/insider-notification/api/internal/domain/notification"
 	"github.com/barkin94/insider-notification/api/internal/db"
+	"github.com/barkin94/insider-notification/api/internal/domain/notification"
 	"github.com/barkin94/insider-notification/api/internal/service"
 	handler "github.com/barkin94/insider-notification/api/internal/transport/http"
 	sharedErrors "github.com/barkin94/insider-notification/shared/genericerrors"
