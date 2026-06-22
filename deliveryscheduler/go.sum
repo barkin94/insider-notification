@@ -16,8 +16,8 @@ github.com/barkin94/insider-notification/api/public v0.4.0 h1:eX2MeLIwTd4xCQTT1B
 github.com/barkin94/insider-notification/api/public v0.4.0/go.mod h1:3k5JFawRbWCLd3rOraeVGyNZ9r6kukq6FxiHZBV3cq0=
 github.com/barkin94/insider-notification/deliveryscheduler/public v0.2.0 h1:cT2KWcGb7Ejb9MwjD0oyqnlyQXGPEADi1woecWbnix0=
 github.com/barkin94/insider-notification/deliveryscheduler/public v0.2.0/go.mod h1:xlutzaXl67dqOL8ALLbSzU5gwIiWLmCbgs9FuzP6yhM=
-github.com/barkin94/insider-notification/shared v0.2.0 h1:+ZaACQLV8xGaIRfQD3sq78QkJj1cQRAPO4C7RYylvXA=
-github.com/barkin94/insider-notification/shared v0.2.0/go.mod h1:MXQkjCY5VKIrTICbeETPVSgB6oLoPJPVUVS7xU7bSNs=
+github.com/barkin94/insider-notification/shared v0.4.0 h1:QQRgjOKAk57dq33sqQMeRZNHrJoeIQJkcqOsZyHG1aU=
+github.com/barkin94/insider-notification/shared v0.4.0/go.mod h1:MXQkjCY5VKIrTICbeETPVSgB6oLoPJPVUVS7xU7bSNs=
 github.com/bsm/ginkgo/v2 v2.12.0 h1:Ny8MWAHyOepLGlLKYmXG4IEkioBysk6GpaRTLC8zwWs=
 github.com/bsm/ginkgo/v2 v2.12.0/go.mod h1:SwYbGRRDovPVboqFv0tPTcG1sN61LM1Z4ARdbAV9g4c=
 github.com/bsm/gomega v1.27.10 h1:yeMWxP2pV2fG3FgAODIY8EiRE3dy0aeFYt4l7wh6yKA=
