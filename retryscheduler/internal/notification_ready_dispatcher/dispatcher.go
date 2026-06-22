@@ -12,23 +12,23 @@ import (
 	sharedotel "github.com/barkin94/insider-notification/shared/otel"
 )
 
-// RetryDispatcher republishes due retry attempts without occupying delivery workers
+// NewNotificationReadyDispatcher republishes due retry attempts without occupying delivery workers
 // during backoff waits.
-type RetryDispatcher struct {
+type NotificationReadyDispatcher struct {
 	repo     schedulerdb.DeliveryAttemptRepository
 	pub      stream.Publisher
 	interval time.Duration
 	batch    int
 }
 
-func NewRetryDispatcher(repo schedulerdb.DeliveryAttemptRepository, pub stream.Publisher, interval time.Duration, batch int) *RetryDispatcher {
+func NewNotificationReadyDispatcher(repo schedulerdb.DeliveryAttemptRepository, pub stream.Publisher, interval time.Duration, batch int) *NotificationReadyDispatcher {
 	if interval <= 0 {
 		interval = time.Second
 	}
 	if batch < 1 {
 		batch = 100
 	}
-	return &RetryDispatcher{
+	return &NotificationReadyDispatcher{
 		repo:     repo,
 		pub:      pub,
 		interval: interval,
@@ -36,7 +36,7 @@ func NewRetryDispatcher(repo schedulerdb.DeliveryAttemptRepository, pub stream.P
 	}
 }
 
-func (d *RetryDispatcher) Run(ctx context.Context) {
+func (d *NotificationReadyDispatcher) Run(ctx context.Context) {
 	if d == nil {
 		return
 	}
@@ -53,7 +53,7 @@ func (d *RetryDispatcher) Run(ctx context.Context) {
 	}
 }
 
-func (d *RetryDispatcher) Tick(ctx context.Context) {
+func (d *NotificationReadyDispatcher) Tick(ctx context.Context) {
 	attempts, err := d.repo.DeleteByRetryAfterBeforeReturning(ctx, time.Now().UTC(), d.batch)
 	if err != nil {
 		slog.ErrorContext(ctx, "retry dispatcher: claim due attempts", "error", err)

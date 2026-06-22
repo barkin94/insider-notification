@@ -8,6 +8,7 @@ import (
 	processorpub "github.com/barkin94/insider-notification/processor/public"
 	"github.com/barkin94/insider-notification/retryscheduler/internal/config"
 	dbpostgres "github.com/barkin94/insider-notification/retryscheduler/internal/db/postgres"
+	dispatcher "github.com/barkin94/insider-notification/retryscheduler/internal/notification_ready_dispatcher"
 	"github.com/barkin94/insider-notification/retryscheduler/internal/transport/messaging"
 	sharedbun "github.com/barkin94/insider-notification/shared/bun"
 	stream "github.com/barkin94/insider-notification/shared/messaging"
@@ -16,9 +17,9 @@ import (
 
 // App wires and runs the retryscheduler service.
 type App struct {
-	retryConsumer   *messaging.RetryConsumer
-	retryDispatcher *messaging.RetryDispatcher
-	wg              sync.WaitGroup
+	retryConsumer *messaging.RetryConsumer
+	dispatcher    *dispatcher.NotificationReadyDispatcher
+	wg            sync.WaitGroup
 }
 
 // New constructs all dependencies and returns a ready-to-run App.
@@ -39,8 +40,8 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 	}
 
 	return &App{
-		retryConsumer:   messaging.NewRetryConsumer(repo, msgs),
-		retryDispatcher: messaging.NewRetryDispatcher(repo, pub, cfg.RetryDispatchInterval, cfg.RetryDispatchBatchSize),
+		retryConsumer: messaging.NewRetryConsumer(repo, msgs),
+		dispatcher:    dispatcher.NewNotificationReadyDispatcher(repo, pub, cfg.RetryDispatchInterval, cfg.RetryDispatchBatchSize),
 	}, cleanup, nil
 }
 
@@ -56,7 +57,7 @@ func (a *App) Start(ctx context.Context) func() {
 	a.wg.Add(1)
 	go func() {
 		defer a.wg.Done()
-		a.retryDispatcher.Run(ctx)
+		a.dispatcher.Run(ctx)
 	}()
 
 	slog.Info("retryscheduler started")

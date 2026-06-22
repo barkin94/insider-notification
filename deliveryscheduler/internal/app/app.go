@@ -9,7 +9,7 @@ import (
 	apipub "github.com/barkin94/insider-notification/api/public"
 	"github.com/barkin94/insider-notification/deliveryscheduler/internal/config"
 	dbpostgres "github.com/barkin94/insider-notification/deliveryscheduler/internal/db/postgres"
-	"github.com/barkin94/insider-notification/deliveryscheduler/internal/dispatcher"
+	dispatcher "github.com/barkin94/insider-notification/deliveryscheduler/internal/scheduled_notification_dispatcher"
 	"github.com/barkin94/insider-notification/deliveryscheduler/internal/transport/messaging"
 	sharedbun "github.com/barkin94/insider-notification/shared/bun"
 	stream "github.com/barkin94/insider-notification/shared/messaging"
