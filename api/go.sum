@@ -20,8 +20,8 @@ github.com/barkin94/insider-notification/deliveryscheduler/public v0.2.0 h1:cT2K
 github.com/barkin94/insider-notification/deliveryscheduler/public v0.2.0/go.mod h1:xlutzaXl67dqOL8ALLbSzU5gwIiWLmCbgs9FuzP6yhM=
 github.com/barkin94/insider-notification/processor/public v0.2.0 h1:RfjHjRvim7/G/IEuQhqxBSfOss3XXPU4rPqv/3Bn0IU=
 github.com/barkin94/insider-notification/processor/public v0.2.0/go.mod h1:6JDjcYU5Ok3EA5C6XYUoZP60m9k4zath9OsDtIU5/fc=
-github.com/barkin94/insider-notification/shared v0.2.0 h1:+ZaACQLV8xGaIRfQD3sq78QkJj1cQRAPO4C7RYylvXA=
-github.com/barkin94/insider-notification/shared v0.2.0/go.mod h1:MXQkjCY5VKIrTICbeETPVSgB6oLoPJPVUVS7xU7bSNs=
+github.com/barkin94/insider-notification/shared v0.3.0 h1:Xqyhc+oOy5tP6xN2Mimcb8UMNPjI38Z1vuHZhUtF6FI=
+github.com/barkin94/insider-notification/shared v0.3.0/go.mod h1:MXQkjCY5VKIrTICbeETPVSgB6oLoPJPVUVS7xU7bSNs=
 github.com/bsm/ginkgo/v2 v2.12.0 h1:Ny8MWAHyOepLGlLKYmXG4IEkioBysk6GpaRTLC8zwWs=
 github.com/bsm/ginkgo/v2 v2.12.0/go.mod h1:SwYbGRRDovPVboqFv0tPTcG1sN61LM1Z4ARdbAV9g4c=
 github.com/bsm/gomega v1.27.10 h1:yeMWxP2pV2fG3FgAODIY8EiRE3dy0aeFYt4l7wh6yKA=

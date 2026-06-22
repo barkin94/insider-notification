@@ -7,7 +7,7 @@ require (
 	github.com/barkin94/insider-notification/api/public v0.4.0
 	github.com/barkin94/insider-notification/deliveryscheduler/public v0.2.0
 	github.com/barkin94/insider-notification/processor/public v0.2.0
-	github.com/barkin94/insider-notification/shared v0.2.0
+	github.com/barkin94/insider-notification/shared v0.3.0
 	github.com/go-chi/chi/v5 v5.3.0
 	github.com/golang-migrate/migrate/v4 v4.19.1
 	github.com/google/uuid v1.6.0
