@@ -1,1 +1,0 @@
-ALTER TABLE notifications ADD COLUMN metadata INT NOT NULL DEFAULT {};
