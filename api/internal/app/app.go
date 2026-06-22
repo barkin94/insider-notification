@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/barkin94/insider-notification/api/internal/config"
-	"github.com/barkin94/insider-notification/api/internal/repository/postgres"
+	"github.com/barkin94/insider-notification/api/internal/db/postgres"
 	"github.com/barkin94/insider-notification/api/internal/service"
 	handler "github.com/barkin94/insider-notification/api/internal/transport/http"
 	"github.com/barkin94/insider-notification/api/internal/transport/messaging"

@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/barkin94/insider-notification/api/internal/domain/notification"
-	"github.com/barkin94/insider-notification/api/internal/repository"
+	"github.com/barkin94/insider-notification/api/internal/db"
 	"github.com/barkin94/insider-notification/api/internal/service"
 	sharedhandler "github.com/barkin94/insider-notification/shared/handler"
 )
@@ -118,7 +118,7 @@ func listNotifications(svc service.NotificationService) sharedhandler.AppHandler
 			}
 		}
 
-		f := repository.ListFilter{
+		f := db.ListFilter{
 			Status:   q.Get("status"),
 			Channel:  q.Get("channel"),
 			BatchID:  batchID,

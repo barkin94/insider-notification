@@ -14,7 +14,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/barkin94/insider-notification/api/internal/domain/notification"
-	"github.com/barkin94/insider-notification/api/internal/repository"
+	"github.com/barkin94/insider-notification/api/internal/db"
 	"github.com/barkin94/insider-notification/api/internal/service"
 	handler "github.com/barkin94/insider-notification/api/internal/transport/http"
 	sharedErrors "github.com/barkin94/insider-notification/shared/genericerrors"
@@ -23,24 +23,24 @@ import (
 // --- mock service ---
 
 type mockService struct {
-	createFn       func(ctx context.Context, n notification.Notification) (*repository.Notification, error)
-	getByIDFn      func(ctx context.Context, id uuid.UUID) (*repository.Notification, error)
-	listFn         func(ctx context.Context, f repository.ListFilter) ([]*repository.Notification, int, *uuid.UUID, error)
-	cancelFn       func(ctx context.Context, id uuid.UUID) (*repository.Notification, error)
+	createFn       func(ctx context.Context, n notification.Notification) (*db.Notification, error)
+	getByIDFn      func(ctx context.Context, id uuid.UUID) (*db.Notification, error)
+	listFn         func(ctx context.Context, f db.ListFilter) ([]*db.Notification, int, *uuid.UUID, error)
+	cancelFn       func(ctx context.Context, id uuid.UUID) (*db.Notification, error)
 	updateStatusFn func(ctx context.Context, id uuid.UUID, status string) error
 	createBatchFn  func(ctx context.Context, ns []notification.Notification) (uuid.UUID, []service.BatchResult, error)
 }
 
-func (m *mockService) Create(ctx context.Context, n notification.Notification) (*repository.Notification, error) {
+func (m *mockService) Create(ctx context.Context, n notification.Notification) (*db.Notification, error) {
 	return m.createFn(ctx, n)
 }
-func (m *mockService) GetByID(ctx context.Context, id uuid.UUID) (*repository.Notification, error) {
+func (m *mockService) GetByID(ctx context.Context, id uuid.UUID) (*db.Notification, error) {
 	return m.getByIDFn(ctx, id)
 }
-func (m *mockService) List(ctx context.Context, f repository.ListFilter) ([]*repository.Notification, int, *uuid.UUID, error) {
+func (m *mockService) List(ctx context.Context, f db.ListFilter) ([]*db.Notification, int, *uuid.UUID, error) {
 	return m.listFn(ctx, f)
 }
-func (m *mockService) Cancel(ctx context.Context, id uuid.UUID) (*repository.Notification, error) {
+func (m *mockService) Cancel(ctx context.Context, id uuid.UUID) (*db.Notification, error) {
 	return m.cancelFn(ctx, id)
 }
 func (m *mockService) UpdateStatus(ctx context.Context, id uuid.UUID, status string) error {
@@ -61,9 +61,9 @@ func newRouter(svc service.NotificationService) http.Handler {
 	})
 }
 
-func newNotif() *repository.Notification {
+func newNotif() *db.Notification {
 	now := time.Now().UTC()
-	n := &repository.Notification{
+	n := &db.Notification{
 		Recipient:   "+15551234567",
 		Channel:     "sms",
 		Content:     "hi",
@@ -81,7 +81,7 @@ func newNotif() *repository.Notification {
 
 func TestCreateNotification_201(t *testing.T) {
 	n := newNotif()
-	svc := &mockService{createFn: func(_ context.Context, _ notification.Notification) (*repository.Notification, error) {
+	svc := &mockService{createFn: func(_ context.Context, _ notification.Notification) (*db.Notification, error) {
 		return n, nil
 	}}
 
@@ -153,8 +153,8 @@ func TestCreateNotification_422_invalidChannel(t *testing.T) {
 // --- GET /notifications ---
 
 func TestListNotifications_pagination(t *testing.T) {
-	svc := &mockService{listFn: func(_ context.Context, f repository.ListFilter) ([]*repository.Notification, int, *uuid.UUID, error) {
-		return []*repository.Notification{newNotif()}, 42, nil, nil
+	svc := &mockService{listFn: func(_ context.Context, f db.ListFilter) ([]*db.Notification, int, *uuid.UUID, error) {
+		return []*db.Notification{newNotif()}, 42, nil, nil
 	}}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/notifications?page_size=10", nil)
@@ -180,8 +180,8 @@ func TestListNotifications_pagination(t *testing.T) {
 }
 
 func TestListNotifications_filterByStatus(t *testing.T) {
-	var gotFilter repository.ListFilter
-	svc := &mockService{listFn: func(_ context.Context, f repository.ListFilter) ([]*repository.Notification, int, *uuid.UUID, error) {
+	var gotFilter db.ListFilter
+	svc := &mockService{listFn: func(_ context.Context, f db.ListFilter) ([]*db.Notification, int, *uuid.UUID, error) {
 		gotFilter = f
 		return nil, 0, nil, nil
 	}}
@@ -200,7 +200,7 @@ func TestListNotifications_filterByStatus(t *testing.T) {
 
 func TestGetNotification_200(t *testing.T) {
 	n := newNotif()
-	svc := &mockService{getByIDFn: func(_ context.Context, _ uuid.UUID) (*repository.Notification, error) {
+	svc := &mockService{getByIDFn: func(_ context.Context, _ uuid.UUID) (*db.Notification, error) {
 		return n, nil
 	}}
 
@@ -220,8 +220,8 @@ func TestGetNotification_200(t *testing.T) {
 }
 
 func TestGetNotification_404(t *testing.T) {
-	svc := &mockService{getByIDFn: func(_ context.Context, _ uuid.UUID) (*repository.Notification, error) {
-		return nil, repository.ErrNotFound
+	svc := &mockService{getByIDFn: func(_ context.Context, _ uuid.UUID) (*db.Notification, error) {
+		return nil, db.ErrNotFound
 	}}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/notifications/"+uuid.New().String(), nil)
@@ -239,7 +239,7 @@ func TestGetNotification_404(t *testing.T) {
 func TestCancelNotification_200(t *testing.T) {
 	n := newNotif()
 	n.Status = "cancelled"
-	svc := &mockService{cancelFn: func(_ context.Context, _ uuid.UUID) (*repository.Notification, error) {
+	svc := &mockService{cancelFn: func(_ context.Context, _ uuid.UUID) (*db.Notification, error) {
 		return n, nil
 	}}
 
@@ -259,7 +259,7 @@ func TestCancelNotification_200(t *testing.T) {
 }
 
 func TestCancelNotification_409(t *testing.T) {
-	svc := &mockService{cancelFn: func(_ context.Context, _ uuid.UUID) (*repository.Notification, error) {
+	svc := &mockService{cancelFn: func(_ context.Context, _ uuid.UUID) (*db.Notification, error) {
 		return nil, &sharedErrors.ConflictError{Message: "invalid status transition"}
 	}}
 
@@ -336,8 +336,8 @@ func encodeCursorForTest(id uuid.UUID) string {
 func TestListNotifications_NoCursor(t *testing.T) {
 	n := newNotif()
 	svc := &mockService{
-		listFn: func(_ context.Context, _ repository.ListFilter) ([]*repository.Notification, int, *uuid.UUID, error) {
-			return []*repository.Notification{n}, 1, nil, nil
+		listFn: func(_ context.Context, _ db.ListFilter) ([]*db.Notification, int, *uuid.UUID, error) {
+			return []*db.Notification{n}, 1, nil, nil
 		},
 	}
 
@@ -360,8 +360,8 @@ func TestListNotifications_WithCursor_NextPageExists(t *testing.T) {
 	n := newNotif()
 	nextID, _ := uuid.NewV7()
 	svc := &mockService{
-		listFn: func(_ context.Context, f repository.ListFilter) ([]*repository.Notification, int, *uuid.UUID, error) {
-			return []*repository.Notification{n}, 50, &nextID, nil
+		listFn: func(_ context.Context, f db.ListFilter) ([]*db.Notification, int, *uuid.UUID, error) {
+			return []*db.Notification{n}, 50, &nextID, nil
 		},
 	}
 
@@ -384,8 +384,8 @@ func TestListNotifications_WithCursor_NextPageExists(t *testing.T) {
 func TestListNotifications_WithCursor_LastPage(t *testing.T) {
 	n := newNotif()
 	svc := &mockService{
-		listFn: func(_ context.Context, f repository.ListFilter) ([]*repository.Notification, int, *uuid.UUID, error) {
-			return []*repository.Notification{n}, 10, nil, nil
+		listFn: func(_ context.Context, f db.ListFilter) ([]*db.Notification, int, *uuid.UUID, error) {
+			return []*db.Notification{n}, 10, nil, nil
 		},
 	}
 
@@ -417,9 +417,9 @@ func TestListNotifications_InvalidCursor(t *testing.T) {
 }
 
 func TestListNotifications_FiltersPreservedWithCursor(t *testing.T) {
-	var capturedFilter repository.ListFilter
+	var capturedFilter db.ListFilter
 	svc := &mockService{
-		listFn: func(_ context.Context, f repository.ListFilter) ([]*repository.Notification, int, *uuid.UUID, error) {
+		listFn: func(_ context.Context, f db.ListFilter) ([]*db.Notification, int, *uuid.UUID, error) {
 			capturedFilter = f
 			return nil, 0, nil, nil
 		},

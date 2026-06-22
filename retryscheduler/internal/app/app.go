@@ -7,7 +7,7 @@ import (
 
 	processorpub "github.com/barkin94/insider-notification/processor/public"
 	"github.com/barkin94/insider-notification/retryscheduler/internal/config"
-	schedulerdb "github.com/barkin94/insider-notification/retryscheduler/internal/db"
+	dbpostgres "github.com/barkin94/insider-notification/retryscheduler/internal/db/postgres"
 	"github.com/barkin94/insider-notification/retryscheduler/internal/transport/messaging"
 	sharedbun "github.com/barkin94/insider-notification/shared/bun"
 	stream "github.com/barkin94/insider-notification/shared/messaging"
@@ -26,7 +26,7 @@ type App struct {
 func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 	rdb := sharedredis.NewClient(ctx, cfg.RedisAddr)
 	bunDB := sharedbun.Connect(cfg.DatabaseURL)
-	repo := schedulerdb.NewDeliveryAttemptRepository(bunDB)
+	repo := dbpostgres.NewDeliveryAttemptRepository(bunDB)
 
 	pub := stream.NewRedisPublisher(rdb)
 	sub := stream.NewRedisSubscriber(rdb, "notify:cg:retryscheduler")

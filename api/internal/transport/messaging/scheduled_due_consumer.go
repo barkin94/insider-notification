@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/barkin94/insider-notification/api/internal/repository"
+	"github.com/barkin94/insider-notification/api/internal/db"
 	apipub "github.com/barkin94/insider-notification/api/public"
 	dspub "github.com/barkin94/insider-notification/deliveryscheduler/public"
 	stream "github.com/barkin94/insider-notification/shared/messaging"
@@ -14,7 +14,7 @@ import (
 
 // NotificationReader is the narrow read port for fetching notifications.
 type NotificationReader interface {
-	GetByID(ctx context.Context, id uuid.UUID) (*repository.Notification, error)
+	GetByID(ctx context.Context, id uuid.UUID) (*db.Notification, error)
 }
 
 // ScheduledDueConsumer consumes ScheduledNotificationDueEvent and publishes

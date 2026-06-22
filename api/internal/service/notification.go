@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/barkin94/insider-notification/api/internal/domain/notification"
-	"github.com/barkin94/insider-notification/api/internal/repository"
+	"github.com/barkin94/insider-notification/api/internal/db"
 	apipub "github.com/barkin94/insider-notification/api/public"
 	sharedErrors "github.com/barkin94/insider-notification/shared/genericerrors"
 	stream "github.com/barkin94/insider-notification/shared/messaging"
@@ -24,27 +24,27 @@ type BatchResult struct {
 
 // NotificationService defines the business operations for notifications.
 type NotificationService interface {
-	Create(ctx context.Context, n notification.Notification) (*repository.Notification, error)
-	GetByID(ctx context.Context, id uuid.UUID) (*repository.Notification, error)
-	List(ctx context.Context, filter repository.ListFilter) ([]*repository.Notification, int, *uuid.UUID, error)
-	Cancel(ctx context.Context, id uuid.UUID) (*repository.Notification, error)
+	Create(ctx context.Context, n notification.Notification) (*db.Notification, error)
+	GetByID(ctx context.Context, id uuid.UUID) (*db.Notification, error)
+	List(ctx context.Context, filter db.ListFilter) ([]*db.Notification, int, *uuid.UUID, error)
+	Cancel(ctx context.Context, id uuid.UUID) (*db.Notification, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status string) error
 	CreateBatch(ctx context.Context, ns []notification.Notification) (uuid.UUID, []BatchResult, error)
 }
 
 type notificationService struct {
-	repo      repository.NotificationRepository
+	repo      db.NotificationRepository
 	publisher stream.Publisher
 }
 
 func NewNotificationService(
-	repo repository.NotificationRepository,
+	repo db.NotificationRepository,
 	publisher stream.Publisher,
 ) NotificationService {
 	return &notificationService{repo: repo, publisher: publisher}
 }
 
-func (s *notificationService) Create(ctx context.Context, n notification.Notification) (*repository.Notification, error) {
+func (s *notificationService) Create(ctx context.Context, n notification.Notification) (*db.Notification, error) {
 	entity, err := s.persist(ctx, n, nil)
 	if err != nil {
 		return nil, err
@@ -55,18 +55,18 @@ func (s *notificationService) Create(ctx context.Context, n notification.Notific
 	return entity, nil
 }
 
-func (s *notificationService) GetByID(ctx context.Context, id uuid.UUID) (*repository.Notification, error) {
+func (s *notificationService) GetByID(ctx context.Context, id uuid.UUID) (*db.Notification, error) {
 	return s.repo.GetByID(ctx, id)
 }
 
-func (s *notificationService) List(ctx context.Context, filter repository.ListFilter) ([]*repository.Notification, int, *uuid.UUID, error) {
+func (s *notificationService) List(ctx context.Context, filter db.ListFilter) ([]*db.Notification, int, *uuid.UUID, error) {
 	return s.repo.List(ctx, filter)
 }
 
-func (s *notificationService) Cancel(ctx context.Context, id uuid.UUID) (*repository.Notification, error) {
+func (s *notificationService) Cancel(ctx context.Context, id uuid.UUID) (*db.Notification, error) {
 	entity, err := s.repo.GetByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
+		if errors.Is(err, db.ErrNotFound) {
 			return nil, &sharedErrors.NotFoundError{Message: "notification not found"}
 		}
 		return nil, err
@@ -110,9 +110,9 @@ func (s *notificationService) CreateBatch(ctx context.Context, ns []notification
 	results := make([]BatchResult, len(ns))
 
 	// Convert all to entities and validate
-	entities := make([]*repository.Notification, len(ns))
+	entities := make([]*db.Notification, len(ns))
 	for i, n := range ns {
-		entity, err := repository.Notification{}.From(n, &batchID)
+		entity, err := db.Notification{}.From(n, &batchID)
 		if err != nil {
 			msg := err.Error()
 			results[i] = BatchResult{Index: i, Status: "rejected", Error: &msg}
@@ -123,7 +123,7 @@ func (s *notificationService) CreateBatch(ctx context.Context, ns []notification
 	}
 
 	// Collect valid entities and persist in batch
-	acceptedEntities := make([]*repository.Notification, 0, len(ns))
+	acceptedEntities := make([]*db.Notification, 0, len(ns))
 	acceptedIndices := make([]int, 0, len(ns))
 	for i, entity := range entities {
 		if entity != nil {
@@ -146,7 +146,7 @@ func (s *notificationService) CreateBatch(ctx context.Context, ns []notification
 
 	// Separate scheduled and immediate notifications
 	scheduled := make([]apipub.ScheduledNotificationItem, 0)
-	immediate := make([]*repository.Notification, 0)
+	immediate := make([]*db.Notification, 0)
 
 	for _, entity := range acceptedEntities {
 		if entity.DeliverAfter != nil {
@@ -178,8 +178,8 @@ func (s *notificationService) CreateBatch(ctx context.Context, ns []notification
 	return batchID, results, nil
 }
 
-func (s *notificationService) persist(ctx context.Context, n notification.Notification, batchID *uuid.UUID) (*repository.Notification, error) {
-	entity, err := repository.Notification{}.From(n, batchID)
+func (s *notificationService) persist(ctx context.Context, n notification.Notification, batchID *uuid.UUID) (*db.Notification, error) {
+	entity, err := db.Notification{}.From(n, batchID)
 	if err != nil {
 		return nil, err
 	}
@@ -189,7 +189,7 @@ func (s *notificationService) persist(ctx context.Context, n notification.Notifi
 	return entity, nil
 }
 
-func (s *notificationService) publish(ctx context.Context, entity *repository.Notification) error {
+func (s *notificationService) publish(ctx context.Context, entity *db.Notification) error {
 	if entity.DeliverAfter != nil {
 		// Scheduled notification: publish to delivery scheduler service
 		evt := apipub.NotificationsScheduledEvent{

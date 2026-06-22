@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/barkin94/insider-notification/api/internal/domain/notification"
-	"github.com/barkin94/insider-notification/api/internal/repository"
+	"github.com/barkin94/insider-notification/api/internal/db"
 	"github.com/barkin94/insider-notification/api/internal/service"
 	apipub "github.com/barkin94/insider-notification/api/public"
 	sharedErrors "github.com/barkin94/insider-notification/shared/genericerrors"
@@ -18,16 +18,16 @@ import (
 // --- mock repo ---
 
 type mockNotifRepo struct {
-	createFn       func(ctx context.Context, n *repository.Notification) error
-	getByIDFn      func(ctx context.Context, id uuid.UUID) (*repository.Notification, error)
-	listFn         func(ctx context.Context, f repository.ListFilter) ([]*repository.Notification, int, *uuid.UUID, error)
-	updateStatusFn func(ctx context.Context, id uuid.UUID, status string) (*repository.Notification, error)
+	createFn       func(ctx context.Context, n *db.Notification) error
+	getByIDFn      func(ctx context.Context, id uuid.UUID) (*db.Notification, error)
+	listFn         func(ctx context.Context, f db.ListFilter) ([]*db.Notification, int, *uuid.UUID, error)
+	updateStatusFn func(ctx context.Context, id uuid.UUID, status string) (*db.Notification, error)
 }
 
-func (m *mockNotifRepo) Create(ctx context.Context, n *repository.Notification) error {
+func (m *mockNotifRepo) Create(ctx context.Context, n *db.Notification) error {
 	return m.createFn(ctx, n)
 }
-func (m *mockNotifRepo) CreateBatch(ctx context.Context, ns []*repository.Notification) error {
+func (m *mockNotifRepo) CreateBatch(ctx context.Context, ns []*db.Notification) error {
 	if m.createFn == nil {
 		return nil
 	}
@@ -38,21 +38,21 @@ func (m *mockNotifRepo) CreateBatch(ctx context.Context, ns []*repository.Notifi
 	}
 	return nil
 }
-func (m *mockNotifRepo) GetByID(ctx context.Context, id uuid.UUID) (*repository.Notification, error) {
+func (m *mockNotifRepo) GetByID(ctx context.Context, id uuid.UUID) (*db.Notification, error) {
 	return m.getByIDFn(ctx, id)
 }
-func (m *mockNotifRepo) List(ctx context.Context, f repository.ListFilter) ([]*repository.Notification, int, *uuid.UUID, error) {
+func (m *mockNotifRepo) List(ctx context.Context, f db.ListFilter) ([]*db.Notification, int, *uuid.UUID, error) {
 	return m.listFn(ctx, f)
 }
-func (m *mockNotifRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status string) (*repository.Notification, error) {
+func (m *mockNotifRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status string) (*db.Notification, error) {
 	if m.updateStatusFn != nil {
 		return m.updateStatusFn(ctx, id, status)
 	}
-	n := &repository.Notification{Status: status}
+	n := &db.Notification{Status: status}
 	n.ID = id
 	return n, nil
 }
-func (m *mockNotifRepo) FindScheduledDue(_ context.Context) ([]*repository.Notification, error) {
+func (m *mockNotifRepo) FindScheduledDue(_ context.Context) ([]*db.Notification, error) {
 	return nil, nil
 }
 
@@ -70,7 +70,7 @@ func (m *mockPublisher) Publish(ctx context.Context, topic string, payload any) 
 
 func okRepo() *mockNotifRepo {
 	return &mockNotifRepo{
-		createFn: func(_ context.Context, _ *repository.Notification) error { return nil },
+		createFn: func(_ context.Context, _ *db.Notification) error { return nil },
 	}
 }
 
@@ -85,7 +85,7 @@ func okPublisher(wantTopic *string) *mockPublisher {
 	}
 }
 
-func newSvc(repo repository.NotificationRepository, pub stream.Publisher) service.NotificationService {
+func newSvc(repo db.NotificationRepository, pub stream.Publisher) service.NotificationService {
 	return service.NewNotificationService(repo, pub)
 }
 
@@ -127,8 +127,8 @@ func TestCreate_publishFailure(t *testing.T) {
 	}
 }
 
-func pendingNotif(id uuid.UUID) *repository.Notification {
-	n := &repository.Notification{Status: "pending"}
+func pendingNotif(id uuid.UUID) *db.Notification {
+	n := &db.Notification{Status: "pending"}
 	n.ID = id
 	return n
 }
@@ -136,7 +136,7 @@ func pendingNotif(id uuid.UUID) *repository.Notification {
 func TestCancel_success(t *testing.T) {
 	id := uuid.New()
 	repo := okRepo()
-	repo.getByIDFn = func(_ context.Context, _ uuid.UUID) (*repository.Notification, error) {
+	repo.getByIDFn = func(_ context.Context, _ uuid.UUID) (*db.Notification, error) {
 		return pendingNotif(id), nil
 	}
 	var gotTopic string
@@ -156,7 +156,7 @@ func TestCancel_success(t *testing.T) {
 func TestCancel_publishFailure(t *testing.T) {
 	id := uuid.New()
 	repo := okRepo()
-	repo.getByIDFn = func(_ context.Context, _ uuid.UUID) (*repository.Notification, error) {
+	repo.getByIDFn = func(_ context.Context, _ uuid.UUID) (*db.Notification, error) {
 		return pendingNotif(id), nil
 	}
 	pub := &mockPublisher{publishFn: func(_ context.Context, _ string, _ any) error {
@@ -171,8 +171,8 @@ func TestCancel_publishFailure(t *testing.T) {
 
 func TestCancel_notFound(t *testing.T) {
 	repo := okRepo()
-	repo.getByIDFn = func(_ context.Context, _ uuid.UUID) (*repository.Notification, error) {
-		return nil, repository.ErrNotFound
+	repo.getByIDFn = func(_ context.Context, _ uuid.UUID) (*db.Notification, error) {
+		return nil, db.ErrNotFound
 	}
 	svc := newSvc(repo, okPublisher(nil))
 	_, err := svc.Cancel(context.Background(), uuid.New())
@@ -188,8 +188,8 @@ func TestCancel_notFound(t *testing.T) {
 func TestCancel_invalidTransition(t *testing.T) {
 	id := uuid.New()
 	repo := okRepo()
-	repo.getByIDFn = func(_ context.Context, _ uuid.UUID) (*repository.Notification, error) {
-		n := &repository.Notification{Status: "delivered"}
+	repo.getByIDFn = func(_ context.Context, _ uuid.UUID) (*db.Notification, error) {
+		n := &db.Notification{Status: "delivered"}
 		n.ID = id
 		return n, nil
 	}

@@ -1,4 +1,4 @@
-package db
+package postgres
 
 import (
 	"context"
@@ -6,27 +6,19 @@ import (
 	"time"
 
 	"github.com/uptrace/bun"
-)
 
-type ScheduledNotificationRepository interface {
-	// UpsertAll upserts all rows in a single round trip.
-	UpsertAll(ctx context.Context, notifications []*ScheduledNotification) error
-	// DeleteByScheduledAtBeforeReturning atomically claims and removes scheduled notifications
-	// whose scheduled_at is at or before the given time, up to limit entries.
-	DeleteByScheduledAtBeforeReturning(ctx context.Context, before time.Time, limit int) ([]*ScheduledNotification, error)
-	// DeleteByNotificationID removes the scheduled notification with the given ID, if it exists.
-	DeleteByNotificationID(ctx context.Context, notificationID string) error
-}
+	schedulerdb "github.com/barkin94/insider-notification/deliveryscheduler/internal/db"
+)
 
 type pgScheduledNotificationRepo struct{ db *bun.DB }
 
-var _ ScheduledNotificationRepository = (*pgScheduledNotificationRepo)(nil)
+var _ schedulerdb.ScheduledNotificationRepository = (*pgScheduledNotificationRepo)(nil)
 
-func NewScheduledNotificationRepository(db *bun.DB) ScheduledNotificationRepository {
+func NewScheduledNotificationRepository(db *bun.DB) schedulerdb.ScheduledNotificationRepository {
 	return &pgScheduledNotificationRepo{db: db}
 }
 
-func (r *pgScheduledNotificationRepo) UpsertAll(ctx context.Context, notifications []*ScheduledNotification) error {
+func (r *pgScheduledNotificationRepo) UpsertAll(ctx context.Context, notifications []*schedulerdb.ScheduledNotification) error {
 	if len(notifications) == 0 {
 		return nil
 	}
@@ -43,7 +35,7 @@ func (r *pgScheduledNotificationRepo) UpsertAll(ctx context.Context, notificatio
 
 func (r *pgScheduledNotificationRepo) DeleteByNotificationID(ctx context.Context, notificationID string) error {
 	_, err := r.db.NewDelete().
-		Model((*ScheduledNotification)(nil)).
+		Model((*schedulerdb.ScheduledNotification)(nil)).
 		Where("notification_id = ?", notificationID).
 		Exec(ctx)
 	if err != nil {
@@ -52,11 +44,11 @@ func (r *pgScheduledNotificationRepo) DeleteByNotificationID(ctx context.Context
 	return nil
 }
 
-func (r *pgScheduledNotificationRepo) DeleteByScheduledAtBeforeReturning(ctx context.Context, before time.Time, limit int) ([]*ScheduledNotification, error) {
+func (r *pgScheduledNotificationRepo) DeleteByScheduledAtBeforeReturning(ctx context.Context, before time.Time, limit int) ([]*schedulerdb.ScheduledNotification, error) {
 	if limit < 1 {
 		limit = 1
 	}
-	var notifications []*ScheduledNotification
+	var notifications []*schedulerdb.ScheduledNotification
 	err := r.db.NewRaw(`
 		DELETE FROM scheduled_notifications
 		WHERE notification_id IN (

@@ -1,9 +1,10 @@
-package repository
+package db
 
 import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/uptrace/bun"
 
 	"github.com/barkin94/insider-notification/api/internal/domain/notification"
 	apipub "github.com/barkin94/insider-notification/api/public"
@@ -11,24 +12,26 @@ import (
 )
 
 type Notification struct {
-	sharedbun.BaseModel `bun:"table:notifications"`
-	BatchID             *uuid.UUID `bun:"batch_id"`
-	Recipient           string     `bun:"recipient"`
-	Channel             string     `bun:"channel"`
-	Content             string     `bun:"content"`
-	Priority            string     `bun:"priority"`
-	Status              string     `bun:"status"`
-	DeliverAfter        *time.Time `bun:"deliver_after"`
-	MaxAttempts         int        `bun:"max_attempts"`
+	bun.BaseModel `bun:"table:notifications"`
+	sharedbun.IDModel
+	sharedbun.TimestampModel
+	BatchID      *uuid.UUID `bun:"batch_id"`
+	Recipient    string     `bun:"recipient"`
+	Channel      string     `bun:"channel"`
+	Content      string     `bun:"content"`
+	Priority     string     `bun:"priority"`
+	Status       string     `bun:"status"`
+	DeliverAfter *time.Time `bun:"deliver_after"`
+	MaxAttempts  int        `bun:"max_attempts"`
 }
 
 func (Notification) From(n notification.Notification, batchID *uuid.UUID) (*Notification, error) {
-	base, err := sharedbun.NewBaseModel()
+	idModel, err := sharedbun.NewIDModel()
 	if err != nil {
 		return nil, err
 	}
 	return &Notification{
-		BaseModel:    base,
+		IDModel:      idModel,
 		BatchID:      batchID,
 		Recipient:    n.GetRecipient(),
 		Channel:      string(n.GetChannel()),

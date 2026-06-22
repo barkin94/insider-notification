@@ -1,4 +1,4 @@
-package db_test
+package postgres
 
 import (
 	"context"
@@ -33,7 +33,7 @@ func newPayload(t *testing.T, notifID string) *schedulerdb.DeliveryAttempt {
 
 func TestSavePayload_isIdempotent(t *testing.T) {
 	ctx := context.Background()
-	repo := schedulerdb.NewDeliveryAttemptRepository(testDB)
+	repo := NewDeliveryAttemptRepository(testDB)
 	notifID := mustNotifID(t)
 
 	payload := newPayload(t, notifID)
@@ -49,7 +49,7 @@ func TestSavePayload_isIdempotent(t *testing.T) {
 
 func TestSavePayload_upsertUpdatesRetryAfter(t *testing.T) {
 	ctx := context.Background()
-	repo := schedulerdb.NewDeliveryAttemptRepository(testDB)
+	repo := NewDeliveryAttemptRepository(testDB)
 	notifID := mustNotifID(t)
 
 	if err := repo.Upsert(ctx, newPayload(t, notifID)); err != nil {
@@ -85,7 +85,7 @@ func TestSavePayload_upsertUpdatesRetryAfter(t *testing.T) {
 
 func TestDelete_removesRow(t *testing.T) {
 	ctx := context.Background()
-	repo := schedulerdb.NewDeliveryAttemptRepository(testDB)
+	repo := NewDeliveryAttemptRepository(testDB)
 	notifID := mustNotifID(t)
 
 	retryAt := time.Now().Add(-time.Second).UTC()
@@ -111,7 +111,7 @@ func TestDelete_removesRow(t *testing.T) {
 
 func TestDeleteByRetryAfterBeforeReturning_claimsAndRemovesRows(t *testing.T) {
 	ctx := context.Background()
-	repo := schedulerdb.NewDeliveryAttemptRepository(testDB)
+	repo := NewDeliveryAttemptRepository(testDB)
 
 	ids := [2]string{mustNotifID(t), mustNotifID(t)}
 	retryAt := time.Now().Add(-time.Second).UTC()
@@ -151,7 +151,7 @@ func TestDeleteByRetryAfterBeforeReturning_claimsAndRemovesRows(t *testing.T) {
 
 func TestGetDue_respectsLimit(t *testing.T) {
 	ctx := context.Background()
-	repo := schedulerdb.NewDeliveryAttemptRepository(testDB)
+	repo := NewDeliveryAttemptRepository(testDB)
 
 	ids := make([]string, 3)
 	retryAt := time.Now().Add(-time.Second).UTC()

@@ -7,13 +7,13 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/barkin94/insider-notification/api/internal/repository"
+	"github.com/barkin94/insider-notification/api/internal/db"
 	apipub "github.com/barkin94/insider-notification/api/public"
 )
 
-func newNotification() *repository.Notification {
+func newNotification() *db.Notification {
 	now := time.Now().UTC().Truncate(time.Millisecond)
-	n := &repository.Notification{
+	n := &db.Notification{
 		Recipient:   "+905551234567",
 		Channel:     string(apipub.ChannelSMS),
 		Content:     "test content",
@@ -64,7 +64,7 @@ func TestNotificationRepo_GetByID_notFound(t *testing.T) {
 	repo := NewNotificationRepository(testDB)
 
 	_, err := repo.GetByID(ctx, mustV7())
-	if err != repository.ErrNotFound {
+	if err != db.ErrNotFound {
 		t.Errorf("expected ErrNotFound, got %v", err)
 	}
 }
@@ -100,7 +100,7 @@ func TestList_offset_pagination(t *testing.T) {
 		}
 	}
 
-	results, total, nextCursor, err := repo.List(ctx, repository.ListFilter{BatchID: &batchID, Page: 1, PageSize: 3})
+	results, total, nextCursor, err := repo.List(ctx, db.ListFilter{BatchID: &batchID, Page: 1, PageSize: 3})
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
@@ -134,7 +134,7 @@ func TestList_offset_filterByStatus(t *testing.T) {
 		t.Fatalf("create notification: %v", err)
 	}
 
-	results, total, _, err := repo.List(ctx, repository.ListFilter{
+	results, total, _, err := repo.List(ctx, db.ListFilter{
 		BatchID: &batchID,
 		Status:  string(apipub.StatusDelivered),
 		Page:    1, PageSize: 20,
@@ -147,7 +147,7 @@ func TestList_offset_filterByStatus(t *testing.T) {
 	}
 }
 
-func seed5(t *testing.T, repo repository.NotificationRepository, batchID uuid.UUID) []*repository.Notification {
+func seed5(t *testing.T, repo db.NotificationRepository, batchID uuid.UUID) []*db.Notification {
 	t.Helper()
 	ctx := context.Background()
 	for range 5 {
@@ -158,7 +158,7 @@ func seed5(t *testing.T, repo repository.NotificationRepository, batchID uuid.UU
 		}
 	}
 	maxUUID := uuid.UUID{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
-	all, _, _, err := repo.List(ctx, repository.ListFilter{BatchID: &batchID, PageSize: 10, CursorID: &maxUUID})
+	all, _, _, err := repo.List(ctx, db.ListFilter{BatchID: &batchID, PageSize: 10, CursorID: &maxUUID})
 	if err != nil {
 		t.Fatalf("seed fetch: %v", err)
 	}
@@ -173,7 +173,7 @@ func TestList_cursor_firstPage(t *testing.T) {
 	all := seed5(t, repo, batchID)
 
 	maxUUID := uuid.UUID{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
-	results, total, nextCursor, err := repo.List(ctx, repository.ListFilter{
+	results, total, nextCursor, err := repo.List(ctx, db.ListFilter{
 		BatchID:  &batchID,
 		PageSize: 3,
 		CursorID: &maxUUID,
@@ -209,7 +209,7 @@ func TestList_cursor_secondPage(t *testing.T) {
 	all := seed5(t, repo, batchID)
 
 	cursorID := all[2].ID
-	page2, total, nextCursor, err := repo.List(ctx, repository.ListFilter{
+	page2, total, nextCursor, err := repo.List(ctx, db.ListFilter{
 		BatchID:  &batchID,
 		PageSize: 3,
 		CursorID: &cursorID,
@@ -239,7 +239,7 @@ func TestList_cursor_lastPage_noNextCursor(t *testing.T) {
 	seed5(t, repo, batchID)
 
 	maxUUID := uuid.UUID{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
-	results, total, nextCursor, err := repo.List(ctx, repository.ListFilter{
+	results, total, nextCursor, err := repo.List(ctx, db.ListFilter{
 		BatchID:  &batchID,
 		PageSize: 10,
 		CursorID: &maxUUID,
@@ -281,7 +281,7 @@ func TestList_cursor_filtersPreserved(t *testing.T) {
 	}
 
 	maxUUID := uuid.UUID{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
-	results, total, _, err := repo.List(ctx, repository.ListFilter{
+	results, total, _, err := repo.List(ctx, db.ListFilter{
 		BatchID:  &batchID,
 		Channel:  string(apipub.ChannelSMS),
 		PageSize: 10,

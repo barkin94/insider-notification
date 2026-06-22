@@ -1,4 +1,4 @@
-package db_test
+package postgres
 
 import (
 	"context"
@@ -29,7 +29,7 @@ func newScheduledNotification(t *testing.T, notifID string, scheduledAt *time.Ti
 
 func TestUpsertAll_insertsMultipleRows(t *testing.T) {
 	ctx := context.Background()
-	repo := schedulerdb.NewScheduledNotificationRepository(testDB)
+	repo := NewScheduledNotificationRepository(testDB)
 
 	ids := [3]string{mustNotifID(t), mustNotifID(t), mustNotifID(t)}
 	scheduledAt := time.Now().Add(-time.Hour).UTC()
@@ -54,7 +54,7 @@ func TestUpsertAll_insertsMultipleRows(t *testing.T) {
 
 func TestUpsertAll_isIdempotent(t *testing.T) {
 	ctx := context.Background()
-	repo := schedulerdb.NewScheduledNotificationRepository(testDB)
+	repo := NewScheduledNotificationRepository(testDB)
 
 	notifID := mustNotifID(t)
 	scheduledAt := time.Now().Add(-time.Hour).UTC()
@@ -86,7 +86,7 @@ func TestUpsertAll_isIdempotent(t *testing.T) {
 
 func TestDeleteByScheduledAtBeforeReturning_claimsAndRemoves(t *testing.T) {
 	ctx := context.Background()
-	repo := schedulerdb.NewScheduledNotificationRepository(testDB)
+	repo := NewScheduledNotificationRepository(testDB)
 
 	ids := [3]string{mustNotifID(t), mustNotifID(t), mustNotifID(t)}
 	pastTime := time.Now().Add(-time.Hour).UTC()
@@ -124,7 +124,7 @@ func TestDeleteByScheduledAtBeforeReturning_claimsAndRemoves(t *testing.T) {
 
 func TestDeleteByScheduledAtBeforeReturning_respectsLimit(t *testing.T) {
 	ctx := context.Background()
-	repo := schedulerdb.NewScheduledNotificationRepository(testDB)
+	repo := NewScheduledNotificationRepository(testDB)
 
 	ids := make([]string, 5)
 	pastTime := time.Now().Add(-time.Hour).UTC()

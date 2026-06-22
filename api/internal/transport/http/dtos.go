@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/barkin94/insider-notification/api/internal/domain/notification"
-	"github.com/barkin94/insider-notification/api/internal/repository"
+	"github.com/barkin94/insider-notification/api/internal/db"
 	apipub "github.com/barkin94/insider-notification/api/public"
 	sharedhandler "github.com/barkin94/insider-notification/shared/handler"
 )
@@ -99,7 +99,7 @@ type batchResponse struct {
 	Results  []batchItemResult `json:"results"`
 }
 
-func toNotificationResponse(n *repository.Notification) notificationResponse {
+func toNotificationResponse(n *db.Notification) notificationResponse {
 	var batchID any
 	if n.BatchID != nil {
 		batchID = n.BatchID.String()
@@ -124,7 +124,7 @@ func toNotificationResponse(n *repository.Notification) notificationResponse {
 	}
 }
 
-func toNotificationResponses(ns []*repository.Notification) []notificationResponse {
+func toNotificationResponses(ns []*db.Notification) []notificationResponse {
 	data := make([]notificationResponse, len(ns))
 	for i, n := range ns {
 		data[i] = toNotificationResponse(n)

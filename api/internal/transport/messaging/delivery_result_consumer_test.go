@@ -20,7 +20,7 @@ import (
 	"github.com/uptrace/bun/dialect/pgdialect"
 	"github.com/uptrace/bun/driver/pgdriver"
 
-	repopostgres "github.com/barkin94/insider-notification/api/internal/repository/postgres"
+	repopostgres "github.com/barkin94/insider-notification/api/internal/db/postgres"
 	"github.com/barkin94/insider-notification/api/internal/service"
 	"github.com/barkin94/insider-notification/api/internal/transport/messaging"
 	apipub "github.com/barkin94/insider-notification/api/public"

@@ -8,7 +8,7 @@ import (
 
 	apipub "github.com/barkin94/insider-notification/api/public"
 	"github.com/barkin94/insider-notification/deliveryscheduler/internal/config"
-	"github.com/barkin94/insider-notification/deliveryscheduler/internal/db"
+	dbpostgres "github.com/barkin94/insider-notification/deliveryscheduler/internal/db/postgres"
 	"github.com/barkin94/insider-notification/deliveryscheduler/internal/dispatcher"
 	"github.com/barkin94/insider-notification/deliveryscheduler/internal/transport/messaging"
 	sharedbun "github.com/barkin94/insider-notification/shared/bun"
@@ -30,7 +30,7 @@ type App struct {
 func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 	rdb := sharedredis.NewClient(ctx, cfg.RedisAddr)
 	bunDB := sharedbun.Connect(cfg.DatabaseURL)
-	repo := db.NewScheduledNotificationRepository(bunDB)
+	repo := dbpostgres.NewScheduledNotificationRepository(bunDB)
 
 	pub := stream.NewRedisPublisher(rdb)
 	sub := stream.NewRedisSubscriber(rdb, "notify:cg:deliveryscheduler")
