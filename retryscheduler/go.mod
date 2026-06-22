@@ -5,7 +5,7 @@ go 1.25.0
 require (
 	github.com/barkin94/insider-notification/api/public v0.3.0
 	github.com/barkin94/insider-notification/processor/public v0.2.0
-	github.com/barkin94/insider-notification/shared v0.3.0
+	github.com/barkin94/insider-notification/shared v0.4.0
 	github.com/golang-migrate/migrate/v4 v4.19.1
 	github.com/google/uuid v1.6.0
 	github.com/testcontainers/testcontainers-go v0.43.0
@@ -13,7 +13,6 @@ require (
 	github.com/uptrace/bun v1.2.18
 	github.com/uptrace/bun/dialect/pgdialect v1.2.18
 	github.com/uptrace/bun/driver/pgdriver v1.2.18
-	go.opentelemetry.io/otel v1.44.0
 )
 
 require (
@@ -96,6 +95,7 @@ require (
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/bridges/otelslog v0.19.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.61.0 // indirect
+	go.opentelemetry.io/otel v1.44.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.20.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v1.44.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.44.0 // indirect
