@@ -21,7 +21,7 @@ import (
 
 // App wires and runs the processor service.
 type App struct {
-	workerPool *delivery.NotificationDeliveryWorkerPool
+	consumer *messaging.NotificationReadyConsumer
 	wg         sync.WaitGroup
 }
 
@@ -56,10 +56,8 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 		_ = rdb.Close()
 	}
 
-	router := messaging.NewNotificationRouter(ctx, sub, cfg.OTelServiceName, cfg.HighWeight, cfg.NormalWeight, cfg.LowWeight)
-
 	return &App{
-		workerPool: delivery.NewNotificationDeliveryWorkerPool(router, pipeline, cfg.WorkerConcurrency),
+		consumer: messaging.NewNotificationReadyConsumer(ctx, sub, cfg.OTelServiceName, cfg.HighWeight, cfg.NormalWeight, cfg.LowWeight, pipeline, cfg.WorkerConcurrency),
 	}, cleanup, nil
 }
 
@@ -69,7 +67,7 @@ func (a *App) Start(ctx context.Context) func() {
 	a.wg.Add(1)
 	go func() {
 		defer a.wg.Done()
-		a.workerPool.Run(ctx)
+		a.consumer.StartMessageProcessing(ctx)
 	}()
 
 	slog.Info("processor started")
