@@ -6,7 +6,9 @@ import (
 
 	processorpub "github.com/barkin94/insider-notification/processor/public"
 	schedulerdb "github.com/barkin94/insider-notification/retryscheduler/internal/db"
+	sharedbun "github.com/barkin94/insider-notification/shared/bun"
 	stream "github.com/barkin94/insider-notification/shared/messaging"
+	sharedotel "github.com/barkin94/insider-notification/shared/otel"
 )
 
 // RetryConsumer consumes NotificationRetryScheduleEvents from TopicRetry and
@@ -48,6 +50,9 @@ func (c *RetryConsumer) handleRetryEvent(ctx context.Context, result stream.Resu
 		MaxAttempts:    evt.MaxAttempts,
 		AttemptNumber:  evt.AttemptNumber,
 		RetryAfter:     &scheduledAt,
+		TraceMetadataModel: sharedbun.TraceMetadataModel{
+			TraceMetadata: sharedotel.ExtractTraceMetadata(ctx),
+		},
 	}
 	if err := c.repo.Upsert(ctx, attempt); err != nil {
 		slog.ErrorContext(ctx, "persist retry schedule failed", "id", evt.NotificationID, "error", err)

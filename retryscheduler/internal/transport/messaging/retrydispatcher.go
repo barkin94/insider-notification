@@ -9,6 +9,7 @@ import (
 	apipub "github.com/barkin94/insider-notification/api/public"
 	schedulerdb "github.com/barkin94/insider-notification/retryscheduler/internal/db"
 	stream "github.com/barkin94/insider-notification/shared/messaging"
+	sharedotel "github.com/barkin94/insider-notification/shared/otel"
 )
 
 // RetryDispatcher republishes due retry attempts without occupying delivery workers
@@ -68,6 +69,7 @@ func (d *RetryDispatcher) Tick(ctx context.Context) {
 		wg.Add(1)
 		go func(a *schedulerdb.DeliveryAttempt) {
 			defer wg.Done()
+			attemptCtx := sharedotel.ContextWithTraceMetadata(ctx, a.TraceMetadata)
 			evt := apipub.NotificationReadyEvent{
 				NotificationID: a.NotificationID,
 				Channel:        a.Channel,
@@ -78,8 +80,8 @@ func (d *RetryDispatcher) Tick(ctx context.Context) {
 				AttemptNumber:  a.AttemptNumber,
 			}
 			topic := apipub.TopicByPriority[apipub.Priority(a.Priority)]
-			if err := d.pub.Publish(ctx, string(topic), evt); err != nil {
-				slog.ErrorContext(ctx, "retry dispatcher: publish retry", "id", a.NotificationID, "error", err)
+			if err := d.pub.Publish(attemptCtx, string(topic), evt); err != nil {
+				slog.ErrorContext(attemptCtx, "retry dispatcher: publish retry", "id", a.NotificationID, "error", err)
 				mu.Lock()
 				failed = append(failed, a)
 				mu.Unlock()
