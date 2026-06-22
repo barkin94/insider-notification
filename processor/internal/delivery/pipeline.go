@@ -39,32 +39,26 @@ func NewNotificationDeliveryPipeline(
 }
 
 // Run runs the notification through each gate in sequence.
-// Gates own their logging; Run owns Ack/Nack and returns any infrastructure error so the caller can observe failures.
-func (p *NotificationDeliveryPipeline) Run(ctx context.Context, result stream.Result[apipub.NotificationReadyEvent]) error {
-	evt, msg := result.Event, result.Msg
-
+// Returns nil on success or skip (caller should Ack), non-nil on infrastructure error (caller should Nack).
+func (p *NotificationDeliveryPipeline) Run(ctx context.Context, evt apipub.NotificationReadyEvent) error {
 	lockAcquired, err := p.locker.TryLock(ctx, evt.NotificationID)
 	if err != nil {
 		slog.ErrorContext(ctx, "lock error", "id", evt.NotificationID, "error", err)
-		msg.Nack()
 		return err
 	}
 
 	// If lock is not acquired, it means another worker is processing the same notification, likely a retry.
 	if !lockAcquired {
 		slog.InfoContext(ctx, "lock miss, skipping", "id", evt.NotificationID)
-		msg.Ack()
 		return nil
 	}
 	defer p.locker.Unlock(ctx, evt.NotificationID) //nolint:errcheck
 
 	limited, err := p.applyRateLimit(ctx, evt)
 	if err != nil {
-		msg.Nack()
 		return err
 	}
 	if limited {
-		msg.Ack()
 		return nil
 	}
 
@@ -72,12 +66,7 @@ func (p *NotificationDeliveryPipeline) Run(ctx context.Context, result stream.Re
 
 	dr := p.deliveryClient.Send(ctx, evt.Recipient, evt.Channel, evt.Content)
 
-	if err := p.handleDeliveryResult(ctx, evt, dr, currentAttempt); err != nil {
-		msg.Nack()
-		return err
-	}
-	msg.Ack()
-	return nil
+	return p.handleDeliveryResult(ctx, evt, dr, currentAttempt)
 }
 
 func (p *NotificationDeliveryPipeline) publishRetry(ctx context.Context, evt apipub.NotificationReadyEvent, attemptNumber int, scheduledAt time.Time) error {

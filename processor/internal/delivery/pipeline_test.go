@@ -15,7 +15,6 @@ import (
 	"github.com/barkin94/insider-notification/processor/internal/delivery"
 	"github.com/barkin94/insider-notification/processor/internal/service"
 	processorpub "github.com/barkin94/insider-notification/processor/public"
-	stream "github.com/barkin94/insider-notification/shared/messaging"
 )
 
 // --- fakes ---
@@ -82,12 +81,11 @@ func (f *fakeLimiter) IsAllowed(_ context.Context, _ string) (bool, time.Duratio
 func runSingle(p *delivery.NotificationDeliveryPipeline, evt apipub.NotificationReadyEvent) *message.Message {
 	ctx := context.Background()
 	msg := message.NewMessage(watermill.NewUUID(), nil)
-	result := stream.Result[apipub.NotificationReadyEvent]{
-		Ctx:   ctx,
-		Event: evt,
-		Msg:   msg,
+	if err := p.Run(ctx, evt); err != nil {
+		msg.Nack()
+	} else {
+		msg.Ack()
 	}
-	_ = p.Run(ctx, result)
 	return msg
 }
 

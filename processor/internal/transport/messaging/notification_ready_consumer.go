@@ -51,9 +51,12 @@ func (c *NotificationReadyConsumer) StartMessageProcessing(ctx context.Context) 
 				if !ok {
 					continue
 				}
-				if err := c.pipeline.Run(msg.Ctx, msg); err != nil {
+				if err := c.pipeline.Run(msg.Ctx, msg.Event); err != nil {
+					msg.Msg.Nack()
 					slog.ErrorContext(msg.Ctx, "pipeline error", "error", err)
 					sharedotel.RecordError(msg.Ctx, err)
+				} else {
+					msg.Msg.Ack()
 				}
 			}
 		}()
