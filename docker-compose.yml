@@ -97,8 +97,7 @@ services:
     volumes:
       - ./api/migrations:/migrations:ro
     entrypoint: ["/bin/sh", "-c"]
-    command: ["migrate -path=/migrations -database $$MIGRATE_DATABASE_URL up"]
-    env_file: api/.env
+    command: ["migrate -path=/migrations -database postgres://postgres:postgres@postgres:5432/api?sslmode=disable up"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -108,8 +107,7 @@ services:
     volumes:
       - ./retryscheduler/migrations:/migrations:ro
     entrypoint: ["/bin/sh", "-c"]
-    command: ["migrate -path=/migrations -database $$DATABASE_URL up"]
-    env_file: retryscheduler/.env
+    command: ["migrate -path=/migrations -database postgres://postgres:postgres@postgres:5432/retryscheduler?sslmode=disable up"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -119,8 +117,7 @@ services:
     volumes:
       - ./deliveryscheduler/migrations:/migrations:ro
     entrypoint: ["/bin/sh", "-c"]
-    command: ["migrate -path=/migrations -database $$DATABASE_URL up"]
-    env_file: deliveryscheduler/.env
+    command: ["migrate -path=/migrations -database postgres://postgres:postgres@postgres:5432/deliveryscheduler?sslmode=disable up"]
     depends_on:
       postgres:
         condition: service_healthy

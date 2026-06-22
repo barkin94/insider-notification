@@ -6,8 +6,11 @@
 help: ## Show available commands
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-18s %s\n", $$1, $$2}'
 
-infra: ## Start Postgres and Redis only (for local development)
+infra: ## Start Postgres, Redis and Mockoon only (for local development)
 	docker compose up -d postgres redis mock-ntfn-provider migrate-api migrate-retryscheduler migrate-deliveryscheduler
+
+instrumentation: ## Instrumentation related services (for local development)
+	docker compose up -d grafana prometheus loki tempo otel-collector
 
 up: ## Start all services
 	docker compose up -d
@@ -34,48 +37,48 @@ logs: ## Tail logs for all services (Ctrl-C to stop)
 	docker compose logs -f
 
 test: ## Run all tests (requires Docker for testcontainers)
-	cd api && GOWORK=off go test -race ./... && cd ..
-	cd processor && GOWORK=off go test -race ./... && cd ..
-	cd retryscheduler && GOWORK=off go test -race ./... && cd ..
-	cd deliveryscheduler && GOWORK=off go test -race ./... && cd ..
-	cd shared && GOWORK=off go test -race ./...
+	cd api && go test -race ./... && cd ..
+	cd processor && go test -race ./... && cd ..
+	cd retryscheduler && go test -race ./... && cd ..
+	cd deliveryscheduler && go test -race ./... && cd ..
+	cd shared && go test -race ./...
 
 test-api: swag ## Run api tests
-	cd api && GOWORK=off go test -race ./...
+	cd api && go test -race ./...
 
 test-processor: ## Run processor tests
-	cd processor && GOWORK=off go test -race ./...
+	cd processor && go test -race ./...
 
 test-retryscheduler: ## Run retryscheduler tests
-	cd retryscheduler && GOWORK=off go test -race ./...
+	cd retryscheduler && go test -race ./...
 
 test-deliveryscheduler: ## Run deliveryscheduler tests
-	cd deliveryscheduler && GOWORK=off go test -race ./...
+	cd deliveryscheduler && go test -race ./...
 
 test-shared: ## Run shared tests
-	cd shared && GOWORK=off go test -race ./...
+	cd shared && go test -race ./...
 
 lint-fix: swag ## Run linter for all modules
-	cd api && GOWORK=off golangci-lint run --fix ./... && cd ..
-	cd processor && GOWORK=off golangci-lint run --fix ./... && cd ..
-	cd retryscheduler && GOWORK=off golangci-lint run --fix ./... && cd ..
-	cd deliveryscheduler && GOWORK=off golangci-lint run --fix ./... && cd ..
-	cd shared && GOWORK=off golangci-lint run --fix ./... && cd ..
+	cd api && golangci-lint run --fix ./... && cd ..
+	cd processor && golangci-lint run --fix ./... && cd ..
+	cd retryscheduler && golangci-lint run --fix ./... && cd ..
+	cd deliveryscheduler && golangci-lint run --fix ./... && cd ..
+	cd shared && golangci-lint run --fix ./... && cd ..
 
 lint-api: swag ## Run linter for api
-	cd api && GOWORK=off golangci-lint run ./...
+	cd api && golangci-lint run ./...
 
 lint-processor: ## Run linter for processor
-	cd processor && GOWORK=off golangci-lint run ./...
+	cd processor && golangci-lint run ./...
 
 lint-retryscheduler: ## Run linter for retryscheduler
-	cd retryscheduler && GOWORK=off golangci-lint run ./...
+	cd retryscheduler && golangci-lint run ./...
 
 lint-deliveryscheduler: ## Run linter for deliveryscheduler
-	cd deliveryscheduler && GOWORK=off golangci-lint run ./...
+	cd deliveryscheduler && golangci-lint run ./...
 
 lint-shared: ## Run linter for shared
-	cd shared && GOWORK=off golangci-lint run ./...
+	cd shared && golangci-lint run ./...
 
 swag: ## Regenerate Swagger docs (requires swag CLI)
 	cd api && swag init -g cmd/main.go -o docs --parseDependency --parseInternal
