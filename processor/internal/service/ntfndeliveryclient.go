@@ -8,6 +8,9 @@ import (
 	"time"
 
 	"github.com/barkin94/insider-notification/shared/httpclient"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // DeliveryResult holds the outcome of a single delivery attempt.
@@ -43,6 +46,13 @@ type ntfnDeliveryRequestBody struct {
 }
 
 func (c *ntfnDeliveryClient) Send(ctx context.Context, to, channel, content string) DeliveryResult {
+	ctx, span := otel.Tracer("ntfndeliveryclient").Start(ctx, "ntfndeliveryclient.Send", trace.WithSpanKind(trace.SpanKindClient))
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("delivery.to", to),
+		attribute.String("delivery.channel", channel),
+	)
+
 	start := time.Now()
 	resp, err := c.http.Request(ctx, http.MethodPost, "", ntfnDeliveryRequestBody{
 		To:      to,
@@ -58,6 +68,7 @@ func (c *ntfnDeliveryClient) Send(ctx context.Context, to, channel, content stri
 
 	code := resp.StatusCode
 	result := DeliveryResult{StatusCode: code, LatencyMS: latency}
+	span.SetAttributes(attribute.Int("http.status_code", code))
 
 	switch code {
 	case http.StatusAccepted:
@@ -68,6 +79,11 @@ func (c *ntfnDeliveryClient) Send(ctx context.Context, to, channel, content stri
 		result.Retryable = true
 		result.ErrorMessage = fmt.Sprintf("retryable provider error: %d", code)
 	}
+
+	span.SetAttributes(
+		attribute.Bool("delivery.success", result.Success),
+		attribute.Bool("delivery.retryable", result.Retryable),
+	)
 
 	slog.InfoContext(ctx, "delivery response",
 		"to", to,
