@@ -6,7 +6,9 @@ import (
 
 	apipub "github.com/barkin94/insider-notification/api/public"
 	db "github.com/barkin94/insider-notification/deliveryscheduler/internal/db"
+	sharedbun "github.com/barkin94/insider-notification/shared/bun"
 	stream "github.com/barkin94/insider-notification/shared/messaging"
+	sharedotel "github.com/barkin94/insider-notification/shared/otel"
 )
 
 // Consumer consumes NotificationsScheduledEvent and persists scheduled notifications to Postgres
@@ -41,11 +43,14 @@ func (c *Consumer) handleScheduledEvents(ctx context.Context, result stream.Resu
 	evt := result.Event
 	msg := result.Msg
 
+	traceMetadata := sharedotel.ExtractTraceMetadata(ctx)
 	notifications := make([]*db.ScheduledNotification, len(evt.Notifications))
 	for i, item := range evt.Notifications {
+		scheduledAt := item.ScheduledAt
 		notifications[i] = &db.ScheduledNotification{
-			NotificationID: item.NotificationID,
-			ScheduledAt:    &item.ScheduledAt,
+			NotificationID:     item.NotificationID,
+			ScheduledAt:        &scheduledAt,
+			TraceMetadataModel: sharedbun.TraceMetadataModel{TraceMetadata: traceMetadata},
 		}
 	}
 
