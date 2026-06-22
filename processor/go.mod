@@ -6,7 +6,7 @@ require (
 	github.com/ThreeDotsLabs/watermill v1.5.2
 	github.com/barkin94/insider-notification/api/public v0.2.0
 	github.com/barkin94/insider-notification/processor/public v0.2.0
-	github.com/barkin94/insider-notification/shared v0.2.0
+	github.com/barkin94/insider-notification/shared v0.4.0
 	github.com/go-redis/redis_rate/v10 v10.0.1
 	github.com/google/uuid v1.6.0
 	github.com/redis/go-redis/v9 v9.20.1
