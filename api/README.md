@@ -1,6 +1,6 @@
 # API Service
 
-The API service is the entry point for the notification platform. It accepts notification requests over HTTP, persists them to PostgreSQL, and publishes ready notifications to Redis Streams for downstream processing by the Processor service.
+The API service is the entry point for the notification platform. It accepts notification requests over HTTP, persists them to PostgreSQL, and publishes ready notifications to NATS JetStream for downstream processing by the Processor service.
 
 ---
 
@@ -19,14 +19,12 @@ api/
 │   │   └── notification/
 │   │       ├── models.go                   # Domain model with validation
 │   │       └── errors.go                   # Domain error types
-│   ├── repository/
-│   │   ├── notification.go                 # Repository interface
+│   ├── db/
+│   │   ├── notification_repo.go            # Repository interface
 │   │   ├── notification_model.go           # DB entity model
 │   │   ├── errors.go
 │   │   └── postgres/
 │   │       └── notification_repo.go        # PostgreSQL implementation (Bun ORM)
-│   ├── scheduler/
-│   │   └── scheduler.go                    # Background poller for scheduled notifications
 │   ├── service/
 │   │   └── notification.go                 # Business logic layer
 │   └── transport/
@@ -35,7 +33,7 @@ api/
 │       │   ├── notification.go             # HTTP handlers
 │       │   └── dtos.go                     # Request / response types
 │       └── messaging/
-│           ├── delivery_result_consumer.go # Consumes delivery status events from Redis
+│           ├── delivery_result_consumer.go # Consumes delivery status events from NATS
 │           └── scheduled_due_consumer.go   # Consumes scheduled-due events from delivery scheduler
 ├── migrations/                             # SQL migration files
 └── docs/                                   # Auto-generated Swagger docs
@@ -54,15 +52,15 @@ HTTP Handlers (Chi)
     ▼
 Service Layer
     ├──► PostgreSQL (persist notification)
-    └──► Redis Streams (publish ready event)
+    └──► NATS JetStream (publish ready event)
              │
              ▼
          Processor Service
 
 Background Goroutines
-    ├── Scheduler              — polls DB every 5s for scheduled notifications, publishes to Redis
-    ├── DeliveryConsumer       — reads status events from Redis, updates DB status
-    └── ScheduledDueConsumer   — reads scheduled-due events from Delivery Scheduler, hydrates notifications, publishes to Redis
+    ├── Scheduler              — polls DB every 5s for scheduled notifications, publishes to NATS
+    ├── DeliveryConsumer       — reads status events from NATS, updates DB status
+    └── ScheduledDueConsumer   — reads scheduled-due events from Delivery Scheduler, hydrates notifications, publishes to NATS
 ```
 
 ### Layers
@@ -73,7 +71,7 @@ Background Goroutines
 | Repository | `internal/repository` | Persistence interface and PostgreSQL adapter |
 | Service | `internal/service` | Business rules, routing notifications to priority topics |
 | HTTP Transport | `internal/transport/http` | Request parsing, response serialization, error mapping |
-| Messaging Transport | `internal/transport/messaging` | Redis Stream consumer for delivery results |
+| Messaging Transport | `internal/transport/messaging` | NATS JetStream consumer for delivery results |
 | Scheduler | `internal/scheduler` | Background ticker that dispatches delayed notifications |
 
 ---
@@ -95,7 +93,7 @@ Base path: `/api/v1`
 | Path | Description |
 |---|---|
 | `/api/v1/liveness` | Always 200 — process is alive |
-| `/api/v1/readiness` | 200 when PostgreSQL and Redis are reachable, 503 otherwise |
+| `/api/v1/readiness` | 200 when PostgreSQL and NATS are reachable, 503 otherwise |
 
 Swagger UI is served at `/api/v1/docs/`.
 
@@ -104,7 +102,7 @@ Swagger UI is served at `/api/v1/docs/`.
 1. Chi router matches the route and calls the handler.
 2. The handler decodes and structurally validates the JSON body.
 3. The domain model's setter methods enforce business rules (valid channel, recipient format, priority, etc.).
-4. The service layer persists the notification and, if delivery is immediate, publishes a `NotificationReadyEvent` to the matching priority Redis Stream.
+4. The service layer persists the notification and, if delivery is immediate, publishes a `NotificationReadyEvent` to the matching priority NATS JetStream topic.
 5. All handler functions are wrapped by a central `errHandler` that translates domain errors → 422, parsing errors → 422, and unknown errors → 500.
 
 ### Pagination
@@ -139,13 +137,13 @@ Status transitions are atomic and use optimistic locking (checking the current s
 
 ## Priority Routing
 
-Notifications are routed to one of three Redis Streams based on their `priority` field:
+Notifications are routed to one of three NATS JetStream topics based on their `priority` field:
 
-| Priority | Stream |
+| Priority | Subject |
 |---|---|
-| `high` | `notify:stream:high` |
-| `normal` | `notify:stream:normal` |
-| `low` | `notify:stream:low` |
+| `high` | `notify.high` |
+| `normal` | `notify.normal` |
+| `low` | `notify.low` |
 
 This allows the Processor service to apply differentiated scheduling per priority lane.
 
@@ -153,7 +151,7 @@ This allows the Processor service to apply differentiated scheduling per priorit
 
 ## Scheduled Notifications
 
-When a notification has a `deliver_after` timestamp set, it is **not** published to Redis at creation time. Instead, the background **Scheduler** goroutine polls the database every `SCHEDULER_INTERVAL` (default: 5s) for notifications where:
+When a notification has a `deliver_after` timestamp set, it is **not** published to NATS at creation time. Instead, the background **Scheduler** goroutine polls the database every `SCHEDULER_INTERVAL` (default: 5s) for notifications where:
 
 ```sql
 deliver_after IS NOT NULL AND deliver_after <= NOW() AND status = 'pending'
@@ -165,7 +163,7 @@ Up to 500 notifications are fetched per tick and published to the appropriate pr
 
 ## Delivery Result Consumer
 
-The `DeliveryResultConsumer` goroutine subscribes to the `notify:stream:status` Redis Stream (consumer group `notify:cg:api`). When the Processor service finishes a delivery attempt, it publishes a `NotificationDeliveryResultEvent` containing:
+The `DeliveryResultConsumer` goroutine subscribes to the `notify.status` NATS JetStream subject. When the Processor service finishes a delivery attempt, it publishes a `NotificationDeliveryResultEvent` containing:
 
 - `NotificationID`
 - Final `Status` (`delivered` or `failed`)
@@ -202,7 +200,7 @@ The consumer updates the notification's status in PostgreSQL and acknowledges th
 ## Observability
 
 - **Structured logging** on every request and background event via the shared logger middleware.
-- **OpenTelemetry** (optional): traces, metrics, and logs exported to a gRPC endpoint. Trace context is propagated through Redis message metadata so spans stitch across service boundaries.
+- **OpenTelemetry** (optional): traces, metrics, and logs exported to a gRPC endpoint. Trace context is propagated through NATS message headers so spans stitch across service boundaries.
 - **Health checks** at `/liveness` and `/readiness` for use with container orchestrators.
 
 ---
@@ -212,7 +210,7 @@ The consumer updates the notification's status in PostgreSQL and acknowledges th
 | Variable | Default | Description |
 |---|---|---|
 | `DATABASE_URL` | — | PostgreSQL DSN (required) |
-| `REDIS_ADDR` | — | Redis address, e.g. `localhost:6379` (required) |
+| `NATS_ADDR` | — | NATS address, e.g. `nats://localhost:4222` (required) |
 | `PORT` | `8080` | HTTP server port |
 | `SCHEDULER_INTERVAL` | `5s` | How often the scheduler polls for delayed notifications |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
@@ -249,7 +247,7 @@ cp api/.env.example api/.env
 # With Docker Compose (recommended — runs migrations automatically)
 docker compose up api
 
-# Directly (requires PostgreSQL and Redis reachable on localhost)
+# Directly (requires PostgreSQL and NATS reachable on localhost)
 go run ./cmd/main.go
 ```
 

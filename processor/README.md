@@ -17,8 +17,7 @@ processor/
 │   │   └── config.go                                    # Environment variable loading
 │   ├── delivery/
 │   │   ├── priorityrouter.go                            # Weighted round-robin scheduler
-│   │   ├── pipeline.go                                  # Four-gate delivery pipeline
-│   │   └── workerpool.go                               # Concurrent worker pool
+│   │   └── pipeline.go                                  # Four-gate delivery pipeline
 │   ├── service/
 │   │   ├── ntfndeliveryclient.go                        # HTTP client for the delivery provider
 │   │   ├── ratelimit.go                                 # Per-channel token-bucket rate limiter
@@ -26,7 +25,7 @@ processor/
 │   │   └── metrics.go                                   # OpenTelemetry metrics
 │   └── transport/
 │       └── messaging/
-│           └── router.go                                # Redis Stream consumer setup
+│           └── notification_ready_consumer.go            # NATS JetStream consumer setup
 ```
 
 ---
@@ -34,21 +33,20 @@ processor/
 ## Architecture Overview
 
 ```text
-Redis Streams (high / normal / low)
+NATS JetStream (high / normal / low)
     │
     ▼
 PriorityRouter (weighted round-robin)
     │
     ▼
-WorkerPool (N concurrent workers)
+Worker pool (N concurrent goroutines)
     │
     ▼
 Delivery Pipeline (lock → rate-limit → send → record)
-    ├──► Notification Provider (HTTP POST)
-    └──► TopicRetry (NotificationRetryScheduleEvent — handled by retryscheduler)
+    └──► Notification Provider (HTTP POST)
 ```
 
-Retry scheduling is handled by the [`retryscheduler`](../retryscheduler/README.md) service. The processor is stateless — it only reads from and writes to Redis.
+Retries use NATS JetStream's native `NakWithDelay` — no separate retry service. The processor is stateless.
 
 ### Layers
 
@@ -56,7 +54,7 @@ Retry scheduling is handled by the [`retryscheduler`](../retryscheduler/README.m
 | --- | --- | --- |
 | Delivery | `internal/delivery` | Priority routing, worker pool, four-gate pipeline |
 | Service | `internal/service` | HTTP delivery client, rate limiting, retry backoff |
-| Messaging | `internal/transport/messaging` | Redis Stream consumer setup |
+| Messaging | `internal/transport/messaging` | NATS JetStream consumer setup |
 
 ---
 
@@ -118,7 +116,7 @@ NotificationReadyEvent
 │
 ├─ 2. Rate limit    IsAllowed(channel)
 │                   allowed  → continue
-│                   limited  → publish NotificationRetryScheduleEvent to TopicRetry, Ack
+│                   limited  → ErrRetryAfter → NakWithDelay
 │                   error    → Nack
 │
 ├─ 3. Send          HTTP POST to notification provider
@@ -127,9 +125,9 @@ NotificationReadyEvent
 │                   anything else / err → retryable failure
 │
 └─ 4. Record outcome
-        success           → publish delivered status
-        retryable failure → publish NotificationRetryScheduleEvent to TopicRetry
-        terminal failure  → publish failed status
+        success           → publish delivered status, Ack
+        retryable failure → ErrRetryAfter → NakWithDelay (NATS re-delivers after backoff)
+        terminal failure  → publish failed status, Ack
 ```
 
 The pipeline Acks the message at the end of a successful gate sequence. It Nacks only when state could not be persisted (so the message is redelivered by the broker).
@@ -138,7 +136,7 @@ The pipeline Acks the message at the end of a successful gate sequence. It Nacks
 
 ## Published Events
 
-Terminal outcomes (success or exhausted retries) are published to the status topic as `NotificationDeliveryResultEvent`. Retry-eligible outcomes are published to the retry topic as `NotificationRetryScheduleEvent` and consumed by the [`retryscheduler`](../retryscheduler/README.md) service.
+Terminal outcomes (success or exhausted retries) are published to `notify.status` as `NotificationDeliveryResultEvent`.
 
 | Field                 | Notes                              |
 |-----------------------|------------------------------------|
@@ -154,7 +152,9 @@ Terminal outcomes (success or exhausted retries) are published to the status top
 
 ## Retry Mechanism
 
-When a delivery attempt is rate-limited or fails with a retryable error, the processor publishes a `NotificationRetryScheduleEvent` to `TopicRetry` with a `ScheduledAt` timestamp computed from the backoff formula:
+When a delivery attempt is rate-limited or fails with a retryable error, the pipeline returns `ErrRetryAfter` with a backoff delay. The consumer calls `NakWithDelay` on the NATS message, which causes NATS JetStream to redeliver it after the delay — no external retry service required.
+
+The delay is computed as:
 
 ```text
 delay = min(60s × 2^(attempt−1), 480s) + uniform jitter in [0, delay × 0.2]
@@ -166,16 +166,14 @@ delay = min(60s × 2^(attempt−1), 480s) + uniform jitter in [0, delay × 0.2]
 | 3             | 120s       | 144s            |
 | 4             | 240s       | 288s            |
 
-Default max attempts is **4** (3 retries). A per-notification `max_attempts` override is accepted at creation time.
-
-The [`retryscheduler`](../retryscheduler/README.md) service consumes `TopicRetry`, persists the scheduled attempt to Postgres, and republishes it to the appropriate priority topic once `ScheduledAt` is past.
+Default max attempts is **4** (3 retries). A per-notification `max_attempts` override is accepted at creation time. NATS enforces the hard cap via `MaxDeliver` on the consumer.
 
 ---
 
 ## Observability
 
 - **Structured logging** on every delivery attempt and background event via the shared logger.
-- **OpenTelemetry** (optional): traces, metrics, and logs exported to a gRPC endpoint. Trace context is propagated through Redis message metadata so spans stitch across service boundaries.
+- **OpenTelemetry** (optional): traces, metrics, and logs exported to a gRPC endpoint. Trace context is propagated through NATS message headers so spans stitch across service boundaries.
 
 ---
 
@@ -183,7 +181,7 @@ The [`retryscheduler`](../retryscheduler/README.md) service consumes `TopicRetry
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `REDIS_ADDR` | — | Redis address, e.g. `localhost:6379` (required) |
+| `NATS_ADDR` | — | NATS address, e.g. `nats://localhost:4222` (required) |
 | `WORKER_CONCURRENCY` | `10` | Number of concurrent delivery workers |
 | `NTFN_DELIVERY_CLIENT_URL` | `http://localhost:8080` | Notification provider base URL |
 | `NTFN_DELIVERY_CLIENT_TIMEOUT` | `10s` | HTTP client timeout |
@@ -230,11 +228,11 @@ cp processor/.env.example processor/.env
 # With Docker Compose (recommended)
 docker compose up processor
 
-# Directly (requires Redis and mock-ntfn-provider reachable on localhost)
+# Directly (requires NATS and mock-ntfn-provider reachable on localhost)
 go run ./cmd/main.go
 ```
 
-The processor has no database dependency. Retry scheduling is handled by the `retryscheduler` service.
+The processor has no database dependency. Retries are handled natively by NATS JetStream via `NakWithDelay`.
 
 ### 3. Verify
 

@@ -1,6 +1,6 @@
 # Insider Notification Service
 
-A notification delivery system built in Go. The API Service accepts notification requests, publishes them to Redis Streams by priority, the Processor Service picks them up for delivery and publishes delivery results back to Redis Streams, and the Retry Scheduler Service manages retry timing for rate-limited and failed deliveries.
+A notification delivery system built in Go. The API Service accepts notification requests, publishes them to NATS JetStream by priority, and the Processor Service picks them up for delivery and publishes results back to NATS JetStream. Retries use NATS JetStream's native NakWithDelay — no separate retry service is needed.
 
 ## Architecture
 
@@ -23,15 +23,10 @@ API Service
 │                                               │
 │                                               ├─── [ 4: Ntfn Delivery API (Mockoon server) ]
 │                                               │
-│                                               ├─── [ 5: Dispatch NotificationDeliveryResultEvent ]       
-|                                               |            |
-|                                               |            └──► <status_update_topic> ──┐                   
-|                                               |                                         │
-│                                               └─── [ 5b: Dispatch NotificationRetryScheduleEvent ]
-│                                                            │
-│                                                            └──► <retry_topic> ──► Retry Scheduler Service
-│                                                                                         │ (persists + republishes when due)
-│     ┌───────────────────────────────────────────────────────────────────────────────────┘
+│                                               └─── [ 5: Dispatch NotificationDeliveryResultEvent ]       
+|                                                            |
+|                                                            └──► <status_update_topic> ──┐                   
+│     ┌──────────────────────────────────────────────────────────────────────────────────┘
 ▼     ▼
 └─── [ 6: Update notification status as <b>delivered</b>/<b>failed</b> ]
 ```
@@ -87,10 +82,9 @@ API Service
 |---------|------|
 | [`api`](api/README.md) | HTTP API — create, list, cancel notifications; consumes scheduled-due events |
 | [`processor`](processor/README.md) | Consumes delivery streams, delivers via webhook, publishes results |
-| [`retryscheduler`](retryscheduler/README.md) | Consumes retry topic, schedules retries in Postgres, republishes when due |
 | [`deliveryscheduler`](deliveryscheduler/README.md) | Consumes scheduled notifications, polls for due items, republishes when ready |
 | `postgres` | Persistent store for notifications, delivery attempts, and scheduled deliveries |
-| `redis` | Redis Streams for async message passing |
+| `nats` | NATS JetStream for async message passing |
 | `otel-collector` | Receives OTLP traces, forwards to Tempo |
 | `tempo` | Trace storage, queried by Grafana |
 | `prometheus` | Scrapes `/metrics` from OTel Collector |
@@ -98,14 +92,12 @@ API Service
 | `grafana` | Dashboards — metrics (Prometheus) + traces (Tempo) + logs (Loki) |
 | `mock-ntfn-provider` | Mockoon-based stub webhook endpoint for local delivery testing |
 | `migrate-api` | One-shot container that runs `api` DB migrations on startup |
-| `migrate-retryscheduler` | One-shot container that runs `retryscheduler` DB migrations on startup |
 | `migrate-deliveryscheduler` | One-shot container that runs `deliveryscheduler` DB migrations on startup |
 
 ### Service Documentation
 
 - [api/README.md](api/README.md) — HTTP API reference, request lifecycle, pagination, scheduled notifications, and delivery result consumer
 - [processor/README.md](processor/README.md) — Priority router, delivery pipeline, retry mechanism, and rate limiting
-- [retryscheduler/README.md](retryscheduler/README.md) — Retry consumer, dispatcher, and atomic claim scheduling
 - [deliveryscheduler/README.md](deliveryscheduler/README.md) — Scheduled delivery consumer, dispatcher, and atomic claim scheduling
 
 ## Prerequisites
@@ -118,7 +110,7 @@ Run `make help` to see all available commands.
 
 ### 1. Configure environment
 
-Before running the services, `api/`, `processor/`, and `retryscheduler/` folders each need a `.env` file. Each folder contains an `.env.example` pre-filled for docker-compose — copy and rename it to `.env`.
+Before running the services, `api/`, `processor/`, and `deliveryscheduler/` folders each need a `.env` file. Each folder contains an `.env.example` pre-filled for docker-compose — copy and rename it to `.env`.
 
 
 ### 2. Start all services
@@ -159,7 +151,7 @@ Both services expose `/metrics` on their HTTP ports (`:8080` and `:8081`).
 make test
 ```
 
-Integration tests spin up Postgres and Redis via testcontainers — Docker must be running.
+Integration tests spin up Postgres via testcontainers — Docker must be running.
 
 **Lint**
 
@@ -173,7 +165,7 @@ make lint
 make swag
 ```
 
-**Run locally** (requires Postgres and Redis on localhost)
+**Run locally** (requires Postgres and NATS on localhost)
 
 Start just the infrastructure, then run each service directly:
 
@@ -185,7 +177,7 @@ go run ./api/cmd
 go run ./processor/cmd
 ```
 
-Change `REDIS_ADDR` and `DATABASE_URL` in the `.env` files to `localhost` for local runs. Migrations can be applied via the migrate container: `docker compose run --rm migrate-api`.
+Change `NATS_ADDR` and `DATABASE_URL` in the `.env` files to `localhost` for local runs. Migrations can be applied via the migrate container: `docker compose run --rm migrate-api`.
 
 ## Functional Requirements Status
 

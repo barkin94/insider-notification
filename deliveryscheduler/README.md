@@ -18,16 +18,17 @@ deliveryscheduler/
 │   ├── config/
 │   │   └── config.go                                    # Environment variable loading
 │   ├── db/
-│   │   ├── model.go                                     # ScheduledNotification entity
-│   │   ├── repository.go                                # PostgreSQL repository
-│   │   ├── db_test.go                                   # Test infrastructure
-│   │   └── repository_test.go                           # Repository tests
-│   ├── dispatcher/
+│   │   ├── scheduled_notification.go                    # ScheduledNotification entity
+│   │   ├── scheduled_notification_repo.go               # Repository interface
+│   │   └── postgres/
+│   │       ├── repository.go                            # PostgreSQL implementation (Bun ORM)
+│   │       └── repository_test.go                       # Repository tests
+│   ├── scheduled_notification_dispatcher/
 │   │   └── dispatcher.go                                # Scheduler dispatcher logic
 │   └── transport/
 │       └── messaging/
-│           ├── consumer.go                              # Consumes NotificationsScheduledEvent
-│           └── consumer_test.go                         # Consumer tests
+│           ├── notifications_scheduled_consumer.go      # Consumes NotificationsScheduledEvent
+│           └── notification_schedule_cancelled_consumer.go # Consumes NotificationScheduleCancelledEvent
 └── migrations/                                          # SQL migration files
 ```
 
@@ -47,19 +48,20 @@ PostgreSQL (scheduled_notifications table)
     ├─ Dispatcher (ticker, default: every 1s)
     │     polls WHERE scheduled_at <= NOW()
     ▼
-Redis Streams (high / normal / low priority topics)
+NATS JetStream (`notify.scheduled.due`)
     │
     ▼
-Processor Service (re-delivers)
+API Service (ScheduledDueConsumer — hydrates and publishes to priority topics)
 ```
 
 ### Components
 
 | Component | File | Responsibility |
 | --- | --- | --- |
-| Consumer | `internal/transport/messaging/consumer.go` | Subscribes to TopicNotificationScheduled, batch-upserts events to Postgres with `scheduled_at = ScheduledAt` |
-| Dispatcher | `internal/dispatcher/dispatcher.go` | Ticks every interval, atomically claims and deletes due rows, republishes as `ScheduledNotificationDueEvent`, fans out concurrent publish |
-| Repository | `internal/db/repository.go` | PostgreSQL CRUD for `scheduled_notifications` |
+| Consumer | `internal/transport/messaging/notifications_scheduled_consumer.go` | Subscribes to `TopicNotificationScheduled`, batch-upserts events to Postgres with `scheduled_at = ScheduledAt` |
+| CancelConsumer | `internal/transport/messaging/notification_schedule_cancelled_consumer.go` | Subscribes to `TopicNotificationScheduleCancelled`, deletes the matching row |
+| Dispatcher | `internal/scheduled_notification_dispatcher/dispatcher.go` | Ticks every interval, atomically claims and deletes due rows, publishes as `ScheduledNotificationDueEvent` |
+| Repository | `internal/db/scheduled_notification_repo.go` | Repository interface for `scheduled_notifications` |
 
 ---
 
@@ -92,7 +94,7 @@ The dispatcher uses **`SELECT ... FOR UPDATE SKIP LOCKED`** to prevent duplicate
 | Variable | Default | Description |
 | --- | --- | --- |
 | `DATABASE_URL` | — | PostgreSQL DSN (required) |
-| `REDIS_ADDR` | — | Redis address, e.g. `localhost:6379` (required) |
+| `NATS_ADDR` | — | NATS address, e.g. `nats://localhost:4222` (required) |
 | `DELIVERY_SCHEDULER_BATCH_SIZE` | `100` | Max scheduled notifications claimed per tick |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
 | `OTEL_ENABLED` | `false` | Enable OpenTelemetry export |
@@ -124,7 +126,7 @@ cp deliveryscheduler/.env.example deliveryscheduler/.env
 # With Docker Compose (recommended — runs migrations automatically via migrate-deliveryscheduler)
 docker compose up deliveryscheduler
 
-# Directly (requires PostgreSQL and Redis reachable on localhost)
+# Directly (requires PostgreSQL and NATS reachable on localhost)
 go run ./cmd/main.go
 ```
 
