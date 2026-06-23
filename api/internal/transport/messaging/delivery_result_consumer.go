@@ -23,20 +23,11 @@ func NewDeliveryResultConsumer(svc service.NotificationService, msgs <-chan nats
 }
 
 func (c *DeliveryResultConsumer) Run(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case result, ok := <-c.msgs:
-			if !ok {
-				return
-			}
-			c.processOne(result.Ctx, result)
-		}
-	}
+	natsmsg.ForEach(ctx, c.msgs, c.processOne)
 }
 
-func (c *DeliveryResultConsumer) processOne(ctx context.Context, result natsmsg.Result[processorpub.NotificationDeliveryResultEvent]) {
+func (c *DeliveryResultConsumer) processOne(result natsmsg.Result[processorpub.NotificationDeliveryResultEvent]) {
+	ctx := result.Ctx
 	evt := result.Event
 
 	notifID, err := uuid.Parse(evt.NotificationID)

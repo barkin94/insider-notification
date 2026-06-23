@@ -12,6 +12,23 @@ import (
 	sharedotel "github.com/barkin94/insider-notification/shared/otel"
 )
 
+func (c *NotificationReadyConsumer) processOne(msg natsmsg.Result[apipub.NotificationReadyEvent]) {
+	defer msg.EndSpan()
+	err := c.pipeline.Run(msg.Ctx, msg.Event, msg.DeliveryCount)
+	var retryAfter delivery.ErrRetryAfter
+	switch {
+	case errors.As(err, &retryAfter):
+		_ = msg.Msg.NakWithDelay(retryAfter.Delay)
+		slog.InfoContext(msg.Ctx, "message nacked with delay", "id", msg.Event.NotificationID, "delay", retryAfter.Delay)
+	case err != nil:
+		_ = msg.Msg.Nak()
+		slog.ErrorContext(msg.Ctx, "pipeline error", "id", msg.Event.NotificationID, "error", err)
+		sharedotel.RecordError(msg.Ctx, err)
+	default:
+		_ = msg.Msg.Ack()
+	}
+}
+
 // NotificationReadyConsumer subscribes to the three NATS JetStream priority subjects
 // and fans work out to a fixed-size worker pool. On a retryable result it calls
 // NakWithDelay so NATS re-delivers the same message after the backoff period,
@@ -63,21 +80,12 @@ func (c *NotificationReadyConsumer) StartMessageProcessing(ctx context.Context) 
 			for ctx.Err() == nil {
 				msg, ok := c.router.Next(ctx)
 				if !ok {
+					if ctx.Err() != nil {
+						return
+					}
 					continue
 				}
-				err := c.pipeline.Run(msg.Ctx, msg.Event, msg.DeliveryCount)
-				var retryAfter delivery.ErrRetryAfter
-				switch {
-				case errors.As(err, &retryAfter):
-					_ = msg.Msg.NakWithDelay(retryAfter.Delay)
-					slog.InfoContext(msg.Ctx, "message nacked with delay", "id", msg.Event.NotificationID, "delay", retryAfter.Delay)
-				case err != nil:
-					_ = msg.Msg.Nak()
-					slog.ErrorContext(msg.Ctx, "pipeline error", "id", msg.Event.NotificationID, "error", err)
-					sharedotel.RecordError(msg.Ctx, err)
-				default:
-					_ = msg.Msg.Ack()
-				}
+				c.processOne(msg)
 			}
 		}()
 	}

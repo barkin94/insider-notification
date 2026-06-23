@@ -25,20 +25,11 @@ func NewCancelConsumer(
 }
 
 func (c *CancelConsumer) Run(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case result, ok := <-c.msgs:
-			if !ok {
-				return
-			}
-			c.handleCancelEvent(result.Ctx, result)
-		}
-	}
+	natsmsg.ForEach(ctx, c.msgs, c.handleCancelEvent)
 }
 
-func (c *CancelConsumer) handleCancelEvent(ctx context.Context, result natsmsg.Result[apipub.NotificationScheduleCancelledEvent]) {
+func (c *CancelConsumer) handleCancelEvent(result natsmsg.Result[apipub.NotificationScheduleCancelledEvent]) {
+	ctx := result.Ctx
 	evt := result.Event
 
 	if err := c.repo.DeleteByNotificationID(ctx, evt.NotificationID); err != nil {

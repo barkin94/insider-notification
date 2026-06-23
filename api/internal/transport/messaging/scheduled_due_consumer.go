@@ -36,20 +36,11 @@ func NewScheduledDueConsumer(
 }
 
 func (c *ScheduledDueConsumer) Run(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case result, ok := <-c.msgs:
-			if !ok {
-				return
-			}
-			c.handleScheduledDueEvent(result.Ctx, result)
-		}
-	}
+	natsmsg.ForEach(ctx, c.msgs, c.handleScheduledDueEvent)
 }
 
-func (c *ScheduledDueConsumer) handleScheduledDueEvent(ctx context.Context, result natsmsg.Result[dspub.ScheduledNotificationDueEvent]) {
+func (c *ScheduledDueConsumer) handleScheduledDueEvent(result natsmsg.Result[dspub.ScheduledNotificationDueEvent]) {
+	ctx := result.Ctx
 	evt := result.Event
 
 	for _, notifID := range evt.NotificationIDs {

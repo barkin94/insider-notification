@@ -26,20 +26,11 @@ func NewConsumer(
 }
 
 func (c *Consumer) Run(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case result, ok := <-c.msgs:
-			if !ok {
-				return
-			}
-			c.handleScheduledEvents(result.Ctx, result)
-		}
-	}
+	natsmsg.ForEach(ctx, c.msgs, c.handleScheduledEvents)
 }
 
-func (c *Consumer) handleScheduledEvents(ctx context.Context, result natsmsg.Result[apipub.NotificationsScheduledEvent]) {
+func (c *Consumer) handleScheduledEvents(result natsmsg.Result[apipub.NotificationsScheduledEvent]) {
+	ctx := result.Ctx
 	evt := result.Event
 
 	traceMetadata := sharedotel.ExtractTraceMetadata(ctx)
