@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"encoding/base64"
 	"net/http"
 	"strconv"
 	"time"
@@ -85,8 +84,9 @@ func getNotification(svc service.NotificationService) sharedhandler.AppHandler {
 // @Param       batch_id  query string false "Filter by batch ID (UUID)"
 // @Param       date_from query string false "Filter from date (RFC3339)"
 // @Param       date_to   query string false "Filter to date (RFC3339)"
+// @Param       page      query int    false "Page number for offset pagination (default 1, ignored when cursor is set)"
 // @Param       page_size query int    false "Page size (default 20, max 100)"
-// @Param       cursor    query string false "Opaque cursor for keyset pagination (base64url-encoded UUID)"
+// @Param       cursor    query string false "ID of the last item on the current page; when set, returns items strictly before it (keyset pagination, takes precedence over page)"
 // @Success     200 {object} listResponse
 // @Failure     400 {object} sharedhandler.ErrorBody
 // @Failure     500 {object} sharedhandler.ErrorBody
@@ -142,11 +142,14 @@ func listNotifications(svc service.NotificationService) sharedhandler.AppHandler
 		if err != nil {
 			return err
 		}
+		totalPages := (total + pageSize - 1) / pageSize
 		sharedhandler.WriteJSON(w, http.StatusOK, listResponse{
 			Data: toNotificationResponses(ns),
 			Pagination: paginationMeta{
+				Page:       f.Page,
 				PageSize:   pageSize,
 				Total:      total,
+				TotalPages: totalPages,
 				NextCursor: encodeCursor(nextCursor),
 			},
 		})
@@ -155,11 +158,7 @@ func listNotifications(svc service.NotificationService) sharedhandler.AppHandler
 }
 
 func decodeCursor(s string) (*uuid.UUID, error) {
-	b, err := base64.RawURLEncoding.DecodeString(s)
-	if err != nil {
-		return nil, err
-	}
-	id, err := uuid.ParseBytes(b)
+	id, err := uuid.Parse(s)
 	if err != nil {
 		return nil, err
 	}
@@ -170,7 +169,7 @@ func encodeCursor(id *uuid.UUID) *string {
 	if id == nil {
 		return nil
 	}
-	s := base64.RawURLEncoding.EncodeToString([]byte(id.String()))
+	s := id.String()
 	return &s
 }
 

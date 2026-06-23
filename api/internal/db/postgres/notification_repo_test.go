@@ -110,8 +110,8 @@ func TestList_offset_pagination(t *testing.T) {
 	if len(results) != 3 {
 		t.Errorf("len(results) = %d, want 3", len(results))
 	}
-	if nextCursor != nil {
-		t.Error("offset mode should not return nextCursor")
+	if nextCursor == nil {
+		t.Error("offset mode should return nextCursor when more pages exist")
 	}
 }
 

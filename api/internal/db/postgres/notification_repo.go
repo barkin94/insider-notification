@@ -49,7 +49,7 @@ func (r *bunNotificationRepo) GetByIDs(ctx context.Context, ids []uuid.UUID) ([]
 		return nil, nil
 	}
 	var ns []*db.Notification
-	err := r.db.NewSelect().Model(&ns).Where("id IN (?)", bun.In(ids)).Scan(ctx)
+	err := r.db.NewSelect().Model(&ns).Where("id IN (?)", bun.List(ids)).Scan(ctx)
 	return ns, err
 }
 
@@ -131,7 +131,7 @@ func (r *bunNotificationRepo) List(ctx context.Context, f db.ListFilter) ([]*db.
 		if page < 1 {
 			page = 1
 		}
-		q = q.OrderExpr(sort + " " + order).Limit(pageSize).Offset((page - 1) * pageSize)
+		q = q.OrderExpr(sort + " " + order).Limit(pageSize + 1).Offset((page - 1) * pageSize)
 	}
 
 	if err := q.Scan(ctx); err != nil {
@@ -139,7 +139,7 @@ func (r *bunNotificationRepo) List(ctx context.Context, f db.ListFilter) ([]*db.
 	}
 
 	var nextCursor *uuid.UUID
-	if f.CursorID != nil && len(ns) == pageSize+1 {
+	if len(ns) == pageSize+1 {
 		id := ns[pageSize-1].ID
 		nextCursor = &id
 		ns = ns[:pageSize]

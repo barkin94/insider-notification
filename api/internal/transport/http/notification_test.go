@@ -3,7 +3,6 @@ package handler_test
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -329,7 +328,7 @@ func TestCreateBatch_400_tooLarge(t *testing.T) {
 // --- GET /notifications cursor pagination ---
 
 func encodeCursorForTest(id uuid.UUID) string {
-	return base64.RawURLEncoding.EncodeToString([]byte(id.String()))
+	return id.String()
 }
 
 func TestListNotifications_NoCursor(t *testing.T) {

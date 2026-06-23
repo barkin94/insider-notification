@@ -69,8 +69,10 @@ type listResponse struct {
 }
 
 type paginationMeta struct {
+	Page       int     `json:"page"`
 	PageSize   int     `json:"page_size"`
 	Total      int     `json:"total"`
+	TotalPages int     `json:"total_pages"`
 	NextCursor *string `json:"next_cursor"`
 }
 
