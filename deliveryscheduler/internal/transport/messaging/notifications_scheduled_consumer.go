@@ -45,7 +45,11 @@ func (c *Consumer) handleScheduledEvents(result natsmsg.Result[apipub.Notificati
 	}
 
 	if err := c.repo.UpsertAll(ctx, notifications); err != nil {
-		slog.ErrorContext(ctx, "persist scheduled notifications failed", "count", len(notifications), "error", err)
+		ids := make([]string, len(notifications))
+		for i, n := range notifications {
+			ids[i] = n.NotificationID
+		}
+		slog.ErrorContext(ctx, "persist scheduled notifications failed", "count", len(notifications), "notification_ids", ids, "error", err)
 		_ = result.Msg.Nak()
 		sharedotel.RecordError(ctx, err)
 		return

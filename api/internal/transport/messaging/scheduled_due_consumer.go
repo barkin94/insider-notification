@@ -64,7 +64,7 @@ func (c *ScheduledDueConsumer) handleBatch(batch []natsmsg.Result[dspub.Schedule
 	// Single bulk DB fetch for the whole batch.
 	notifs, err := c.repo.GetByIDs(batch[0].Ctx, ids)
 	if err != nil {
-		slog.ErrorContext(batch[0].Ctx, "scheduled due consumer: bulk fetch notifications", "count", len(ids), "error", err)
+		slog.ErrorContext(batch[0].Ctx, "scheduled due consumer: bulk fetch notifications", "count", len(ids), "notification_ids", ids, "error", err)
 		for _, result := range resultByID {
 			sharedotel.RecordError(result.Ctx, err)
 			_ = result.Msg.Nak()

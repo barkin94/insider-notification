@@ -57,13 +57,13 @@ func NewNotificationDeliveryPipeline(
 func (p *NotificationDeliveryPipeline) Run(ctx context.Context, evt apipub.NotificationReadyEvent, attemptNumber int) error {
 	lockAcquired, err := p.locker.TryLock(ctx, evt.NotificationID)
 	if err != nil {
-		slog.ErrorContext(ctx, "lock error", "id", evt.NotificationID, "error", err)
+		slog.ErrorContext(ctx, "lock error", "notification_id", evt.NotificationID, "error", err)
 		return err
 	}
 
 	// If lock is not acquired, another worker is already processing this notification.
 	if !lockAcquired {
-		slog.InfoContext(ctx, "lock miss, skipping", "id", evt.NotificationID)
+		slog.InfoContext(ctx, "lock miss, skipping", "notification_id", evt.NotificationID)
 		return nil
 	}
 	defer p.locker.Unlock(ctx, evt.NotificationID) //nolint:errcheck
@@ -83,7 +83,7 @@ func (p *NotificationDeliveryPipeline) Run(ctx context.Context, evt apipub.Notif
 func (p *NotificationDeliveryPipeline) applyRateLimit(ctx context.Context, evt apipub.NotificationReadyEvent) error {
 	allowed, retryAfter, err := p.limiter.IsAllowed(ctx, evt.Channel)
 	if err != nil {
-		slog.ErrorContext(ctx, "rate limit error", "id", evt.NotificationID, "error", err)
+		slog.ErrorContext(ctx, "rate limit error", "notification_id", evt.NotificationID, "error", err)
 		return err
 	}
 	if allowed {
@@ -92,7 +92,7 @@ func (p *NotificationDeliveryPipeline) applyRateLimit(ctx context.Context, evt a
 	if retryAfter <= 0 {
 		retryAfter = time.Second
 	}
-	slog.InfoContext(ctx, "rate limited, naking with delay", "id", evt.NotificationID, "channel", evt.Channel, "delay", retryAfter)
+	slog.InfoContext(ctx, "rate limited, naking with delay", "notification_id", evt.NotificationID, "channel", evt.Channel, "delay", retryAfter)
 	return ErrRetryAfter{Delay: retryAfter}
 }
 
@@ -116,7 +116,7 @@ func (p *NotificationDeliveryPipeline) handleDeliveryResult(ctx context.Context,
 
 	case dr.Retryable && currentAttempt < maxAttempts:
 		delay := service.RetryDelay(currentAttempt + 1)
-		slog.InfoContext(ctx, "retryable failure, naking with delay", "id", evt.NotificationID, "attempt", currentAttempt, "delay", delay)
+		slog.InfoContext(ctx, "retryable failure, naking with delay", "notification_id", evt.NotificationID, "attempt", currentAttempt, "delay", delay)
 		return ErrRetryAfter{Delay: delay}
 
 	default:
@@ -134,7 +134,7 @@ func (p *NotificationDeliveryPipeline) handleDeliveryResult(ctx context.Context,
 
 func (p *NotificationDeliveryPipeline) publishStatus(ctx context.Context, evt processorpub.NotificationDeliveryResultEvent) error {
 	if err := p.pub.Publish(ctx, processorpub.TopicStatus, evt); err != nil {
-		slog.ErrorContext(ctx, "publish status failed", "id", evt.NotificationID, "error", err)
+		slog.ErrorContext(ctx, "publish status failed", "notification_id", evt.NotificationID, "error", err)
 		return err
 	}
 	return nil

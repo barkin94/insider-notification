@@ -10,12 +10,17 @@ func requestLogger() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			rw := &responseWriter{ResponseWriter: w, status: http.StatusOK}
-			start := time.Now()
-
-			next.ServeHTTP(rw, r)
 
 			// trace_id injected automatically when otelslog bridge is set via slog.SetDefault (observability task)
 			slog.InfoContext(r.Context(), "request",
+				"method", r.Method,
+				"path", r.URL.Path,
+			)
+
+			start := time.Now()
+			next.ServeHTTP(rw, r)
+
+			slog.InfoContext(r.Context(), "response",
 				"method", r.Method,
 				"path", r.URL.Path,
 				"status", rw.status,
