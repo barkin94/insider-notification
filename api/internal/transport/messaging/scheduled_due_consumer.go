@@ -16,48 +16,73 @@ import (
 
 // NotificationReader is the narrow read port for fetching notifications.
 type NotificationReader interface {
-	GetByID(ctx context.Context, id uuid.UUID) (*db.Notification, error)
+	GetByIDs(ctx context.Context, ids []uuid.UUID) ([]*db.Notification, error)
 }
 
-// ScheduledDueConsumer consumes ScheduledNotificationDueEvent and publishes
-// the full notification details as NotificationReadyEvent to the processor.
+// ScheduledDueConsumer consumes ScheduledNotificationDueEvent batches, bulk-fetches
+// the full notification details in a single query, and publishes NotificationReadyEvent
+// to the processor for each one.
 type ScheduledDueConsumer struct {
 	repo      NotificationReader
 	publisher stream.Publisher
-	msgs      <-chan natsmsg.Result[dspub.ScheduledNotificationDueEvent]
+	msgs      <-chan []natsmsg.Result[dspub.ScheduledNotificationDueEvent]
 }
 
 func NewScheduledDueConsumer(
 	repo NotificationReader,
 	publisher stream.Publisher,
-	msgs <-chan natsmsg.Result[dspub.ScheduledNotificationDueEvent],
+	msgs <-chan []natsmsg.Result[dspub.ScheduledNotificationDueEvent],
 ) *ScheduledDueConsumer {
 	return &ScheduledDueConsumer{repo: repo, publisher: publisher, msgs: msgs}
 }
 
 func (c *ScheduledDueConsumer) Run(ctx context.Context) {
-	natsmsg.ForEach(ctx, c.msgs, c.handleScheduledDueEvent)
+	natsmsg.ForEachBatch(ctx, c.msgs, c.handleBatch)
 }
 
-func (c *ScheduledDueConsumer) handleScheduledDueEvent(result natsmsg.Result[dspub.ScheduledNotificationDueEvent]) {
-	ctx := result.Ctx
-	evt := result.Event
+func (c *ScheduledDueConsumer) handleBatch(batch []natsmsg.Result[dspub.ScheduledNotificationDueEvent]) {
+	// Parse IDs and map each uuid back to its Result for per-message ACK/NAK.
+	ids := make([]uuid.UUID, 0, len(batch))
+	resultByID := make(map[uuid.UUID]natsmsg.Result[dspub.ScheduledNotificationDueEvent], len(batch))
 
-	for _, notifID := range evt.NotificationIDs {
-		id, err := uuid.Parse(notifID)
+	for _, result := range batch {
+		id, err := uuid.Parse(result.Event.NotificationID)
 		if err != nil {
-			slog.ErrorContext(ctx, "scheduled due consumer: parse notification id", "id", notifID, "error", err)
+			slog.ErrorContext(result.Ctx, "scheduled due consumer: parse notification id", "id", result.Event.NotificationID, "error", err)
+			sharedotel.RecordError(result.Ctx, err)
 			_ = result.Msg.Nak()
-			sharedotel.RecordError(ctx, err)
-			return
+			continue
 		}
+		ids = append(ids, id)
+		resultByID[id] = result
+	}
 
-		notif, err := c.repo.GetByID(ctx, id)
-		if err != nil {
-			slog.ErrorContext(ctx, "scheduled due consumer: fetch notification", "id", notifID, "error", err)
+	if len(ids) == 0 {
+		return
+	}
+
+	// Single bulk DB fetch for the whole batch.
+	notifs, err := c.repo.GetByIDs(batch[0].Ctx, ids)
+	if err != nil {
+		slog.ErrorContext(batch[0].Ctx, "scheduled due consumer: bulk fetch notifications", "count", len(ids), "error", err)
+		for _, result := range resultByID {
+			sharedotel.RecordError(result.Ctx, err)
 			_ = result.Msg.Nak()
-			sharedotel.RecordError(ctx, err)
-			return
+		}
+		return
+	}
+
+	notifByID := make(map[uuid.UUID]*db.Notification, len(notifs))
+	for _, n := range notifs {
+		notifByID[n.ID] = n
+	}
+
+	for id, result := range resultByID {
+		notif, ok := notifByID[id]
+		if !ok {
+			slog.ErrorContext(result.Ctx, "scheduled due consumer: notification not found", "id", id)
+			_ = result.Msg.Nak()
+			continue
 		}
 
 		readyEvt := apipub.NotificationReadyEvent{
@@ -70,15 +95,14 @@ func (c *ScheduledDueConsumer) handleScheduledDueEvent(result natsmsg.Result[dsp
 		}
 
 		topic := apipub.TopicByPriority[apipub.Priority(notif.Priority)]
-		if err := c.publisher.Publish(ctx, string(topic), readyEvt); err != nil {
-			slog.ErrorContext(ctx, "scheduled due consumer: publish notification ready", "id", notifID, "error", err)
+		if err := c.publisher.Publish(result.Ctx, string(topic), readyEvt); err != nil {
+			slog.ErrorContext(result.Ctx, "scheduled due consumer: publish notification ready", "id", id, "error", err)
+			sharedotel.RecordError(result.Ctx, err)
 			_ = result.Msg.Nak()
-			sharedotel.RecordError(ctx, err)
-			return
+			continue
 		}
 
-		slog.InfoContext(ctx, "scheduled notification dispatched", "id", notifID)
+		slog.InfoContext(result.Ctx, "scheduled notification dispatched", "id", id)
+		_ = result.Msg.Ack()
 	}
-
-	_ = result.Msg.Ack()
 }

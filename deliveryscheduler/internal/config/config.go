@@ -3,20 +3,23 @@ package config
 import (
 	"log/slog"
 	"os"
+	"time"
 
 	shared "github.com/barkin94/insider-notification/shared/config"
 )
 
 type Config struct {
 	shared.Base
-	DatabaseURL                string
-	NATSAddr                   string
-	DeliverySchedulerBatchSize int
+	DatabaseURL  string
+	NATSAddr     string
+	PollBatchSize int
+	PollInterval  time.Duration
 }
 
 func Load() *Config {
 	v := shared.NewViper()
-	v.SetDefault("DELIVERY_SCHEDULER_BATCH_SIZE", 100)
+	v.SetDefault("POLL_BATCH_SIZE", 100)
+	v.SetDefault("POLL_INTERVAL", "5s")
 	v.SetDefault("OTEL_SERVICE_NAME", "deliveryscheduler")
 
 	databaseURL := v.GetString("DATABASE_URL")
@@ -34,6 +37,7 @@ func Load() *Config {
 		Base:                       shared.LoadBase(v),
 		DatabaseURL:                databaseURL,
 		NATSAddr:                   natsAddr,
-		DeliverySchedulerBatchSize: v.GetInt("DELIVERY_SCHEDULER_BATCH_SIZE"),
+		PollBatchSize: v.GetInt("POLL_BATCH_SIZE"),
+		PollInterval:  v.GetDuration("POLL_INTERVAL"),
 	}
 }

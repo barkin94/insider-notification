@@ -57,7 +57,6 @@ func newRouter(svc service.NotificationService) http.Handler {
 	return handler.NewRouter(handler.Deps{
 		Service: svc,
 		DB:      nil,
-		Redis:   nil,
 	})
 }
 

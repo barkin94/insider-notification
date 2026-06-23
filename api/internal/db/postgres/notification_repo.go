@@ -44,6 +44,15 @@ func (r *bunNotificationRepo) GetByID(ctx context.Context, id uuid.UUID) (*db.No
 	return n, err
 }
 
+func (r *bunNotificationRepo) GetByIDs(ctx context.Context, ids []uuid.UUID) ([]*db.Notification, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var ns []*db.Notification
+	err := r.db.NewSelect().Model(&ns).Where("id IN (?)", bun.In(ids)).Scan(ctx)
+	return ns, err
+}
+
 func (r *bunNotificationRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status string) (*db.Notification, error) {
 	n := &db.Notification{}
 	n.ID = id

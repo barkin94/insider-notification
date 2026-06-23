@@ -11,7 +11,6 @@ import (
 type Config struct {
 	shared.Base
 	DatabaseURL       string
-	RedisAddr         string
 	NATSAddr          string
 	Port              int
 	SchedulerInterval time.Duration
@@ -27,11 +26,6 @@ func Load() *Config {
 		slog.Error("missing required env var", "var", "DATABASE_URL")
 		os.Exit(1)
 	}
-	redisAddr := v.GetString("REDIS_ADDR")
-	if redisAddr == "" {
-		slog.Error("missing required env var", "var", "REDIS_ADDR")
-		os.Exit(1)
-	}
 	natsAddr := v.GetString("NATS_ADDR")
 	if natsAddr == "" {
 		slog.Error("missing required env var", "var", "NATS_ADDR")
@@ -41,7 +35,6 @@ func Load() *Config {
 	return &Config{
 		Base:              shared.LoadBase(v),
 		DatabaseURL:       databaseURL,
-		RedisAddr:         redisAddr,
 		NATSAddr:          natsAddr,
 		Port:              v.GetInt("PORT"),
 		SchedulerInterval: v.GetDuration("SCHEDULER_INTERVAL"),

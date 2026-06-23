@@ -46,7 +46,7 @@ func (c *DeliveryResultConsumer) processOne(result natsmsg.Result[processorpub.N
 	}
 
 	slog.InfoContext(ctx, "status event processed",
-		"notification_id", notifID,
+		"notification_id", notifID.String(),
 		"status", evt.Status,
 		"attempt", evt.AttemptNumber,
 	)

@@ -17,7 +17,6 @@ import (
 	processorpub "github.com/barkin94/insider-notification/processor/public"
 	sharedbun "github.com/barkin94/insider-notification/shared/bun"
 	natsmsg "github.com/barkin94/insider-notification/shared/messaging/nats"
-	sharedredis "github.com/barkin94/insider-notification/shared/redis"
 )
 
 const notificationStream = "NOTIFICATIONS"
@@ -34,7 +33,6 @@ type App struct {
 // Panics if any infrastructure dependency is unreachable.
 func New(ctx context.Context, cfg *config.Config) (*App, func()) {
 	bundb := sharedbun.Connect(cfg.DatabaseURL)
-	rdb := sharedredis.NewClient(ctx, cfg.RedisAddr)
 
 	natsHandle := natsmsg.NewHandle(cfg.NATSAddr)
 	if err := natsmsg.EnsureStream(natsHandle, notificationStream, []string{"notify.>"}); err != nil {
@@ -45,13 +43,13 @@ func New(ctx context.Context, cfg *config.Config) (*App, func()) {
 	statusMsgs := natsmsg.Subscribe[processorpub.NotificationDeliveryResultEvent](
 		ctx, natsHandle, processorpub.TopicStatus, "api-status", cfg.OTelServiceName, 0,
 	)
-	scheduledDueMsgs := natsmsg.Subscribe[dspub.ScheduledNotificationDueEvent](
+	scheduledDueMsgs := natsmsg.SubscribeBatch[dspub.ScheduledNotificationDueEvent](
 		ctx, natsHandle, dspub.TopicScheduledNotificationDue, "api-scheduled-due", cfg.OTelServiceName, 0,
 	)
 
 	notifRepo := postgres.NewNotificationRepository(bundb)
 	svc := service.NewNotificationService(notifRepo, pub)
-	router := handler.NewRouter(handler.Deps{Service: svc, DB: bundb, Redis: rdb})
+	router := handler.NewRouter(handler.Deps{Service: svc, DB: bundb})
 
 	srv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Port),
@@ -61,7 +59,6 @@ func New(ctx context.Context, cfg *config.Config) (*App, func()) {
 
 	cleanup := func() {
 		natsHandle.Close()
-		_ = rdb.Close()
 		_ = bundb.Close()
 	}
 

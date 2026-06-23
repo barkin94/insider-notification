@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/redis/go-redis/v9"
 	"github.com/uptrace/bun"
 
 	_ "github.com/barkin94/insider-notification/api/docs"
@@ -17,7 +16,6 @@ import (
 type Deps struct {
 	Service service.NotificationService
 	DB      *bun.DB
-	Redis   *redis.Client
 }
 
 // NewRouter builds and returns the chi router with all routes registered.
@@ -29,14 +27,6 @@ func NewRouter(deps Deps) http.Handler {
 				ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 				defer cancel()
 				return deps.DB.PingContext(ctx)
-			},
-		},
-		{
-			Name: "redis",
-			Check: func(ctx context.Context) error {
-				ctx, cancel := context.WithTimeout(ctx, time.Second)
-				defer cancel()
-				return deps.Redis.Ping(ctx).Err()
 			},
 		},
 	}

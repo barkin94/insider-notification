@@ -22,7 +22,7 @@ type App struct {
 	consumer       *messaging.Consumer
 	cancelConsumer *messaging.CancelConsumer
 	dispatcher     *dispatcher.ScheduledNotificationDispatcher
-	ticker         *time.Ticker
+	pollInterval   time.Duration
 	wg             sync.WaitGroup
 }
 
@@ -55,39 +55,28 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 	return &App{
 		consumer:       messaging.NewConsumer(repo, msgs),
 		cancelConsumer: messaging.NewCancelConsumer(repo, cancelMsgs),
-		dispatcher:     dispatcher.NewScheduledNotificationDispatcher(repo, pub, cfg.DeliverySchedulerBatchSize),
+		dispatcher:   dispatcher.NewScheduledNotificationDispatcher(repo, pub, cfg.PollBatchSize),
+		pollInterval: cfg.PollInterval,
 	}, cleanup, nil
 }
 
 // Start launches the consumer and dispatcher in the background and returns
 // a stop function the caller must invoke to wait for all goroutines to finish.
 func (a *App) Start(ctx context.Context) func() {
-	a.wg.Add(1)
-	go func() {
-		defer a.wg.Done()
-		a.consumer.Run(ctx)
-	}()
-
-	a.wg.Add(1)
-	go func() {
-		defer a.wg.Done()
-		a.cancelConsumer.Run(ctx)
-	}()
-
-	a.wg.Add(1)
-	a.ticker = time.NewTicker(1 * time.Second)
-	go func() {
-		defer a.wg.Done()
+	a.wg.Go(func() { a.consumer.Run(ctx) })
+	a.wg.Go(func() { a.cancelConsumer.Run(ctx) })
+	a.wg.Go(func() {
+		ticker := time.NewTicker(a.pollInterval)
+		defer ticker.Stop()
 		for {
 			select {
 			case <-ctx.Done():
-				a.ticker.Stop()
 				return
-			case <-a.ticker.C:
+			case <-ticker.C:
 				a.dispatcher.Tick(ctx)
 			}
 		}
-	}()
+	})
 
 	slog.Info("deliveryscheduler started")
 	return a.wg.Wait

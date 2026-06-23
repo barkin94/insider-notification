@@ -29,6 +29,7 @@ type NotificationRepository interface {
 	Create(ctx context.Context, n *Notification) error
 	CreateBatch(ctx context.Context, ns []*Notification) error
 	GetByID(ctx context.Context, id uuid.UUID) (*Notification, error)
+	GetByIDs(ctx context.Context, ids []uuid.UUID) ([]*Notification, error)
 	List(ctx context.Context, f ListFilter) ([]*Notification, int, *uuid.UUID, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status string) (*Notification, error)
 	FindScheduledDue(ctx context.Context) ([]*Notification, error)

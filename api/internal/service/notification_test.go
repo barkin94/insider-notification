@@ -52,6 +52,9 @@ func (m *mockNotifRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status s
 	n.ID = id
 	return n, nil
 }
+func (m *mockNotifRepo) GetByIDs(_ context.Context, _ []uuid.UUID) ([]*db.Notification, error) {
+	return nil, nil
+}
 func (m *mockNotifRepo) FindScheduledDue(_ context.Context) ([]*db.Notification, error) {
 	return nil, nil
 }
