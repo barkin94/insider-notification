@@ -12,9 +12,10 @@ import (
 	dispatcher "github.com/barkin94/insider-notification/deliveryscheduler/internal/scheduled_notification_dispatcher"
 	"github.com/barkin94/insider-notification/deliveryscheduler/internal/transport/messaging"
 	sharedbun "github.com/barkin94/insider-notification/shared/bun"
-	stream "github.com/barkin94/insider-notification/shared/messaging"
-	sharedredis "github.com/barkin94/insider-notification/shared/redis"
+	natsmsg "github.com/barkin94/insider-notification/shared/messaging/nats"
 )
+
+const notificationStream = "NOTIFICATIONS"
 
 // App wires and runs the delivery scheduler service.
 type App struct {
@@ -28,18 +29,26 @@ type App struct {
 // New constructs all dependencies and returns a ready-to-run App.
 // The returned cleanup func closes infrastructure and must be deferred by the caller.
 func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
-	rdb := sharedredis.NewClient(ctx, cfg.RedisAddr)
 	bunDB := sharedbun.Connect(cfg.DatabaseURL)
 	repo := dbpostgres.NewScheduledNotificationRepository(bunDB)
 
-	pub := stream.NewRedisPublisher(rdb)
-	sub := stream.NewRedisSubscriber(rdb, "notify:cg:deliveryscheduler")
-	msgs := stream.Subscribe[apipub.NotificationsScheduledEvent](ctx, sub, string(apipub.TopicNotificationScheduled), cfg.OTelServiceName)
-	cancelMsgs := stream.Subscribe[apipub.NotificationScheduleCancelledEvent](ctx, sub, string(apipub.TopicNotificationScheduleCancelled), cfg.OTelServiceName)
+	natsHandle := natsmsg.NewHandle(cfg.NATSAddr)
+	if err := natsmsg.EnsureStream(natsHandle, notificationStream, []string{"notify.>"}); err != nil {
+		natsHandle.Close()
+		_ = bunDB.Close()
+		return nil, nil, err
+	}
+	pub := natsmsg.NewPublisher(natsHandle)
+
+	msgs := natsmsg.Subscribe[apipub.NotificationsScheduledEvent](
+		ctx, natsHandle, string(apipub.TopicNotificationScheduled), "ds-scheduled", cfg.OTelServiceName, 0,
+	)
+	cancelMsgs := natsmsg.Subscribe[apipub.NotificationScheduleCancelledEvent](
+		ctx, natsHandle, string(apipub.TopicNotificationScheduleCancelled), "ds-cancel", cfg.OTelServiceName, 0,
+	)
 
 	cleanup := func() {
-		_ = sub.Close()
-		_ = rdb.Close()
+		natsHandle.Close()
 		_ = bunDB.Close()
 	}
 

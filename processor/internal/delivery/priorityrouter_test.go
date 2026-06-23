@@ -7,11 +7,11 @@ import (
 
 	apipub "github.com/barkin94/insider-notification/api/public"
 	"github.com/barkin94/insider-notification/processor/internal/delivery"
-	stream "github.com/barkin94/insider-notification/shared/messaging"
+	natsmsg "github.com/barkin94/insider-notification/shared/messaging/nats"
 )
 
 // result aliases the concrete type to keep test lines short.
-type result = stream.Result[apipub.NotificationReadyEvent]
+type result = natsmsg.Result[apipub.NotificationReadyEvent]
 
 func makeResult(priority string) result {
 	return result{Event: apipub.NotificationReadyEvent{Priority: priority}}

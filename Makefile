@@ -1,13 +1,13 @@
 .PHONY: help infra up down build logs test lint swag install-tools \
-        build-api build-processor build-retryscheduler build-deliveryscheduler \
-        test-api test-processor test-retryscheduler test-deliveryscheduler test-shared \
-        lint-api lint-processor lint-retryscheduler lint-deliveryscheduler lint-shared
+        build-api build-processor build-deliveryscheduler \
+        test-api test-processor test-deliveryscheduler test-shared \
+        lint-api lint-processor lint-deliveryscheduler lint-shared
 
 help: ## Show available commands
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-18s %s\n", $$1, $$2}'
 
-infra: ## Start Postgres, Redis and Mockoon only (for local development)
-	docker compose up -d postgres redis mock-ntfn-provider migrate-api migrate-retryscheduler migrate-deliveryscheduler
+infra: ## Start Postgres, Redis, NATS and Mockoon only (for local development)
+	docker compose up -d postgres redis nats mock-ntfn-provider migrate-api migrate-deliveryscheduler
 
 instrumentation: ## Instrumentation related services (for local development)
 	docker compose up -d grafana prometheus loki tempo otel-collector
@@ -18,17 +18,14 @@ up: ## Start all services
 down: ## Stop all services
 	docker compose down
 
-build: ## Rebuild Docker images for api, processor, retryscheduler, and deliveryscheduler
-	docker compose build api processor retryscheduler deliveryscheduler
+build: ## Rebuild Docker images for api, processor, and deliveryscheduler
+	docker compose build api processor deliveryscheduler
 
 build-api: ## Rebuild Docker image for api
 	docker compose build api
 
 build-processor: ## Rebuild Docker image for processor
 	docker compose build processor
-
-build-retryscheduler: ## Rebuild Docker image for retryscheduler
-	docker compose build retryscheduler
 
 build-deliveryscheduler: ## Rebuild Docker image for deliveryscheduler
 	docker compose build deliveryscheduler
@@ -39,7 +36,6 @@ logs: ## Tail logs for all services (Ctrl-C to stop)
 test: ## Run all tests (requires Docker for testcontainers)
 	cd api && go test -race ./... && cd ..
 	cd processor && go test -race ./... && cd ..
-	cd retryscheduler && go test -race ./... && cd ..
 	cd deliveryscheduler && go test -race ./... && cd ..
 	cd shared && go test -race ./...
 
@@ -48,9 +44,6 @@ test-api: swag ## Run api tests
 
 test-processor: ## Run processor tests
 	cd processor && go test -race ./...
-
-test-retryscheduler: ## Run retryscheduler tests
-	cd retryscheduler && go test -race ./...
 
 test-deliveryscheduler: ## Run deliveryscheduler tests
 	cd deliveryscheduler && go test -race ./...
@@ -61,7 +54,6 @@ test-shared: ## Run shared tests
 lint-fix: swag ## Run linter for all modules
 	cd api && golangci-lint run --fix ./... && cd ..
 	cd processor && golangci-lint run --fix ./... && cd ..
-	cd retryscheduler && golangci-lint run --fix ./... && cd ..
 	cd deliveryscheduler && golangci-lint run --fix ./... && cd ..
 	cd shared && golangci-lint run --fix ./... && cd ..
 
@@ -70,9 +62,6 @@ lint-api: swag ## Run linter for api
 
 lint-processor: ## Run linter for processor
 	cd processor && golangci-lint run ./...
-
-lint-retryscheduler: ## Run linter for retryscheduler
-	cd retryscheduler && golangci-lint run ./...
 
 lint-deliveryscheduler: ## Run linter for deliveryscheduler
 	cd deliveryscheduler && golangci-lint run ./...

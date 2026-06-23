@@ -7,8 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ThreeDotsLabs/watermill"
-	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/google/uuid"
 
 	apipub "github.com/barkin94/insider-notification/api/public"
@@ -70,23 +68,24 @@ func (f *fakeDeliveryClient) Send(_ context.Context, _, _, _ string) service.Del
 	return f.result
 }
 
-type fakeLimiter struct{ allowed bool }
+type fakeLimiter struct {
+	allowed    bool
+	retryAfter time.Duration
+}
 
 func (f *fakeLimiter) IsAllowed(_ context.Context, _ string) (bool, time.Duration, error) {
-	return f.allowed, 0, nil
+	return f.allowed, f.retryAfter, nil
 }
 
 // --- helpers ---
 
-func runSingle(p *delivery.NotificationDeliveryPipeline, evt apipub.NotificationReadyEvent) *message.Message {
-	ctx := context.Background()
-	msg := message.NewMessage(watermill.NewUUID(), nil)
-	if err := p.Run(ctx, evt); err != nil {
-		msg.Nack()
-	} else {
-		msg.Ack()
-	}
-	return msg
+// runSingle runs the pipeline with deliveryCount=1 (first delivery).
+func runSingle(p *delivery.NotificationDeliveryPipeline, evt apipub.NotificationReadyEvent) error {
+	return p.Run(context.Background(), evt, 1)
+}
+
+func runWithCount(p *delivery.NotificationDeliveryPipeline, evt apipub.NotificationReadyEvent, deliveryCount int) error {
+	return p.Run(context.Background(), evt, deliveryCount)
 }
 
 const baseNotifID = "00000000-0000-0000-0000-000000000001"
@@ -119,26 +118,20 @@ func newPipeline(pub *fakePublisher, dc service.NtfnDeliveryClient, lim service.
 	)
 }
 
-func isAcked(msg *message.Message) bool {
-	select {
-	case <-msg.Acked():
-		return true
-	default:
-		return false
-	}
+func isErrRetryAfter(err error) (delivery.ErrRetryAfter, bool) {
+	var e delivery.ErrRetryAfter
+	return e, errors.As(err, &e)
 }
 
 // --- tests ---
 
-// Lock miss: ACKs immediately, no status published.
+// Lock miss: returns nil (Ack), no status published.
 func TestPipeline_LockMiss(t *testing.T) {
 	pub := &fakePublisher{}
 	c := newPipeline(pub, nil, nil, false)
 
-	msg := runSingle(c, baseEvent())
-
-	if !isAcked(msg) {
-		t.Error("expected ACK")
+	if err := runSingle(c, baseEvent()); err != nil {
+		t.Errorf("expected nil, got %v", err)
 	}
 	if len(pub.calls()) != 0 {
 		t.Errorf("expected no publishes, got %d", len(pub.calls()))
@@ -152,10 +145,9 @@ func TestPipeline_TerminalFailure(t *testing.T) {
 	lim := &fakeLimiter{allowed: true}
 	c := newPipeline(pub, dc, lim, true)
 
-	msg := runSingle(c, baseEvent())
-
-	if !isAcked(msg) {
-		t.Error("expected ACK")
+	err := runSingle(c, baseEvent())
+	if err != nil {
+		t.Errorf("expected nil (Ack path), got %v", err)
 	}
 	calls := pub.calls()
 	if len(calls) != 1 {
@@ -170,17 +162,15 @@ func TestPipeline_TerminalFailure(t *testing.T) {
 	}
 }
 
-// Success result: one status event with status=delivered, no retry publish.
+// Success result: one status event with status=delivered, no retry.
 func TestPipeline_Delivered(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: true, StatusCode: 202, LatencyMS: 50}}
 	lim := &fakeLimiter{allowed: true}
 	c := newPipeline(pub, dc, lim, true)
 
-	msg := runSingle(c, baseEvent())
-
-	if !isAcked(msg) {
-		t.Error("expected ACK")
+	if err := runSingle(c, baseEvent()); err != nil {
+		t.Errorf("expected nil, got %v", err)
 	}
 	calls := pub.calls()
 	if len(calls) != 1 {
@@ -195,53 +185,41 @@ func TestPipeline_Delivered(t *testing.T) {
 	}
 }
 
-// Retryable failure with attempts remaining: publishes NotificationRetryScheduleEvent to TopicRetry.
-func TestPipeline_Retryable_PublishesRetry(t *testing.T) {
+// Retryable failure with attempts remaining: returns ErrRetryAfter (NakWithDelay path).
+func TestPipeline_Retryable_ReturnsErrRetryAfter(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: true, StatusCode: 503}}
 	lim := &fakeLimiter{allowed: true}
 	c := newPipeline(pub, dc, lim, true)
 
-	before := time.Now()
-	msg := runSingle(c, baseEventWithID())
+	err := runSingle(c, baseEventWithID())
 
-	if !isAcked(msg) {
-		t.Error("expected ACK")
+	ra, ok := isErrRetryAfter(err)
+	if !ok {
+		t.Fatalf("expected ErrRetryAfter, got %v", err)
 	}
-	calls := pub.calls()
-	if len(calls) != 1 {
-		t.Fatalf("expected 1 publish (retry), got %d: %v", len(calls), pub.topicsPublished())
+	if ra.Delay <= 0 {
+		t.Errorf("expected positive delay, got %s", ra.Delay)
 	}
-	if calls[0].topic != processorpub.TopicRetry {
-		t.Errorf("expected publish to %s, got %s", processorpub.TopicRetry, calls[0].topic)
-	}
-	retryEvt := calls[0].payload.(processorpub.NotificationRetryScheduleEvent)
-	if retryEvt.ScheduledAt.Before(before) {
-		t.Error("expected ScheduledAt to be in the future")
-	}
-	if retryEvt.AttemptNumber != 1 {
-		t.Errorf("AttemptNumber = %d, want 1", retryEvt.AttemptNumber)
-	}
-	if retryEvt.Priority != string(apipub.PriorityHigh) {
-		t.Errorf("Priority = %q, want high", retryEvt.Priority)
+	if len(pub.calls()) != 0 {
+		t.Errorf("expected no publishes on retry path, got %v", pub.topicsPublished())
 	}
 }
 
-// Retryable failure at max attempts: status=failed published, no retry publish.
+// Retryable failure at max attempts: returns nil (Ack), publishes status=failed.
 func TestPipeline_Exhausted_Failed(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: true, StatusCode: 503}}
 	lim := &fakeLimiter{allowed: true}
 	c := newPipeline(pub, dc, lim, true)
 
-	// 3 prior attempts → currentAttempt=4=MaxAttempts → terminal
+	// deliveryCount=4 = MaxAttempts → terminal
 	evt := baseEventWithID()
 	evt.MaxAttempts = 4
-	evt.AttemptNumber = 3
-	msg := runSingle(c, evt)
+	err := runWithCount(c, evt, 4)
 
-	if !isAcked(msg) {
-		t.Error("expected ACK")
+	if err != nil {
+		t.Errorf("expected nil (Ack path), got %v", err)
 	}
 	calls := pub.calls()
 	if len(calls) != 1 {
@@ -259,17 +237,15 @@ func TestPipeline_Exhausted_Failed(t *testing.T) {
 	}
 }
 
-// Non-retryable failure: status=failed, no retry publish.
+// Non-retryable failure: returns nil (Ack), publishes status=failed.
 func TestPipeline_NonRetryable_Failed(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: false, StatusCode: 400}}
 	lim := &fakeLimiter{allowed: true}
 	c := newPipeline(pub, dc, lim, true)
 
-	msg := runSingle(c, baseEvent())
-
-	if !isAcked(msg) {
-		t.Error("expected ACK")
+	if err := runSingle(c, baseEvent()); err != nil {
+		t.Errorf("expected nil (Ack path), got %v", err)
 	}
 	calls := pub.calls()
 	if len(calls) != 1 {
@@ -281,120 +257,96 @@ func TestPipeline_NonRetryable_Failed(t *testing.T) {
 	}
 }
 
-// Rate limited: publishes NotificationRetryScheduleEvent to TopicRetry, no delivery attempted.
-func TestPipeline_RateLimited_PublishesRetry(t *testing.T) {
+// Rate limited: returns ErrRetryAfter, no delivery attempted, no status published.
+func TestPipeline_RateLimited_ReturnsErrRetryAfter(t *testing.T) {
 	pub := &fakePublisher{}
-	lim := &fakeLimiter{allowed: false}
+	lim := &fakeLimiter{allowed: false, retryAfter: 2 * time.Second}
 	c := newPipeline(pub, nil, lim, true)
 
-	before := time.Now()
-	msg := runSingle(c, baseEvent())
+	err := runSingle(c, baseEvent())
 
-	if !isAcked(msg) {
-		t.Error("expected ACK")
+	ra, ok := isErrRetryAfter(err)
+	if !ok {
+		t.Fatalf("expected ErrRetryAfter, got %v", err)
+	}
+	if ra.Delay != 2*time.Second {
+		t.Errorf("expected delay 2s, got %s", ra.Delay)
+	}
+	if len(pub.calls()) != 0 {
+		t.Errorf("expected no publishes on rate-limit path, got %v", pub.topicsPublished())
+	}
+}
+
+// Rate limit with zero retryAfter falls back to 1s minimum.
+func TestPipeline_RateLimited_ZeroRetryAfter_DefaultsToOneSecond(t *testing.T) {
+	pub := &fakePublisher{}
+	lim := &fakeLimiter{allowed: false, retryAfter: 0}
+	c := newPipeline(pub, nil, lim, true)
+
+	err := runSingle(c, baseEvent())
+
+	ra, ok := isErrRetryAfter(err)
+	if !ok {
+		t.Fatalf("expected ErrRetryAfter, got %v", err)
+	}
+	if ra.Delay != time.Second {
+		t.Errorf("expected 1s fallback delay, got %s", ra.Delay)
+	}
+}
+
+// --- delivery attempt number tests ---
+
+// AttemptNumber in status event equals deliveryCount.
+func TestPipeline_AttemptNumber_FromDeliveryCount(t *testing.T) {
+	pub := &fakePublisher{}
+	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: true}}
+	lim := &fakeLimiter{allowed: true}
+	c := newPipeline(pub, dc, lim, true)
+
+	err := runWithCount(c, baseEventWithID(), 3)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 	calls := pub.calls()
 	if len(calls) != 1 {
-		t.Fatalf("expected 1 retry publish for rate-limited event, got %d", len(calls))
+		t.Fatalf("expected 1 publish, got %d", len(calls))
 	}
-	if calls[0].topic != processorpub.TopicRetry {
-		t.Errorf("expected publish to %s, got %s", processorpub.TopicRetry, calls[0].topic)
-	}
-	retryEvt := calls[0].payload.(processorpub.NotificationRetryScheduleEvent)
-	if retryEvt.ScheduledAt.Before(before) {
-		t.Error("expected ScheduledAt to be in the future")
-	}
-	// Rate limit does not increment AttemptNumber — the attempt hasn't happened yet.
-	if retryEvt.AttemptNumber != 0 {
-		t.Errorf("AttemptNumber = %d, want 0 (no delivery was attempted)", retryEvt.AttemptNumber)
+	evt := calls[0].payload.(processorpub.NotificationDeliveryResultEvent)
+	if evt.AttemptNumber != 3 {
+		t.Errorf("AttemptNumber = %d, want 3", evt.AttemptNumber)
 	}
 }
 
-// --- delivery attempt tests ---
-
-// Retryable failure path: retry event carries correct AttemptNumber.
-func TestPipeline_Attempts_Retryable(t *testing.T) {
+// Retryable failure: ErrRetryAfter delay is positive (backoff formula applied).
+func TestPipeline_Retryable_DelayIsPositive(t *testing.T) {
 	pub := &fakePublisher{}
-	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: true, StatusCode: 503}}
+	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: true}}
 	lim := &fakeLimiter{allowed: true}
 	c := newPipeline(pub, dc, lim, true)
 
-	evt := baseEventWithID()
-	evt.MaxAttempts = 4
-	runSingle(c, evt)
-
-	calls := pub.calls()
-	if len(calls) != 1 {
-		t.Fatalf("expected 1 retry publish, got %d", len(calls))
+	err := runWithCount(c, baseEventWithID(), 2)
+	ra, ok := isErrRetryAfter(err)
+	if !ok {
+		t.Fatalf("expected ErrRetryAfter, got %v", err)
 	}
-	retryEvt := calls[0].payload.(processorpub.NotificationRetryScheduleEvent)
-	if retryEvt.AttemptNumber != 1 {
-		t.Errorf("AttemptNumber = %d, want 1", retryEvt.AttemptNumber)
+	if ra.Delay <= 0 {
+		t.Errorf("expected positive delay, got %s", ra.Delay)
 	}
 }
 
-// Terminal failure path: no retry publish, status published.
-func TestPipeline_Attempts_Terminal(t *testing.T) {
-	pub := &fakePublisher{}
-	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: false, StatusCode: 400}}
+// Status publish error causes a non-nil return so caller Nacks.
+func TestPipeline_StatusPublishError_ReturnsError(t *testing.T) {
+	pub := &fakePublisher{errOn: processorpub.TopicStatus}
+	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: true}}
 	lim := &fakeLimiter{allowed: true}
 	c := newPipeline(pub, dc, lim, true)
 
-	msg := runSingle(c, baseEventWithID())
-
-	if !isAcked(msg) {
-		t.Error("expected ACK")
+	err := runSingle(c, baseEventWithID())
+	if err == nil {
+		t.Error("expected error when status publish fails")
 	}
-	calls := pub.calls()
-	if len(calls) != 1 || calls[0].topic != processorpub.TopicStatus {
-		t.Errorf("expected status publish only, got %v", pub.topicsPublished())
-	}
-}
-
-// Retry publish error causes Nack so the message is redelivered.
-func TestPipeline_RetryPublishError_Nacks(t *testing.T) {
-	pub := &fakePublisher{errOn: processorpub.TopicRetry}
-	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: true, StatusCode: 503}}
-	lim := &fakeLimiter{allowed: true}
-	c := newPipeline(pub, dc, lim, true)
-
-	msg := runSingle(c, baseEventWithID())
-
-	if isAcked(msg) {
-		t.Error("expected Nack when retry publish fails")
-	}
-}
-
-// Retry event carries the full notification payload so retryscheduler can republish without a DB lookup.
-func TestPipeline_Attempts_PayloadCarried(t *testing.T) {
-	pub := &fakePublisher{}
-	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: false, Retryable: true, StatusCode: 503}}
-	lim := &fakeLimiter{allowed: true}
-	c := newPipeline(pub, dc, lim, true)
-
-	evt := baseEventWithID()
-	evt.Channel = string(apipub.ChannelSMS)
-	evt.Recipient = "+905550001"
-	evt.Content = "hello"
-	evt.MaxAttempts = 3
-	runSingle(c, evt)
-
-	calls := pub.calls()
-	if len(calls) != 1 {
-		t.Fatalf("expected 1 retry publish, got %d", len(calls))
-	}
-	retryEvt := calls[0].payload.(processorpub.NotificationRetryScheduleEvent)
-	if retryEvt.Channel != string(apipub.ChannelSMS) {
-		t.Errorf("Channel = %q, want sms", retryEvt.Channel)
-	}
-	if retryEvt.Recipient != "+905550001" {
-		t.Errorf("Recipient = %q, want +905550001", retryEvt.Recipient)
-	}
-	if retryEvt.Content != "hello" {
-		t.Errorf("Content = %q, want hello", retryEvt.Content)
-	}
-	if retryEvt.MaxAttempts != 3 {
-		t.Errorf("MaxAttempts = %d, want 3", retryEvt.MaxAttempts)
+	if _, ok := isErrRetryAfter(err); ok {
+		t.Error("expected plain error, not ErrRetryAfter")
 	}
 }
 

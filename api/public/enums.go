@@ -19,9 +19,9 @@ const (
 	StatusFailed    Status = "failed"
 	StatusCancelled Status = "cancelled"
 
-	TopicHigh                          Topic = "notify:stream:high"
-	TopicNormal                        Topic = "notify:stream:normal"
-	TopicLow                           Topic = "notify:stream:low"
-	TopicNotificationScheduled         Topic = "notify:stream:notification-scheduled"
-	TopicNotificationScheduleCancelled Topic = "notify:stream:notification-schedule-cancelled"
+	TopicHigh                          Topic = "notify.high"
+	TopicNormal                        Topic = "notify.normal"
+	TopicLow                           Topic = "notify.low"
+	TopicNotificationScheduled         Topic = "notify.scheduled"
+	TopicNotificationScheduleCancelled Topic = "notify.schedule.cancelled"
 )

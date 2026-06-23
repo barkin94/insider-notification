@@ -2,36 +2,50 @@ package messaging
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"sync"
 
-	"github.com/ThreeDotsLabs/watermill/message"
-
 	apipub "github.com/barkin94/insider-notification/api/public"
 	"github.com/barkin94/insider-notification/processor/internal/delivery"
-	stream "github.com/barkin94/insider-notification/shared/messaging"
+	natsmsg "github.com/barkin94/insider-notification/shared/messaging/nats"
 	sharedotel "github.com/barkin94/insider-notification/shared/otel"
 )
 
+// NotificationReadyConsumer subscribes to the three NATS JetStream priority subjects
+// and fans work out to a fixed-size worker pool. On a retryable result it calls
+// NakWithDelay so NATS re-delivers the same message after the backoff period,
+// eliminating the need for a separate retry scheduler service.
 type NotificationReadyConsumer struct {
-	router      *delivery.PriorityRouter[stream.Result[apipub.NotificationReadyEvent]]
+	router      *delivery.PriorityRouter[natsmsg.Result[apipub.NotificationReadyEvent]]
 	pipeline    *delivery.NotificationDeliveryPipeline
 	concurrency int
 }
 
+// NewNotificationReadyConsumer subscribes to high/normal/low NATS subjects and
+// returns a consumer ready to call StartMessageProcessing.
+// maxDeliver is passed to NATS as the per-consumer MaxDeliver limit (safety net
+// above the application-level MaxAttempts).
 func NewNotificationReadyConsumer(
 	ctx context.Context,
-	sub message.Subscriber,
+	h *natsmsg.Handle,
 	serviceName string,
 	highWeight, normalWeight, lowWeight int,
 	pipeline *delivery.NotificationDeliveryPipeline,
 	concurrency int,
+	maxDeliver int,
 ) *NotificationReadyConsumer {
-	highMsgs := stream.Subscribe[apipub.NotificationReadyEvent](ctx, sub, string(apipub.TopicHigh), serviceName)
-	normalMsgs := stream.Subscribe[apipub.NotificationReadyEvent](ctx, sub, string(apipub.TopicNormal), serviceName)
-	lowMsgs := stream.Subscribe[apipub.NotificationReadyEvent](ctx, sub, string(apipub.TopicLow), serviceName)
+	highMsgs := natsmsg.Subscribe[apipub.NotificationReadyEvent](
+		ctx, h, string(apipub.TopicHigh), "processor-high", serviceName, maxDeliver,
+	)
+	normalMsgs := natsmsg.Subscribe[apipub.NotificationReadyEvent](
+		ctx, h, string(apipub.TopicNormal), "processor-normal", serviceName, maxDeliver,
+	)
+	lowMsgs := natsmsg.Subscribe[apipub.NotificationReadyEvent](
+		ctx, h, string(apipub.TopicLow), "processor-low", serviceName, maxDeliver,
+	)
 
-	router := delivery.NewPriorityRouter([]delivery.WeightedSource[stream.Result[apipub.NotificationReadyEvent]]{
+	router := delivery.NewPriorityRouter([]delivery.WeightedSource[natsmsg.Result[apipub.NotificationReadyEvent]]{
 		{Ch: highMsgs, Weight: highWeight},
 		{Ch: normalMsgs, Weight: normalWeight},
 		{Ch: lowMsgs, Weight: lowWeight},
@@ -51,12 +65,18 @@ func (c *NotificationReadyConsumer) StartMessageProcessing(ctx context.Context) 
 				if !ok {
 					continue
 				}
-				if err := c.pipeline.Run(msg.Ctx, msg.Event); err != nil {
-					msg.Msg.Nack()
-					slog.ErrorContext(msg.Ctx, "pipeline error", "error", err)
+				err := c.pipeline.Run(msg.Ctx, msg.Event, msg.DeliveryCount)
+				var retryAfter delivery.ErrRetryAfter
+				switch {
+				case errors.As(err, &retryAfter):
+					_ = msg.Msg.NakWithDelay(retryAfter.Delay)
+					slog.InfoContext(msg.Ctx, "message nacked with delay", "id", msg.Event.NotificationID, "delay", retryAfter.Delay)
+				case err != nil:
+					_ = msg.Msg.Nak()
+					slog.ErrorContext(msg.Ctx, "pipeline error", "id", msg.Event.NotificationID, "error", err)
 					sharedotel.RecordError(msg.Ctx, err)
-				} else {
-					msg.Msg.Ack()
+				default:
+					_ = msg.Msg.Ack()
 				}
 			}
 		}()

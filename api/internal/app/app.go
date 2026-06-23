@@ -16,9 +16,11 @@ import (
 	dspub "github.com/barkin94/insider-notification/deliveryscheduler/public"
 	processorpub "github.com/barkin94/insider-notification/processor/public"
 	sharedbun "github.com/barkin94/insider-notification/shared/bun"
-	stream "github.com/barkin94/insider-notification/shared/messaging"
+	natsmsg "github.com/barkin94/insider-notification/shared/messaging/nats"
 	sharedredis "github.com/barkin94/insider-notification/shared/redis"
 )
+
+const notificationStream = "NOTIFICATIONS"
 
 // App wires and runs the API service.
 type App struct {
@@ -34,13 +36,17 @@ func New(ctx context.Context, cfg *config.Config) (*App, func()) {
 	bundb := sharedbun.Connect(cfg.DatabaseURL)
 	rdb := sharedredis.NewClient(ctx, cfg.RedisAddr)
 
-	pub := stream.NewRedisPublisher(rdb)
-	sub := stream.NewRedisSubscriber(rdb, "notify:cg:api")
-	statusMsgs := stream.Subscribe[processorpub.NotificationDeliveryResultEvent](
-		ctx, sub, processorpub.TopicStatus, cfg.OTelServiceName,
+	natsHandle := natsmsg.NewHandle(cfg.NATSAddr)
+	if err := natsmsg.EnsureStream(natsHandle, notificationStream, []string{"notify.>"}); err != nil {
+		panic("ensure nats stream: " + err.Error())
+	}
+	pub := natsmsg.NewPublisher(natsHandle)
+
+	statusMsgs := natsmsg.Subscribe[processorpub.NotificationDeliveryResultEvent](
+		ctx, natsHandle, processorpub.TopicStatus, "api-status", cfg.OTelServiceName, 0,
 	)
-	scheduledDueMsgs := stream.Subscribe[dspub.ScheduledNotificationDueEvent](
-		ctx, sub, dspub.TopicScheduledNotificationDue, cfg.OTelServiceName,
+	scheduledDueMsgs := natsmsg.Subscribe[dspub.ScheduledNotificationDueEvent](
+		ctx, natsHandle, dspub.TopicScheduledNotificationDue, "api-scheduled-due", cfg.OTelServiceName, 0,
 	)
 
 	notifRepo := postgres.NewNotificationRepository(bundb)
@@ -54,7 +60,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, func()) {
 	}
 
 	cleanup := func() {
-		_ = sub.Close()
+		natsHandle.Close()
 		_ = rdb.Close()
 		_ = bundb.Close()
 	}
@@ -66,7 +72,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, func()) {
 	}, cleanup
 }
 
-// Start launches the HTTP server, scheduler, and consumers in the background.
+// Start launches the HTTP server and consumers in the background.
 // It returns a stop function that the caller must invoke to drain all goroutines gracefully.
 func (a *App) Start(ctx context.Context) func(context.Context) {
 	a.wg.Add(1)

@@ -8,20 +8,20 @@ import (
 
 	"github.com/barkin94/insider-notification/api/internal/service"
 	processorpub "github.com/barkin94/insider-notification/processor/public"
-	stream "github.com/barkin94/insider-notification/shared/messaging"
+	natsmsg "github.com/barkin94/insider-notification/shared/messaging/nats"
+	sharedotel "github.com/barkin94/insider-notification/shared/otel"
 )
 
 // DeliveryResultConsumer processes NotificationDeliveryResultEvent messages from the status stream.
 type DeliveryResultConsumer struct {
 	svc  service.NotificationService
-	msgs <-chan stream.Result[processorpub.NotificationDeliveryResultEvent]
+	msgs <-chan natsmsg.Result[processorpub.NotificationDeliveryResultEvent]
 }
 
-func NewDeliveryResultConsumer(svc service.NotificationService, msgs <-chan stream.Result[processorpub.NotificationDeliveryResultEvent]) *DeliveryResultConsumer {
+func NewDeliveryResultConsumer(svc service.NotificationService, msgs <-chan natsmsg.Result[processorpub.NotificationDeliveryResultEvent]) *DeliveryResultConsumer {
 	return &DeliveryResultConsumer{svc: svc, msgs: msgs}
 }
 
-// Run reads from msgs until the channel is closed or ctx is cancelled.
 func (c *DeliveryResultConsumer) Run(ctx context.Context) {
 	for {
 		select {
@@ -36,20 +36,21 @@ func (c *DeliveryResultConsumer) Run(ctx context.Context) {
 	}
 }
 
-func (c *DeliveryResultConsumer) processOne(ctx context.Context, result stream.Result[processorpub.NotificationDeliveryResultEvent]) {
+func (c *DeliveryResultConsumer) processOne(ctx context.Context, result natsmsg.Result[processorpub.NotificationDeliveryResultEvent]) {
 	evt := result.Event
-	msg := result.Msg
 
 	notifID, err := uuid.Parse(evt.NotificationID)
 	if err != nil {
 		slog.ErrorContext(ctx, "invalid notification_id", "notification_id", evt.NotificationID, "error", err)
-		msg.Nack()
+		_ = result.Msg.Nak()
+		sharedotel.RecordError(ctx, err)
 		return
 	}
 
 	if err := c.svc.UpdateStatus(ctx, notifID, evt.Status); err != nil {
 		slog.ErrorContext(ctx, "update notification status failed", "notification_id", notifID, "error", err)
-		msg.Nack()
+		_ = result.Msg.Nak()
+		sharedotel.RecordError(ctx, err)
 		return
 	}
 
@@ -58,5 +59,5 @@ func (c *DeliveryResultConsumer) processOne(ctx context.Context, result stream.R
 		"status", evt.Status,
 		"attempt", evt.AttemptNumber,
 	)
-	msg.Ack()
+	_ = result.Msg.Ack()
 }

@@ -10,6 +10,8 @@ import (
 	apipub "github.com/barkin94/insider-notification/api/public"
 	dspub "github.com/barkin94/insider-notification/deliveryscheduler/public"
 	stream "github.com/barkin94/insider-notification/shared/messaging"
+	natsmsg "github.com/barkin94/insider-notification/shared/messaging/nats"
+	sharedotel "github.com/barkin94/insider-notification/shared/otel"
 )
 
 // NotificationReader is the narrow read port for fetching notifications.
@@ -22,13 +24,13 @@ type NotificationReader interface {
 type ScheduledDueConsumer struct {
 	repo      NotificationReader
 	publisher stream.Publisher
-	msgs      <-chan stream.Result[dspub.ScheduledNotificationDueEvent]
+	msgs      <-chan natsmsg.Result[dspub.ScheduledNotificationDueEvent]
 }
 
 func NewScheduledDueConsumer(
 	repo NotificationReader,
 	publisher stream.Publisher,
-	msgs <-chan stream.Result[dspub.ScheduledNotificationDueEvent],
+	msgs <-chan natsmsg.Result[dspub.ScheduledNotificationDueEvent],
 ) *ScheduledDueConsumer {
 	return &ScheduledDueConsumer{repo: repo, publisher: publisher, msgs: msgs}
 }
@@ -47,22 +49,23 @@ func (c *ScheduledDueConsumer) Run(ctx context.Context) {
 	}
 }
 
-func (c *ScheduledDueConsumer) handleScheduledDueEvent(ctx context.Context, result stream.Result[dspub.ScheduledNotificationDueEvent]) {
+func (c *ScheduledDueConsumer) handleScheduledDueEvent(ctx context.Context, result natsmsg.Result[dspub.ScheduledNotificationDueEvent]) {
 	evt := result.Event
-	msg := result.Msg
 
 	for _, notifID := range evt.NotificationIDs {
 		id, err := uuid.Parse(notifID)
 		if err != nil {
 			slog.ErrorContext(ctx, "scheduled due consumer: parse notification id", "id", notifID, "error", err)
-			msg.Nack()
+			_ = result.Msg.Nak()
+			sharedotel.RecordError(ctx, err)
 			return
 		}
 
 		notif, err := c.repo.GetByID(ctx, id)
 		if err != nil {
 			slog.ErrorContext(ctx, "scheduled due consumer: fetch notification", "id", notifID, "error", err)
-			msg.Nack()
+			_ = result.Msg.Nak()
+			sharedotel.RecordError(ctx, err)
 			return
 		}
 
@@ -78,12 +81,13 @@ func (c *ScheduledDueConsumer) handleScheduledDueEvent(ctx context.Context, resu
 		topic := apipub.TopicByPriority[apipub.Priority(notif.Priority)]
 		if err := c.publisher.Publish(ctx, string(topic), readyEvt); err != nil {
 			slog.ErrorContext(ctx, "scheduled due consumer: publish notification ready", "id", notifID, "error", err)
-			msg.Nack()
+			_ = result.Msg.Nak()
+			sharedotel.RecordError(ctx, err)
 			return
 		}
 
 		slog.InfoContext(ctx, "scheduled notification dispatched", "id", notifID)
 	}
 
-	msg.Ack()
+	_ = result.Msg.Ack()
 }

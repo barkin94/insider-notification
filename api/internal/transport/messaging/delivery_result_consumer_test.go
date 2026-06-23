@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	watermill "github.com/ThreeDotsLabs/watermill/message"
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
@@ -24,8 +23,10 @@ import (
 	"github.com/barkin94/insider-notification/api/internal/service"
 	"github.com/barkin94/insider-notification/api/internal/transport/messaging"
 	apipub "github.com/barkin94/insider-notification/api/public"
+	natsio "github.com/nats-io/nats.go"
+
 	processorpub "github.com/barkin94/insider-notification/processor/public"
-	stream "github.com/barkin94/insider-notification/shared/messaging"
+	natsmsg "github.com/barkin94/insider-notification/shared/messaging/nats"
 )
 
 type noopPublisher struct{}
@@ -97,17 +98,21 @@ func seedNotification(t *testing.T, id uuid.UUID, status string) {
 	}
 }
 
-func makeResult(evt processorpub.NotificationDeliveryResultEvent) stream.Result[processorpub.NotificationDeliveryResultEvent] {
-	msg := watermill.NewMessage(uuid.New().String(), nil)
-	return stream.Result[processorpub.NotificationDeliveryResultEvent]{Ctx: context.Background(), Event: evt, Msg: msg}
+func makeResult(evt processorpub.NotificationDeliveryResultEvent) natsmsg.Result[processorpub.NotificationDeliveryResultEvent] {
+	return natsmsg.Result[processorpub.NotificationDeliveryResultEvent]{
+		Ctx:           context.Background(),
+		Event:         evt,
+		Msg:           &natsio.Msg{},
+		DeliveryCount: 1,
+	}
 }
 
 func makeSvc() service.NotificationService {
 	return service.NewNotificationService(repopostgres.NewNotificationRepository(testDB), noopPublisher{})
 }
 
-func runConsumer(svc service.NotificationService, result stream.Result[processorpub.NotificationDeliveryResultEvent]) {
-	ch := make(chan stream.Result[processorpub.NotificationDeliveryResultEvent], 1)
+func runConsumer(svc service.NotificationService, result natsmsg.Result[processorpub.NotificationDeliveryResultEvent]) {
+	ch := make(chan natsmsg.Result[processorpub.NotificationDeliveryResultEvent], 1)
 	ch <- result
 	close(ch)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)

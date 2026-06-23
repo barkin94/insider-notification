@@ -2,6 +2,7 @@ package delivery
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -11,6 +12,16 @@ import (
 	"github.com/barkin94/insider-notification/shared/lock"
 	stream "github.com/barkin94/insider-notification/shared/messaging"
 )
+
+// ErrRetryAfter is returned by Run when the message should be redelivered via
+// NakWithDelay after the given duration. It is not a fatal error.
+type ErrRetryAfter struct {
+	Delay time.Duration
+}
+
+func (e ErrRetryAfter) Error() string {
+	return fmt.Sprintf("retry after %s", e.Delay)
+}
 
 // NotificationDeliveryPipeline runs a single notification event through
 // each gate in sequence: locking, rate limiting, delivery, and outcome recording.
@@ -38,116 +49,87 @@ func NewNotificationDeliveryPipeline(
 	}
 }
 
-// Run runs the notification through each gate in sequence.
-// Returns nil on success or skip (caller should Ack), non-nil on infrastructure error (caller should Nack).
-func (p *NotificationDeliveryPipeline) Run(ctx context.Context, evt apipub.NotificationReadyEvent) error {
+// Run processes one notification event. deliveryCount is the 1-indexed NATS delivery
+// count for this message (1 = first attempt, 2 = first retry, etc.).
+// Returns ErrRetryAfter when the caller should NakWithDelay, nil on success or
+// terminal failure (caller should Ack), or another error on infrastructure failure
+// (caller should Nack).
+func (p *NotificationDeliveryPipeline) Run(ctx context.Context, evt apipub.NotificationReadyEvent, deliveryCount int) error {
 	lockAcquired, err := p.locker.TryLock(ctx, evt.NotificationID)
 	if err != nil {
 		slog.ErrorContext(ctx, "lock error", "id", evt.NotificationID, "error", err)
 		return err
 	}
 
-	// If lock is not acquired, it means another worker is processing the same notification, likely a retry.
+	// If lock is not acquired, another worker is already processing this notification.
 	if !lockAcquired {
 		slog.InfoContext(ctx, "lock miss, skipping", "id", evt.NotificationID)
 		return nil
 	}
 	defer p.locker.Unlock(ctx, evt.NotificationID) //nolint:errcheck
 
-	limited, err := p.applyRateLimit(ctx, evt)
-	if err != nil {
-		return err
+	if err := p.applyRateLimit(ctx, evt); err != nil {
+		return err // ErrRetryAfter or infra error — both propagate to caller
 	}
-	if limited {
-		return nil
-	}
-
-	currentAttempt := evt.AttemptNumber + 1
 
 	dr := p.deliveryClient.Send(ctx, evt.Recipient, evt.Channel, evt.Content)
 
-	return p.handleDeliveryResult(ctx, evt, dr, currentAttempt)
+	return p.handleDeliveryResult(ctx, evt, dr, deliveryCount)
 }
 
-func (p *NotificationDeliveryPipeline) publishRetry(ctx context.Context, evt apipub.NotificationReadyEvent, attemptNumber int, scheduledAt time.Time) error {
-	retryEvt := processorpub.NotificationRetryScheduleEvent{
-		NotificationID: evt.NotificationID,
-		Channel:        evt.Channel,
-		Recipient:      evt.Recipient,
-		Content:        evt.Content,
-		Priority:       evt.Priority,
-		MaxAttempts:    maxAttemptsFor(evt),
-		AttemptNumber:  attemptNumber,
-		ScheduledAt:    scheduledAt,
-	}
-	if err := p.pub.Publish(ctx, processorpub.TopicRetry, retryEvt); err != nil {
-		slog.ErrorContext(ctx, "publish retry failed", "id", evt.NotificationID, "error", err)
-		return err
-	}
-	return nil
-}
-
-// applyRateLimit checks the channel's token bucket. If exhausted, it defers
-// the event via the ZSET and returns limited=true so the caller can Ack.
-func (p *NotificationDeliveryPipeline) applyRateLimit(ctx context.Context, evt apipub.NotificationReadyEvent) (limited bool, err error) {
+// applyRateLimit checks the channel's token bucket. Returns ErrRetryAfter when
+// the bucket is exhausted so the caller can NakWithDelay without counting the
+// attempt against MaxAttempts. Returns nil when the request is allowed through.
+func (p *NotificationDeliveryPipeline) applyRateLimit(ctx context.Context, evt apipub.NotificationReadyEvent) error {
 	allowed, retryAfter, err := p.limiter.IsAllowed(ctx, evt.Channel)
 	if err != nil {
 		slog.ErrorContext(ctx, "rate limit error", "id", evt.NotificationID, "error", err)
-		return false, err
+		return err
 	}
 	if allowed {
-		return false, nil
+		return nil
 	}
 	if retryAfter <= 0 {
 		retryAfter = time.Second
 	}
-	slog.InfoContext(ctx, "rate limited, scheduling retry", "id", evt.NotificationID, "channel", evt.Channel, "retry_after", retryAfter)
-	retryAt := time.Now().Add(retryAfter).UTC()
-	if err := p.publishRetry(ctx, evt, evt.AttemptNumber, retryAt); err != nil {
-		return false, err
-	}
-	return true, nil
+	slog.InfoContext(ctx, "rate limited, naking with delay", "id", evt.NotificationID, "channel", evt.Channel, "delay", retryAfter)
+	return ErrRetryAfter{Delay: retryAfter}
 }
 
-// recordOutcome schedules retryable delivery failures and publishes terminal
-// status events for the API. It returns an error only when retry state could not
-// be persisted, because the original stream message must remain unacked then.
-func (p *NotificationDeliveryPipeline) handleDeliveryResult(ctx context.Context, evt apipub.NotificationReadyEvent, dr service.DeliveryResult, currentAttempt int) error {
+// handleDeliveryResult returns ErrRetryAfter for retryable failures with remaining
+// attempts, nil after publishing a terminal status event, or an error if the status
+// event could not be published.
+func (p *NotificationDeliveryPipeline) handleDeliveryResult(ctx context.Context, evt apipub.NotificationReadyEvent, dr service.DeliveryResult, deliveryCount int) error {
+	currentAttempt := deliveryCount
 	maxAttempts := maxAttemptsFor(evt)
 	switch {
 	case dr.Success:
 		p.metrics.RecordNotificationSent(ctx, dr.LatencyMS)
-		if err := p.publishStatus(ctx, processorpub.NotificationDeliveryResultEvent{
+		return p.publishStatus(ctx, processorpub.NotificationDeliveryResultEvent{
 			NotificationID:    evt.NotificationID,
 			Status:            string(apipub.StatusDelivered),
 			AttemptNumber:     currentAttempt,
 			HTTPStatusCode:    dr.StatusCode,
 			ProviderMessageID: dr.ProviderMsgID,
 			LatencyMS:         int(dr.LatencyMS),
-		}); err != nil {
-			return err
-		}
+		})
 
 	case dr.Retryable && currentAttempt < maxAttempts:
-		scheduledAt := time.Now().Add(service.RetryDelay(currentAttempt + 1)).UTC()
-		if err := p.publishRetry(ctx, evt, currentAttempt, scheduledAt); err != nil {
-			return err
-		}
+		delay := service.RetryDelay(currentAttempt + 1)
+		slog.InfoContext(ctx, "retryable failure, naking with delay", "id", evt.NotificationID, "attempt", currentAttempt, "delay", delay)
+		return ErrRetryAfter{Delay: delay}
 
 	default:
 		p.metrics.RecordNotificationFailed(ctx, dr.LatencyMS)
-		if err := p.publishStatus(ctx, processorpub.NotificationDeliveryResultEvent{
+		return p.publishStatus(ctx, processorpub.NotificationDeliveryResultEvent{
 			NotificationID: evt.NotificationID,
 			Status:         string(apipub.StatusFailed),
 			AttemptNumber:  currentAttempt,
 			HTTPStatusCode: dr.StatusCode,
 			ErrorMessage:   dr.ErrorMessage,
 			LatencyMS:      int(dr.LatencyMS),
-		}); err != nil {
-			return err
-		}
+		})
 	}
-	return nil
 }
 
 func (p *NotificationDeliveryPipeline) publishStatus(ctx context.Context, evt processorpub.NotificationDeliveryResultEvent) error {

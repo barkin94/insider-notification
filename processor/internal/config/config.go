@@ -5,13 +5,16 @@ import (
 	"os"
 	"time"
 
+	"github.com/barkin94/insider-notification/processor/internal/service"
 	shared "github.com/barkin94/insider-notification/shared/config"
 )
 
 type Config struct {
 	shared.Base
+	NATSAddr                  string
 	RedisAddr                 string
 	WorkerConcurrency         int
+	MaxAttempts               int
 	NtfnDeliveryClientURL     string
 	NtfnDeliveryClientTimeout time.Duration
 	HighWeight                int // HIGH_WEIGHT env var
@@ -28,6 +31,7 @@ type Config struct {
 func Load() *Config {
 	v := shared.NewViper()
 	v.SetDefault("WORKER_CONCURRENCY", 10)
+	v.SetDefault("MAX_ATTEMPTS", service.MaxAttempts)
 	v.SetDefault("NTFN_DELIVERY_CLIENT_URL", "http://localhost:8080")
 	v.SetDefault("NTFN_DELIVERY_CLIENT_TIMEOUT", "10s")
 	v.SetDefault("HIGH_WEIGHT", 3)
@@ -40,6 +44,11 @@ func Load() *Config {
 	v.SetDefault("PUSH_RATE_PER_SECOND", 500)
 	v.SetDefault("PUSH_BURST", 600)
 
+	natsAddr := v.GetString("NATS_ADDR")
+	if natsAddr == "" {
+		slog.Error("missing required env var", "var", "NATS_ADDR")
+		os.Exit(1)
+	}
 	redisAddr := v.GetString("REDIS_ADDR")
 	if redisAddr == "" {
 		slog.Error("missing required env var", "var", "REDIS_ADDR")
@@ -48,8 +57,10 @@ func Load() *Config {
 
 	return &Config{
 		Base:                      shared.LoadBase(v),
+		NATSAddr:                  natsAddr,
 		RedisAddr:                 redisAddr,
 		WorkerConcurrency:         v.GetInt("WORKER_CONCURRENCY"),
+		MaxAttempts:               v.GetInt("MAX_ATTEMPTS"),
 		NtfnDeliveryClientURL:     v.GetString("NTFN_DELIVERY_CLIENT_URL"),
 		NtfnDeliveryClientTimeout: v.GetDuration("NTFN_DELIVERY_CLIENT_TIMEOUT"),
 		HighWeight:                v.GetInt("HIGH_WEIGHT"),

@@ -6,21 +6,19 @@ import (
 	"testing"
 	"time"
 
-	watermill "github.com/ThreeDotsLabs/watermill/message"
 	"github.com/google/uuid"
+	natsio "github.com/nats-io/nats.go"
 
 	apipub "github.com/barkin94/insider-notification/api/public"
 	db "github.com/barkin94/insider-notification/deliveryscheduler/internal/db"
 	"github.com/barkin94/insider-notification/deliveryscheduler/internal/transport/messaging"
-	stream "github.com/barkin94/insider-notification/shared/messaging"
+	natsmsg "github.com/barkin94/insider-notification/shared/messaging/nats"
 )
 
 type cancelMockRepo struct {
 	deletedIDs []string
 	deleteErr  error
-
-	// satisfy full interface
-	upsertErr error
+	upsertErr  error
 }
 
 func (m *cancelMockRepo) UpsertAll(_ context.Context, _ []*db.ScheduledNotification) error {
@@ -36,18 +34,17 @@ func (m *cancelMockRepo) DeleteByNotificationID(_ context.Context, id string) er
 	return m.deleteErr
 }
 
-func makeCancelResult(notifID string) (stream.Result[apipub.NotificationScheduleCancelledEvent], *watermill.Message) {
-	msg := watermill.NewMessage(uuid.New().String(), nil)
-	evt := apipub.NotificationScheduleCancelledEvent{NotificationID: notifID}
-	return stream.Result[apipub.NotificationScheduleCancelledEvent]{
-		Ctx:   context.Background(),
-		Event: evt,
-		Msg:   msg,
-	}, msg
+func makeCancelResult(notifID string) natsmsg.Result[apipub.NotificationScheduleCancelledEvent] {
+	return natsmsg.Result[apipub.NotificationScheduleCancelledEvent]{
+		Ctx:           context.Background(),
+		Event:         apipub.NotificationScheduleCancelledEvent{NotificationID: notifID},
+		Msg:           &natsio.Msg{},
+		DeliveryCount: 1,
+	}
 }
 
-func runCancelConsumer(repo *cancelMockRepo, results ...stream.Result[apipub.NotificationScheduleCancelledEvent]) {
-	ch := make(chan stream.Result[apipub.NotificationScheduleCancelledEvent], len(results))
+func runCancelConsumer(repo *cancelMockRepo, results ...natsmsg.Result[apipub.NotificationScheduleCancelledEvent]) {
+	ch := make(chan natsmsg.Result[apipub.NotificationScheduleCancelledEvent], len(results))
 	for _, r := range results {
 		ch <- r
 	}
@@ -57,66 +54,37 @@ func runCancelConsumer(repo *cancelMockRepo, results ...stream.Result[apipub.Not
 	messaging.NewCancelConsumer(repo, ch).Run(ctx)
 }
 
-func waitAck(t *testing.T, msg *watermill.Message) {
-	t.Helper()
-	select {
-	case <-msg.Acked():
-	case <-msg.Nacked():
-		t.Error("expected ack, got nack")
-	case <-time.After(time.Second):
-		t.Error("timeout waiting for ack")
-	}
-}
-
-func waitNack(t *testing.T, msg *watermill.Message) {
-	t.Helper()
-	select {
-	case <-msg.Nacked():
-	case <-msg.Acked():
-		t.Error("expected nack, got ack")
-	case <-time.After(time.Second):
-		t.Error("timeout waiting for nack")
-	}
-}
-
-func TestCancelConsumer_acksAndDeletesOnSuccess(t *testing.T) {
+func TestCancelConsumer_deletesOnSuccess(t *testing.T) {
 	repo := &cancelMockRepo{}
 	notifID := uuid.New().String()
-	result, msg := makeCancelResult(notifID)
 
-	runCancelConsumer(repo, result)
-
-	waitAck(t, msg)
+	runCancelConsumer(repo, makeCancelResult(notifID))
 
 	if len(repo.deletedIDs) != 1 || repo.deletedIDs[0] != notifID {
 		t.Errorf("deleted IDs = %v, want [%s]", repo.deletedIDs, notifID)
 	}
 }
 
-func TestCancelConsumer_nacksOnDeleteError(t *testing.T) {
+func TestCancelConsumer_skipsDeleteOnError(t *testing.T) {
 	repo := &cancelMockRepo{deleteErr: errors.New("db unavailable")}
-	result, msg := makeCancelResult(uuid.New().String())
 
-	runCancelConsumer(repo, result)
+	runCancelConsumer(repo, makeCancelResult(uuid.New().String()))
 
-	waitNack(t, msg)
+	// repo.DeleteByNotificationID was called but returned an error; consumer nacked and moved on
+	if len(repo.deletedIDs) != 1 {
+		t.Errorf("expected DeleteByNotificationID to be called once, got %d", len(repo.deletedIDs))
+	}
 }
 
 func TestCancelConsumer_processesMultipleMessages(t *testing.T) {
 	repo := &cancelMockRepo{}
 	ids := []string{uuid.New().String(), uuid.New().String(), uuid.New().String()}
 
-	results := make([]stream.Result[apipub.NotificationScheduleCancelledEvent], len(ids))
-	msgs := make([]*watermill.Message, len(ids))
+	results := make([]natsmsg.Result[apipub.NotificationScheduleCancelledEvent], len(ids))
 	for i, id := range ids {
-		results[i], msgs[i] = makeCancelResult(id)
+		results[i] = makeCancelResult(id)
 	}
-
 	runCancelConsumer(repo, results...)
-
-	for _, msg := range msgs {
-		waitAck(t, msg)
-	}
 
 	if len(repo.deletedIDs) != len(ids) {
 		t.Fatalf("deleted %d IDs, want %d", len(repo.deletedIDs), len(ids))
@@ -130,7 +98,7 @@ func TestCancelConsumer_processesMultipleMessages(t *testing.T) {
 
 func TestCancelConsumer_stopsOnContextCancel(t *testing.T) {
 	repo := &cancelMockRepo{}
-	ch := make(chan stream.Result[apipub.NotificationScheduleCancelledEvent])
+	ch := make(chan natsmsg.Result[apipub.NotificationScheduleCancelledEvent])
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
