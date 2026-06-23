@@ -10,8 +10,8 @@ import (
 
 type Config struct {
 	shared.Base
-	DatabaseURL  string
-	NATSAddr     string
+	DatabaseURL   string
+	NATSAddr      string
 	PollBatchSize int
 	PollInterval  time.Duration
 }
@@ -34,9 +34,9 @@ func Load() *Config {
 	}
 
 	return &Config{
-		Base:                       shared.LoadBase(v),
-		DatabaseURL:                databaseURL,
-		NATSAddr:                   natsAddr,
+		Base:          shared.LoadBase(v),
+		DatabaseURL:   databaseURL,
+		NATSAddr:      natsAddr,
 		PollBatchSize: v.GetInt("POLL_BATCH_SIZE"),
 		PollInterval:  v.GetDuration("POLL_INTERVAL"),
 	}

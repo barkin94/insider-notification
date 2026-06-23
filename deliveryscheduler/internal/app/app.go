@@ -55,8 +55,8 @@ func New(ctx context.Context, cfg *config.Config) (*App, func(), error) {
 	return &App{
 		consumer:       messaging.NewConsumer(repo, msgs),
 		cancelConsumer: messaging.NewCancelConsumer(repo, cancelMsgs),
-		dispatcher:   dispatcher.NewScheduledNotificationDispatcher(repo, pub, cfg.PollBatchSize),
-		pollInterval: cfg.PollInterval,
+		dispatcher:     dispatcher.NewScheduledNotificationDispatcher(repo, pub, cfg.PollBatchSize),
+		pollInterval:   cfg.PollInterval,
 	}, cleanup, nil
 }
 
