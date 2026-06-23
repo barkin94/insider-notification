@@ -4,8 +4,6 @@ import "time"
 
 // NotificationReadyEvent is published to a priority stream when a notification
 // is ready to be delivered immediately. Trace context travels in message.Metadata.
-// AttemptNumber is 0 for first-time delivery (API-originated); the retry dispatcher
-// sets it from stored state when re-publishing a failed attempt.
 type NotificationReadyEvent struct {
 	NotificationID string
 	Channel        string
@@ -13,7 +11,6 @@ type NotificationReadyEvent struct {
 	Content        string
 	Priority       string
 	MaxAttempts    int
-	AttemptNumber  int
 }
 
 // NotificationEntity is the minimal interface NotificationReadyEvent.From requires,

@@ -39,7 +39,7 @@ func makeCancelResult(notifID string) natsmsg.Result[apipub.NotificationSchedule
 		Ctx:           context.Background(),
 		Event:         apipub.NotificationScheduleCancelledEvent{NotificationID: notifID},
 		Msg:           &natsio.Msg{},
-		DeliveryCount: 1,
+		AttemptNumber: 1,
 	}
 }
 

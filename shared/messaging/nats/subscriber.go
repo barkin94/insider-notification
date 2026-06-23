@@ -15,13 +15,13 @@ import (
 )
 
 // Result carries a decoded event, its trace-propagated context, the raw NATS
-// message (for Ack/Nak/NakWithDelay), the pre-computed delivery count, and
-// the active consumer span. Call EndSpan after Ack/Nak to close the span.
+// message (for Ack/Nak/NakWithDelay), and the 1-indexed attempt number sourced
+// from the broker's NumDelivered counter. Call EndSpan after Ack/Nak to close the span.
 type Result[T any] struct {
 	Ctx           context.Context
 	Event         T
 	Msg           *natsio.Msg
-	DeliveryCount int
+	AttemptNumber int
 }
 
 // EndSpan ends the consumer span that was started when the message was decoded.
@@ -83,16 +83,16 @@ func decode[T any](ctx context.Context, msg *natsio.Msg, subject, tracerName str
 	msgCtx := otel.GetTextMapPropagator().Extract(ctx, headerCarrier{msg.Header})
 	msgCtx, span := otel.Tracer(tracerName).Start(msgCtx, "consume "+subject, trace.WithSpanKind(trace.SpanKindConsumer))
 
-	deliveryCount := 1
+	attemptNumber := 1
 	if meta, err := msg.Metadata(); err == nil {
-		deliveryCount = int(min(meta.NumDelivered, math.MaxInt)) //nolint:gosec // delivery counts never exceed MaxInt in practice
+		attemptNumber = int(min(meta.NumDelivered, math.MaxInt)) //nolint:gosec
 	}
 
 	span.SetAttributes(
 		attribute.String("messaging.system", "nats"),
 		attribute.String("messaging.operation.name", "process"),
 		attribute.String("messaging.destination.name", subject),
-		attribute.Int("messaging.message.delivery_count", deliveryCount),
+		attribute.Int("messaging.message.delivery_count", attemptNumber),
 	)
 
 	var e T
@@ -102,5 +102,5 @@ func decode[T any](ctx context.Context, msg *natsio.Msg, subject, tracerName str
 		span.End()
 		return Result[T]{}, false
 	}
-	return Result[T]{Ctx: msgCtx, Event: e, Msg: msg, DeliveryCount: deliveryCount}, true
+	return Result[T]{Ctx: msgCtx, Event: e, Msg: msg, AttemptNumber: attemptNumber}, true
 }

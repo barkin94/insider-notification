@@ -79,13 +79,13 @@ func (f *fakeLimiter) IsAllowed(_ context.Context, _ string) (bool, time.Duratio
 
 // --- helpers ---
 
-// runSingle runs the pipeline with deliveryCount=1 (first delivery).
+// runSingle runs the pipeline with attemptNumber=1 (first delivery).
 func runSingle(p *delivery.NotificationDeliveryPipeline, evt apipub.NotificationReadyEvent) error {
 	return p.Run(context.Background(), evt, 1)
 }
 
-func runWithCount(p *delivery.NotificationDeliveryPipeline, evt apipub.NotificationReadyEvent, deliveryCount int) error {
-	return p.Run(context.Background(), evt, deliveryCount)
+func runWithCount(p *delivery.NotificationDeliveryPipeline, evt apipub.NotificationReadyEvent, attemptNumber int) error {
+	return p.Run(context.Background(), evt, attemptNumber)
 }
 
 const baseNotifID = "00000000-0000-0000-0000-000000000001"
@@ -213,7 +213,7 @@ func TestPipeline_Exhausted_Failed(t *testing.T) {
 	lim := &fakeLimiter{allowed: true}
 	c := newPipeline(pub, dc, lim, true)
 
-	// deliveryCount=4 = MaxAttempts → terminal
+	// attemptNumber=4 = MaxAttempts → terminal
 	evt := baseEventWithID()
 	evt.MaxAttempts = 4
 	err := runWithCount(c, evt, 4)
@@ -296,8 +296,8 @@ func TestPipeline_RateLimited_ZeroRetryAfter_DefaultsToOneSecond(t *testing.T) {
 
 // --- delivery attempt number tests ---
 
-// AttemptNumber in status event equals deliveryCount.
-func TestPipeline_AttemptNumber_FromDeliveryCount(t *testing.T) {
+// AttemptNumber in status event equals attemptNumber.
+func TestPipeline_AttemptNumber_FromNATSMetadata(t *testing.T) {
 	pub := &fakePublisher{}
 	dc := &fakeDeliveryClient{result: service.DeliveryResult{Success: true}}
 	lim := &fakeLimiter{allowed: true}

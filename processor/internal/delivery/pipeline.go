@@ -49,12 +49,12 @@ func NewNotificationDeliveryPipeline(
 	}
 }
 
-// Run processes one notification event. deliveryCount is the 1-indexed NATS delivery
+// Run processes one notification event. attemptNumber is the 1-indexed NATS delivery
 // count for this message (1 = first attempt, 2 = first retry, etc.).
 // Returns ErrRetryAfter when the caller should NakWithDelay, nil on success or
 // terminal failure (caller should Ack), or another error on infrastructure failure
 // (caller should Nack).
-func (p *NotificationDeliveryPipeline) Run(ctx context.Context, evt apipub.NotificationReadyEvent, deliveryCount int) error {
+func (p *NotificationDeliveryPipeline) Run(ctx context.Context, evt apipub.NotificationReadyEvent, attemptNumber int) error {
 	lockAcquired, err := p.locker.TryLock(ctx, evt.NotificationID)
 	if err != nil {
 		slog.ErrorContext(ctx, "lock error", "id", evt.NotificationID, "error", err)
@@ -74,7 +74,7 @@ func (p *NotificationDeliveryPipeline) Run(ctx context.Context, evt apipub.Notif
 
 	dr := p.deliveryClient.Send(ctx, evt.Recipient, evt.Channel, evt.Content)
 
-	return p.handleDeliveryResult(ctx, evt, dr, deliveryCount)
+	return p.handleDeliveryResult(ctx, evt, dr, attemptNumber)
 }
 
 // applyRateLimit checks the channel's token bucket. Returns ErrRetryAfter when
@@ -99,8 +99,8 @@ func (p *NotificationDeliveryPipeline) applyRateLimit(ctx context.Context, evt a
 // handleDeliveryResult returns ErrRetryAfter for retryable failures with remaining
 // attempts, nil after publishing a terminal status event, or an error if the status
 // event could not be published.
-func (p *NotificationDeliveryPipeline) handleDeliveryResult(ctx context.Context, evt apipub.NotificationReadyEvent, dr service.DeliveryResult, deliveryCount int) error {
-	currentAttempt := deliveryCount
+func (p *NotificationDeliveryPipeline) handleDeliveryResult(ctx context.Context, evt apipub.NotificationReadyEvent, dr service.DeliveryResult, attemptNumber int) error {
+	currentAttempt := attemptNumber
 	maxAttempts := maxAttemptsFor(evt)
 	switch {
 	case dr.Success:

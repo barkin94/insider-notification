@@ -14,7 +14,7 @@ import (
 
 func (c *NotificationReadyConsumer) processOne(msg natsmsg.Result[apipub.NotificationReadyEvent]) {
 	defer msg.EndSpan()
-	err := c.pipeline.Run(msg.Ctx, msg.Event, msg.DeliveryCount)
+	err := c.pipeline.Run(msg.Ctx, msg.Event, msg.AttemptNumber)
 	var retryAfter delivery.ErrRetryAfter
 	switch {
 	case errors.As(err, &retryAfter):

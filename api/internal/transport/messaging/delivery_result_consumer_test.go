@@ -103,7 +103,7 @@ func makeResult(evt processorpub.NotificationDeliveryResultEvent) natsmsg.Result
 		Ctx:           context.Background(),
 		Event:         evt,
 		Msg:           &natsio.Msg{},
-		DeliveryCount: 1,
+		AttemptNumber: 1,
 	}
 }
 
