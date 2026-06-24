@@ -3,8 +3,8 @@ module github.com/barkin94/insider-notification/processor
 go 1.25.0
 
 require (
-	github.com/barkin94/insider-notification/api/public v0.2.0
-	github.com/barkin94/insider-notification/processor/public v0.2.0
+	github.com/barkin94/insider-notification/api/public v0.5.0
+	github.com/barkin94/insider-notification/processor/public v0.3.0
 	github.com/barkin94/insider-notification/shared v0.5.0
 	github.com/go-redis/redis_rate/v10 v10.0.1
 	github.com/google/uuid v1.6.0

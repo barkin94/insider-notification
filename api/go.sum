@@ -10,10 +10,16 @@ github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERo
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
 github.com/barkin94/insider-notification/api/public v0.4.0 h1:eX2MeLIwTd4xCQTT1B23wZfimTJQxYeKzs+EDbhsRPQ=
 github.com/barkin94/insider-notification/api/public v0.4.0/go.mod h1:3k5JFawRbWCLd3rOraeVGyNZ9r6kukq6FxiHZBV3cq0=
+github.com/barkin94/insider-notification/api/public v0.5.0 h1:jrfo7CUA1THAOtAuKB8i+l5kVz4lUinC4+11kTlsN88=
+github.com/barkin94/insider-notification/api/public v0.5.0/go.mod h1:3k5JFawRbWCLd3rOraeVGyNZ9r6kukq6FxiHZBV3cq0=
 github.com/barkin94/insider-notification/deliveryscheduler/public v0.2.0 h1:cT2KWcGb7Ejb9MwjD0oyqnlyQXGPEADi1woecWbnix0=
 github.com/barkin94/insider-notification/deliveryscheduler/public v0.2.0/go.mod h1:xlutzaXl67dqOL8ALLbSzU5gwIiWLmCbgs9FuzP6yhM=
+github.com/barkin94/insider-notification/deliveryscheduler/public v0.3.0 h1:MNi1XgZ8LcPoRA1NB07OoB9u1fEON6XePscVrjiiOTI=
+github.com/barkin94/insider-notification/deliveryscheduler/public v0.3.0/go.mod h1:xlutzaXl67dqOL8ALLbSzU5gwIiWLmCbgs9FuzP6yhM=
 github.com/barkin94/insider-notification/processor/public v0.2.0 h1:RfjHjRvim7/G/IEuQhqxBSfOss3XXPU4rPqv/3Bn0IU=
 github.com/barkin94/insider-notification/processor/public v0.2.0/go.mod h1:6JDjcYU5Ok3EA5C6XYUoZP60m9k4zath9OsDtIU5/fc=
+github.com/barkin94/insider-notification/processor/public v0.3.0 h1:kt3QCBafBp4TBEe5hw9JJhOQ83zrKRFR7OaAZ1YxIjE=
+github.com/barkin94/insider-notification/processor/public v0.3.0/go.mod h1:6JDjcYU5Ok3EA5C6XYUoZP60m9k4zath9OsDtIU5/fc=
 github.com/barkin94/insider-notification/shared v0.5.0 h1:r/yilh49lVI1iSmTa70m0fyneypbgGj7fVT8o2uJc2Y=
 github.com/barkin94/insider-notification/shared v0.5.0/go.mod h1:F7iTmsos7gtg5d+AUl7qUstFyihj0RasDG5xvHxSoJ0=
 github.com/cenkalti/backoff/v4 v4.3.0 h1:MyRJ/UdXutAwSAT+s3wNd7MfTIcy71VQueUuFK343L8=
