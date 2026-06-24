@@ -24,8 +24,18 @@ func TestRequestLogger_fields(t *testing.T) {
 	h.ServeHTTP(httptest.NewRecorder(), req)
 
 	var entry map[string]any
-	if err := json.Unmarshal(buf.Bytes(), &entry); err != nil {
-		t.Fatalf("parse log output: %v", err)
+	dec := json.NewDecoder(&buf)
+	for dec.More() {
+		var e map[string]any
+		if err := dec.Decode(&e); err != nil {
+			t.Fatalf("parse log output: %v", err)
+		}
+		if e["msg"] == "response" {
+			entry = e
+		}
+	}
+	if entry == nil {
+		t.Fatal("no response log entry found")
 	}
 
 	for _, field := range []string{"time", "level", "msg", "method", "path", "status", "latency_ms"} {
